@@ -79,6 +79,7 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ inputs.target }}-${{ hashFiles('apps/mac/src-tauri/Cargo.lock', 'apps/mac/src-tauri/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
           path: |
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
@@ -119,6 +120,21 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          retry_ticket_request() {
+            local attempt status
+            for attempt in 1 2 3 4 5; do
+              if "$@"; then
+                return 0
+              else
+                status=$?
+              fi
+              if [ "$status" -ne 68 ] || [ "$attempt" -eq 5 ]; then
+                return "$status"
+              fi
+              echo '::warning::Apple ticket service did not respond as expected; retrying in 15 seconds.'
+              sleep 15
+            done
+          }
           xcrun notarytool store-credentials orka-notary --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID"
           for dmg in "$BUNDLE_DIR"/dmg/*.dmg; do
             xcrun notarytool submit "$dmg" --keychain-profile orka-notary --output-format json > "$dmg.submission.json"
@@ -126,13 +142,13 @@ jobs:
             xcrun notarytool wait "$submission" --keychain-profile orka-notary --timeout 20m --output-format json > "$dmg.status.json"
             node -e 'if (JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).status !== "Accepted") process.exit(1)' "$dmg.status.json"
             xcrun notarytool log "$submission" --keychain-profile orka-notary "$dmg.notary-log.json"
-            xcrun stapler staple "$dmg"
-            xcrun stapler validate "$dmg"
+            retry_ticket_request xcrun stapler staple "$dmg"
+            retry_ticket_request xcrun stapler validate "$dmg"
             codesign --verify --strict "$dmg"
             spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
           done
-          xcrun stapler staple "$BUNDLE_DIR/macos/Orka.app"
-          xcrun stapler validate "$BUNDLE_DIR/macos/Orka.app"
+          retry_ticket_request xcrun stapler staple "$BUNDLE_DIR/macos/Orka.app"
+          retry_ticket_request xcrun stapler validate "$BUNDLE_DIR/macos/Orka.app"
           codesign --verify --deep --strict "$BUNDLE_DIR/macos/Orka.app"
           spctl --assess --type execute --verbose=2 "$BUNDLE_DIR/macos/Orka.app"
       - name: Package downloads and record checksums
@@ -175,5 +191,13 @@ jobs:
         with:
           name: orka-notarization-${{ github.run_number }}
           path: apps/mac/src-tauri/target/${{ inputs.target }}/release/bundle/dmg/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Preserve installer for verification recovery
+        if: failure() && inputs.signing == 'notarized'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: orka-unverified-installer-${{ github.run_number }}
+          path: apps/mac/src-tauri/target/${{ inputs.target }}/release/bundle/dmg/*.dmg
           if-no-files-found: ignore
           retention-days: 7
