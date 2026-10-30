@@ -28,7 +28,7 @@ concurrency:
 jobs:
   mac:
     if: github.ref == 'refs/heads/main'
-    runs-on: macos-14
+    runs-on: macos-15
     environment: ${{ inputs.signing == 'notarized' && 'macos-signing' || 'macos-development' }}
     timeout-minutes: 60
     env:
