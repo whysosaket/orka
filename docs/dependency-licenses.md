@@ -837,6 +837,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [ndk-context](https://crates.io/crates/ndk-context/0.1.1) | 0.1.1 | MIT OR Apache-2.0 |
 | [ndk-sys](https://crates.io/crates/ndk-sys/0.6.0+11769913) | 0.6.0+11769913 | MIT OR Apache-2.0 |
 | [new_debug_unreachable](https://crates.io/crates/new_debug_unreachable/1.0.6) | 1.0.6 | MIT |
+| [nix](https://crates.io/crates/nix/0.31.3) | 0.31.3 | MIT |
 | [nom](https://crates.io/crates/nom/8.0.0) | 8.0.0 | MIT |
 | [num_enum](https://crates.io/crates/num_enum/0.7.6) | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
 | [num_enum_derive](https://crates.io/crates/num_enum_derive/0.7.6) | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
@@ -1157,7 +1158,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [zerotrie](https://crates.io/crates/zerotrie/0.2.5) | 0.2.5 | Unicode-3.0 |
 | [zerovec](https://crates.io/crates/zerovec/0.11.8) | 0.11.8 | Unicode-3.0 |
 | [zerovec-derive](https://crates.io/crates/zerovec-derive/0.11.6) | 0.11.6 | Unicode-3.0 |
-| [zip](https://crates.io/crates/zip/9.0.0) | 9.0.0 | MIT |
+| [zip](https://crates.io/crates/zip/9.0.5) | 9.0.5 | MIT |
 | [zlib-rs](https://crates.io/crates/zlib-rs/0.6.8) | 0.6.8 | Zlib |
 | [zmij](https://crates.io/crates/zmij/1.0.23) | 1.0.23 | MIT |
 | [zopfli](https://crates.io/crates/zopfli/0.8.3) | 0.8.3 | Apache-2.0 |

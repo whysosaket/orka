@@ -10,7 +10,7 @@ Tailwind remains on 3.4 to preserve the macOS 12 WebView baseline. The desktop s
 
 ## Rust dependencies
 
-The snapshot updates Tokio to 1.53.3. Run `cargo audit --file apps/mac/src-tauri/Cargo.lock` against the current advisory database. Maintenance and platform-specific warnings remain visible in the Security workflow. Orka currently supports macOS; Linux desktop support needs its own dependency and compatibility review.
+The snapshot updates Tokio to 1.53.3 and requires zip 9.0.5 or later in the 9.x series for [GHSA-m665-v7pm-7grj](https://github.com/advisories/GHSA-m665-v7pm-7grj). Run `cargo audit --file apps/mac/src-tauri/Cargo.lock` against the current advisory database. GitHub dependency alerts supplement RustSec because their advisory databases can differ. Maintenance and platform-specific warnings remain visible in the Security workflow. Orka currently supports macOS; Linux desktop support needs its own dependency and compatibility review.
 
 ### Scoped exception: RUSTSEC-2026-0387
 

@@ -46,6 +46,6 @@ lto = true
 codegen-units = 1
 
 [dependencies.zip]
-version = "9"
+version = "9.0.5"
 default-features = false
 features = ["deflate"]
