@@ -1,0 +1,90 @@
+@layer components {
+  .app > main {
+    position: relative;
+  }
+  .toast-viewport {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 24px;
+    z-index: 80;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .toast-viewport--modal {
+    position: fixed;
+    right: auto;
+    transform: translateX(-50%);
+  }
+  /* Margin centering keeps the modal's exact geometry without a transformed
+     containing block that would clip a viewport-positioned notification. */
+  .modal.toast-host-modal {
+    inset: 0;
+    margin: auto;
+    height: fit-content;
+    transform: none;
+  }
+  .modal.settings-modal.toast-host-modal {
+    height: 620px;
+  }
+  .toast-stack {
+    position: relative;
+    width: min(440px, calc(100% - 32px));
+  }
+  .orka-toast,
+  .toast-queued {
+    border: 1px solid var(--surface-stroke);
+    border-radius: var(--radius-overlay);
+    background: var(--surface-tertiary);
+    box-shadow: var(--shadow-workspace);
+  }
+  .orka-toast {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 50px;
+    padding: 8px 8px 8px 12px;
+    pointer-events: auto;
+    overflow: hidden;
+  }
+  .toast-icon {
+    display: flex;
+    flex: 0 0 16px;
+    color: var(--text-secondary);
+  }
+  .toast-title {
+    @apply text-label-sm text-foreground;
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .toast-action.ui-button {
+    position: relative;
+    flex-shrink: 0;
+    min-width: 80px;
+    overflow: hidden;
+  }
+  .toast-action-label {
+    position: relative;
+    z-index: 1;
+  }
+  .toast-timer {
+    position: absolute;
+    inset: 0;
+    background: var(--interaction-selected);
+    transform-origin: left center;
+    pointer-events: none;
+  }
+  .toast-queued {
+    position: absolute;
+    inset: -8px 10px 8px;
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .toast-queued--back {
+    inset: -16px 20px 16px;
+    opacity: 0.4;
+  }
+}

@@ -1,0 +1,42 @@
+# Dependencies and generated outputs
+node_modules/
+dist/
+target/
+coverage/
+artifacts/
+test-results/
+playwright-report/
+apps/mac/src-tauri/gen/
+docs/design-system/*.png
+
+# Local configuration and credentials, at every directory level
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+credentials.json
+secrets.json
+.npmrc
+.mcp.json
+.claude/settings.local.json
+.codex/config.toml
+.codex/hooks.json
+apps/mac/src-tauri/release.conf.json
+
+# Private runtime data, backups, and operating-system files
+*.sqlite*
+*.db
+*.log
+*.dump
+*.dmg
+*.app/
+*.bak
+.DS_Store
+.runtime/
+.portable/
+.orka/
+backups/

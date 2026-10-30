@@ -1,0 +1,378 @@
+/* Current Figma authentication flow. Keep overrides within onboarding. */
+@font-face {
+  font-family: "Orka Onboarding Inter";
+  src: url("@fontsource-variable/inter/files/inter-latin-standard-normal.woff2")
+    format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+.sign-in.onboarding-entry {
+  --onboarding-copper: #c4865a;
+  --onboarding-link: #60a5fa;
+  position: relative;
+  isolation: isolate;
+  padding: calc(100vh * 105 / 900) 24px 32px;
+  background: var(--surface-primary);
+  /* Figma uses Inter's optical-size axis; the app's default face has weight only. */
+  font-family: "Orka Onboarding Inter", "Inter Variable", sans-serif;
+  font-optical-sizing: auto;
+}
+
+.onboarding-entry__backdrop {
+  position: fixed;
+  z-index: -1;
+  inset: 7.44% -22.78% -17.64% 0;
+  pointer-events: none;
+}
+
+.onboarding-entry__backdrop img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.auth.onboarding-entry__card {
+  position: relative;
+  width: 480px;
+  max-width: 100%;
+  margin: 0;
+  padding: 32px 24px;
+  gap: 40px;
+  border: 1px solid transparent;
+  border-radius: 20px;
+  background:
+    linear-gradient(var(--surface-secondary), var(--surface-secondary))
+      padding-box,
+    linear-gradient(180deg, #60a5fa1a 0%, #25252500 43.6965%) border-box,
+    var(--surface-stroke);
+  box-shadow: var(--shadow-modal);
+}
+.sign-in.onboarding-entry--recovery {
+  padding: 24px;
+  align-items: center;
+  justify-content: center;
+}
+.onboarding-auth-recovery__content {
+  display: flex;
+  width: 430px;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+.onboarding-auth-recovery .onboarding-entry__heading {
+  gap: 10px;
+}
+.onboarding-auth-recovery--locked .onboarding-entry__heading p {
+  width: 316px;
+  max-width: 100%;
+  align-self: center;
+}
+.onboarding-auth-recovery__server {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: -0.07px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.onboarding-auth-recovery__actions {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 12px;
+}
+.onboarding-auth-recovery__actions .ui-button--primary {
+  background: #f2eeeb;
+  color: #080808;
+  box-shadow: none;
+}
+
+.onboarding-entry__header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+  padding: 0;
+}
+
+.onboarding-entry__logo {
+  display: block;
+  flex: none;
+}
+
+.onboarding-entry__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  text-align: center;
+}
+
+.onboarding-entry__heading h1 {
+  margin: 0;
+  outline: none;
+  color: var(--text-primary);
+  font-size: var(--heading-md-font-size);
+  font-weight: var(--heading-md-font-weight);
+  line-height: var(--heading-md-line-height);
+  letter-spacing: var(--heading-md-letter-spacing);
+}
+
+.onboarding-entry__heading p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--body-sm-font-size);
+  font-weight: var(--body-sm-font-weight);
+  line-height: var(--body-sm-line-height);
+  letter-spacing: var(--body-sm-letter-spacing);
+}
+
+.onboarding-entry__sign-in {
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--onboarding-link);
+  font: inherit;
+  cursor: pointer;
+}
+
+.onboarding-entry__sign-in:focus-visible,
+.onboarding-entry__legal a:focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.onboarding-entry__content,
+.onboarding-entry__email,
+.onboarding-entry__providers {
+  display: flex;
+  flex-direction: column;
+}
+
+.onboarding-entry__content {
+  gap: 20px;
+}
+
+.onboarding-entry__email {
+  gap: 12px;
+}
+
+.onboarding-entry__providers {
+  gap: 8px;
+}
+
+.onboarding-entry .onboarding-entry__field {
+  --field-height: 44px;
+  --field-font: var(--body-md-font-size);
+  --field-line: var(--body-md-line-height);
+  --field-tracking: var(--body-md-letter-spacing);
+  --field-padding-y: 8px;
+  --field-padding-x: 11px;
+  --field-radius: 10px;
+}
+
+.onboarding-entry .onboarding-entry__field .ui-field__label {
+  color: var(--text-primary);
+}
+
+.onboarding-entry__field .ui-field__control {
+  height: 44px;
+  border: 1px solid var(--surface-stroke);
+  /* WebKit can retain a disabled transition's colors after native navigation. */
+  transition: none;
+}
+
+.onboarding-entry .ui-button {
+  transition-property: background, box-shadow, transform, filter;
+}
+
+.onboarding-entry__field .ui-field__input::placeholder {
+  color: var(--text-disabled);
+}
+
+.onboarding-entry__submit.ui-button {
+  --button-disabled-bg: var(--interaction-hover);
+  --button-disabled-text: var(--text-primary);
+  border-radius: 10px;
+  color: var(--text-primary);
+  background: var(--onboarding-copper)
+    url("/onboarding/email-button-texture.png") center / cover;
+  box-shadow: none;
+}
+
+.onboarding-entry__submit.ui-button:hover:not(:disabled) {
+  background: var(--onboarding-copper)
+    url("/onboarding/email-button-texture.png") center / cover;
+  box-shadow: none;
+  filter: brightness(1.06);
+}
+
+.onboarding-entry__submit.ui-button:disabled {
+  background: var(--interaction-hover);
+}
+
+.onboarding-entry__divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 2px 11px;
+  color: var(--text-disabled);
+  font-size: var(--body-xs-font-size);
+  font-weight: var(--body-xs-font-weight);
+  line-height: var(--body-xs-line-height);
+  letter-spacing: var(--body-xs-letter-spacing);
+}
+
+.onboarding-entry__divider img {
+  flex: 1;
+  min-width: 0;
+}
+
+.onboarding-entry__divider span {
+  width: 64px;
+  flex: none;
+  text-align: center;
+}
+
+.onboarding-entry__legal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--body-xs-font-size);
+  font-weight: var(--body-xs-font-weight);
+  line-height: var(--body-xs-line-height);
+  letter-spacing: var(--body-xs-letter-spacing);
+}
+
+.onboarding-entry__legal a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.onboarding-entry__legal-separator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1px;
+  height: 16px;
+}
+
+.onboarding-entry__legal-separator img {
+  flex: none;
+  width: 16px;
+  max-width: none;
+  height: 1px;
+  transform: rotate(90deg);
+}
+
+.onboarding-entry .auth-status p {
+  margin: 0;
+}
+
+.onboarding-entry__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(248, 113, 113, 0.12);
+  color: #f87171;
+  font-size: var(--body-sm-font-size);
+  line-height: var(--body-sm-line-height);
+  letter-spacing: var(--body-sm-letter-spacing);
+  overflow-wrap: anywhere;
+}
+
+.onboarding-entry__error img {
+  flex: none;
+}
+
+.onboarding-entry__flat-button.ui-button {
+  border-radius: 10px;
+  color: var(--text-primary);
+  background: var(--interaction-hover);
+  box-shadow: none;
+}
+
+.onboarding-entry__flat-button.ui-button:disabled {
+  color: var(--text-primary);
+  background: var(--interaction-hover);
+}
+
+.onboarding-entry__pending-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  width: 100%;
+}
+
+.onboarding-entry__envelope {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 198.179px;
+  height: 140.91px;
+}
+
+.onboarding-entry__envelope img {
+  flex: none;
+  width: 188px;
+  height: 125px;
+  object-fit: cover;
+  transform: rotate(-5deg);
+}
+
+.onboarding-entry__pending-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+}
+
+.onboarding-entry__heading p {
+  overflow-wrap: anywhere;
+}
+
+.onboarding-entry__recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  flex: none;
+}
+
+.onboarding-entry__recovery-actions .ui-button {
+  color: var(--text-secondary);
+}
+
+.onboarding-entry__browser-icon {
+  display: grid;
+  place-items: center;
+  width: 198.179px;
+  height: 140.91px;
+  color: var(--text-primary);
+}
+
+.onboarding-entry__message {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--body-sm-font-size);
+  line-height: var(--body-sm-line-height);
+}
+
+@media (max-height: 720px) {
+  .sign-in.onboarding-entry {
+    padding-block: 32px;
+  }
+}

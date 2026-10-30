@@ -1,0 +1,179 @@
+@layer components {
+  .modal.settings-modal {
+    @apply grid overflow-hidden p-0;
+    grid-template-columns: 192px minmax(0, 1fr);
+    width: 920px;
+    height: 620px;
+    max-height: calc(100vh - 64px);
+    border-radius: var(--radius-overlay);
+  }
+  .settings-navigation {
+    @apply min-h-0 overflow-y-auto border-r border-line p-3;
+  }
+  .settings-project-selector {
+    @apply flex h-10 w-full items-center gap-2 border border-line px-3 text-label-sm text-foreground;
+    border-radius: var(--radius-control);
+  }
+  .settings-project-selector:hover:not(:disabled) {
+    @apply bg-raised;
+  }
+  .settings-project-selector > span {
+    @apply min-w-0 flex-1 truncate text-left;
+  }
+  .settings-project-selector > svg {
+    @apply shrink-0 text-secondary;
+  }
+  .settings-project-menu {
+    @apply z-50;
+    max-width: min(360px, calc(100vw - 48px));
+  }
+  .settings-nav-group {
+    @apply mt-6;
+  }
+  .settings-nav-group button {
+    @apply flex min-h-9 w-full items-center gap-2 px-2 text-left text-label-sm text-secondary;
+    border-radius: var(--radius-control);
+  }
+  .settings-nav-group button + button {
+    @apply mt-1;
+  }
+  .settings-nav-group button:hover:not(:disabled),
+  .settings-nav-group button[aria-current="page"] {
+    @apply bg-raised text-foreground;
+  }
+  .settings-nav-group button svg {
+    @apply shrink-0;
+  }
+  .settings-nav-group button:disabled {
+    @apply opacity-50;
+  }
+  .settings-panel {
+    @apply flex min-h-0 min-w-0 flex-col;
+  }
+  .settings-close {
+    @apply absolute right-6 top-3;
+  }
+  .settings-header {
+    @apply flex min-h-14 shrink-0 items-center pl-6 pr-16 py-3;
+  }
+  .settings-modal .settings-header h2 {
+    @apply m-0 text-heading-xs;
+  }
+  .settings-content {
+    @apply min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4;
+  }
+  .settings-modal .settings-content p {
+    @apply m-0 text-body-xs text-secondary;
+  }
+  .settings-content h3 {
+    @apply mb-1 mt-0 text-label-sm;
+  }
+  .settings-content .settings-detail {
+    @apply space-y-1;
+  }
+  .settings-modal .settings-path {
+    @apply break-all text-body-xs text-muted;
+  }
+  .settings-modal .settings-folder-path {
+    @apply break-all rounded-lg bg-raised p-4 text-body-sm text-foreground;
+  }
+  .settings-row {
+    @apply flex items-center justify-between gap-4 border-t border-line py-4;
+  }
+  .settings-row > div {
+    @apply min-w-0 flex-1;
+  }
+  .settings-row > button {
+    @apply shrink-0;
+  }
+  .settings-content .project-sharing {
+    @apply mt-0;
+  }
+  .settings-content .project-sharing-choices {
+    @apply flex flex-col gap-2 overflow-visible rounded-none bg-transparent;
+  }
+  .settings-content .project-sharing-choice--switch,
+  .settings-content .project-sharing-choice--switch:hover {
+    @apply flex-row items-center gap-3 rounded-lg bg-surface-tertiary p-3;
+  }
+  .project-sharing-choice--switch .project-sharing-copy {
+    @apply flex-1 gap-1;
+  }
+  .project-sharing-icon {
+    @apply self-start text-secondary;
+  }
+  .project-sharing-choice--switch[data-sharing-kind="memory"]
+    .project-sharing-icon {
+    color: var(--resource-icon-memory);
+  }
+  .project-sharing-choice--switch[data-sharing-kind="session"]
+    .project-sharing-icon {
+    color: var(--resource-icon-session);
+  }
+  .project-sharing-choice--switch[data-sharing-kind="plan"]
+    .project-sharing-icon {
+    color: var(--resource-icon-plan);
+  }
+  .project-sharing-choice--switch[data-sharing-kind="skill"]
+    .project-sharing-icon {
+    color: var(--resource-icon-skill);
+  }
+  .project-sharing-choice--switch .ui-switch-control {
+    @apply order-1;
+  }
+  .settings-check {
+    @apply flex items-start gap-3;
+  }
+  .settings-check input {
+    @apply mt-1 h-4 w-4 shrink-0;
+  }
+  .settings-check > span {
+    @apply flex flex-col gap-1;
+  }
+  .settings-check strong {
+    @apply text-label-sm;
+  }
+  .settings-check span span {
+    @apply text-body-xs text-secondary;
+  }
+  .settings-device-label {
+    @apply ml-2 rounded bg-raised px-2 py-1 text-label-2xs text-secondary;
+  }
+  .settings-devices .settings-row:first-child {
+    @apply border-t-0 pt-0;
+  }
+  .settings-footer {
+    @apply flex min-h-14 shrink-0 items-center gap-3 border-t border-line px-6 py-3;
+  }
+  .settings-feedback {
+    @apply min-w-0 flex-1;
+  }
+  .settings-modal .settings-feedback p {
+    @apply m-0 text-body-xs text-secondary;
+  }
+  .settings-modal p[role="alert"],
+  .settings-confirm p[role="alert"] {
+    @apply text-foreground;
+  }
+  .settings-notice {
+    @apply space-y-3 rounded-lg bg-raised p-4;
+  }
+  .settings-service-setup {
+    @apply space-y-4 border-t border-line pt-5;
+  }
+  .settings-service-setup .service-connection {
+    @apply space-y-3;
+  }
+  .settings-inline-actions {
+    @apply flex flex-wrap gap-3;
+  }
+  .settings-confirm {
+    @apply z-40 w-[480px];
+  }
+  .settings-confirm h2 {
+    @apply text-heading-xs;
+  }
+  .settings-confirm-actions {
+    @apply flex flex-wrap justify-end gap-2;
+  }
+}

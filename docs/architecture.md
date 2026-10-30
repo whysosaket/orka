@@ -1,0 +1,23 @@
+# Architecture
+
+The public desktop has three boundaries:
+
+1. `apps/mac/src` renders the React interface and invokes the Tauri bridge.
+2. `apps/mac/src-tauri/src` implements native indexing, local SQLite state, Keychain authentication, imports/exports, and background synchronization. The UI does not start a second sync loop.
+3. The checksummed `@portable/protocol` package in `vendor/` supplies shared schemas, validation, merge contracts, and signing fixtures. Its provenance is recorded in `vendor/manifest.json`.
+
+The API is a separate service. Its implementation, authorization, database migrations, deployment tooling, and integration suites are maintained privately. They are not desktop build dependencies. Both Cloud and existing compatible self-hosted services use the same desktop binary and wire contracts.
+
+## Data flow
+
+The user connects a local project and explicitly chooses categories to share. The daemon indexes those categories, persists an outbox, uploads changes, pulls accepted revisions, and applies permitted changes locally. Retry identities and project cursors make interrupted operations resumable. Repository code is transferred with Git.
+
+Memories, plans, and text skill files use three-way merges. Binary files and executable flags use whole-value acceptance. Sessions preserve complete native snapshots and use explicit conflict handling; they are never line-merged. Active native sessions are protected from incoming replacement or deletion.
+
+ENV support remains in the native implementation for compatibility, but is currently disabled in the desktop UI. See the [security model](security-model.md).
+
+## Native modules
+
+`indexer.rs`, `plans.rs`, and session readers discover scoped native content. `sync.rs` handles exchange and local materialization. `codex_import.rs` and `claude_import.rs` preserve native identities. `env/` owns dotenv parsing, encryption, device approval, and guarded file writes. `db.rs` and `auth.rs` isolate local persistence and credentials.
+
+Keep `com.orka.v1`, the existing Tauri bundle identifier, Keychain service names, and protocol versions stable unless a reviewed migration accompanies a change. Desktop account caches and credentials are bound to the selected service. Authentication secrets and administrative server credentials never belong in the React interface or desktop build.

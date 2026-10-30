@@ -1,0 +1,9 @@
+/* Approved radius roles. Canonical app tokens live in design-system.css. */
+:root {
+  --radius-none: 0px;
+  --radius-detail: 4px;
+  --radius-control: 9px;
+  --radius-surface: 12px;
+  --radius-overlay: 16px;
+  --radius-full: 9999px;
+}

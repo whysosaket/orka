@@ -1,0 +1,28 @@
+name: Bug report
+description: Report a reproducible problem in Orka.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a security vulnerability, follow SECURITY.md instead of opening a public issue.
+        Use synthetic examples. Do not attach credentials, ENV values, session transcripts,
+        database files, or screenshots containing private information.
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Orka version or commit, macOS version, Mac architecture, and relevant provider CLI versions.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Additional details
+      description: Include only reviewed, redacted logs or a minimal synthetic example.

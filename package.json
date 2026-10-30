@@ -1,0 +1,60 @@
+{
+  "name": "orka",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/mac"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @portable/mac",
+    "dev:profile": "tsx scripts/dev-profile.ts",
+    "build": "npm run build -w @portable/mac",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "format": "prettier --write \"*.{js,json,ts}\" .github/workflows apps/mac/src tests scripts",
+    "native:test": "cargo test --manifest-path apps/mac/src-tauri/Cargo.toml",
+    "package:local": "npm run tauri -w @portable/mac -- build --debug --bundles app && tsx scripts/local-installer.ts",
+    "mac": "npm run tauri -w @portable/mac -- build",
+    "test:native-smoke": "tsx scripts/native-smoke.ts",
+    "test:profiles": "cargo build --manifest-path apps/mac/src-tauri/Cargo.toml && tsx scripts/profile-e2e.ts",
+    "design:preview": "npm run build && tsx scripts/design-system-preview.ts",
+    "package:mac:test": "npm run mac -- --ci --config src-tauri/tauri.test.conf.json",
+    "test:ui": "playwright test",
+    "test:native-paginated": "cargo test --manifest-path apps/mac/src-tauri/Cargo.toml paginated_ -- --include-ignored",
+    "check:repository": "tsx scripts/check-repository.ts",
+    "licenses": "tsx scripts/dependency-licenses.ts",
+    "licenses:check": "tsx scripts/dependency-licenses.ts --check",
+    "package:source": "node scripts/package-source.mjs",
+    "format:check": "prettier --check \"*.{js,json,ts}\" .github/workflows apps/mac/src tests scripts",
+    "lint": "eslint . --max-warnings 0",
+    "backend:update": "node scripts/update-backend.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.2"
+  },
+  "description": "Share project context across Macs with Orka Cloud or your own self-hosted service.",
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/whysosaket/orka.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@portable/protocol": "file:vendor/portable-protocol-0.5.1.tgz"
+  }
+}

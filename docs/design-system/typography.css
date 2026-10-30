@@ -1,0 +1,164 @@
+/* Orka typography. Values mirror canonical src/design-system.css. Requires Inter Variable. */
+:root {
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --heading-lg-font-size: 32px;
+  --heading-lg-line-height: 40px;
+  --heading-lg-font-weight: 600;
+  --heading-lg-letter-spacing: -0.025em;
+  --heading-md-font-size: 28px;
+  --heading-md-line-height: 36px;
+  --heading-md-font-weight: 600;
+  --heading-md-letter-spacing: -0.02em;
+  --heading-sm-font-size: 24px;
+  --heading-sm-line-height: 32px;
+  --heading-sm-font-weight: 600;
+  --heading-sm-letter-spacing: -0.015em;
+  --body-xl-font-size: 20px;
+  --body-xl-line-height: 28px;
+  --body-xl-font-weight: 400;
+  --body-xl-letter-spacing: -0.01em;
+  --body-lg-font-size: 18px;
+  --body-lg-line-height: 26px;
+  --body-lg-font-weight: 400;
+  --body-lg-letter-spacing: -0.01em;
+  --body-md-font-size: 16px;
+  --body-md-line-height: 24px;
+  --body-md-font-weight: 400;
+  --body-md-letter-spacing: -0.005em;
+  --body-sm-font-size: 14px;
+  --body-sm-line-height: 20px;
+  --body-sm-font-weight: 400;
+  --body-sm-letter-spacing: -0.005em;
+  --body-xs-font-size: 12px;
+  --body-xs-line-height: 18px;
+  --body-xs-font-weight: 400;
+  --body-xs-letter-spacing: 0em;
+  --body-2xs-font-size: 10px;
+  --body-2xs-line-height: 14px;
+  --body-2xs-font-weight: 400;
+  --body-2xs-letter-spacing: 0em;
+  --heading-xs-font-size: var(--body-xl-font-size);
+  --heading-xs-line-height: var(--body-xl-line-height);
+  --heading-xs-font-weight: var(--font-weight-semibold);
+  --heading-xs-letter-spacing: var(--body-xl-letter-spacing);
+  --label-md-font-size: var(--body-md-font-size);
+  --label-md-line-height: var(--body-md-line-height);
+  --label-md-font-weight: var(--font-weight-medium);
+  --label-md-letter-spacing: var(--body-md-letter-spacing);
+  --label-sm-font-size: var(--body-sm-font-size);
+  --label-sm-line-height: var(--body-sm-line-height);
+  --label-sm-font-weight: var(--font-weight-medium);
+  --label-sm-letter-spacing: var(--body-sm-letter-spacing);
+  --label-xs-font-size: var(--body-xs-font-size);
+  --label-xs-line-height: var(--body-xs-line-height);
+  --label-xs-font-weight: var(--font-weight-medium);
+  --label-xs-letter-spacing: var(--body-xs-letter-spacing);
+  --label-2xs-font-size: var(--body-2xs-font-size);
+  --label-2xs-line-height: var(--body-2xs-line-height);
+  --label-2xs-font-weight: var(--font-weight-medium);
+  --label-2xs-letter-spacing: var(--body-2xs-letter-spacing);
+}
+
+.heading-lg,
+.heading-md,
+.heading-sm,
+.heading-xs,
+.body-xl,
+.body-lg,
+.body-md,
+.body-sm,
+.body-xs,
+.body-2xs,
+.label-md,
+.label-sm,
+.label-xs,
+.label-2xs {
+  font-family: "Inter Variable", sans-serif;
+}
+
+.heading-lg {
+  font-size: var(--heading-lg-font-size);
+  line-height: var(--heading-lg-line-height);
+  font-weight: var(--heading-lg-font-weight);
+  letter-spacing: var(--heading-lg-letter-spacing);
+}
+.heading-md {
+  font-size: var(--heading-md-font-size);
+  line-height: var(--heading-md-line-height);
+  font-weight: var(--heading-md-font-weight);
+  letter-spacing: var(--heading-md-letter-spacing);
+}
+.heading-sm {
+  font-size: var(--heading-sm-font-size);
+  line-height: var(--heading-sm-line-height);
+  font-weight: var(--heading-sm-font-weight);
+  letter-spacing: var(--heading-sm-letter-spacing);
+}
+.heading-xs {
+  font-size: var(--heading-xs-font-size);
+  line-height: var(--heading-xs-line-height);
+  font-weight: var(--heading-xs-font-weight);
+  letter-spacing: var(--heading-xs-letter-spacing);
+}
+.body-xl {
+  font-size: var(--body-xl-font-size);
+  line-height: var(--body-xl-line-height);
+  font-weight: var(--body-xl-font-weight);
+  letter-spacing: var(--body-xl-letter-spacing);
+}
+.body-lg {
+  font-size: var(--body-lg-font-size);
+  line-height: var(--body-lg-line-height);
+  font-weight: var(--body-lg-font-weight);
+  letter-spacing: var(--body-lg-letter-spacing);
+}
+.body-md {
+  font-size: var(--body-md-font-size);
+  line-height: var(--body-md-line-height);
+  font-weight: var(--body-md-font-weight);
+  letter-spacing: var(--body-md-letter-spacing);
+}
+.body-sm {
+  font-size: var(--body-sm-font-size);
+  line-height: var(--body-sm-line-height);
+  font-weight: var(--body-sm-font-weight);
+  letter-spacing: var(--body-sm-letter-spacing);
+}
+.body-xs {
+  font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
+  font-weight: var(--body-xs-font-weight);
+  letter-spacing: var(--body-xs-letter-spacing);
+}
+.body-2xs {
+  font-size: var(--body-2xs-font-size);
+  line-height: var(--body-2xs-line-height);
+  font-weight: var(--body-2xs-font-weight);
+  letter-spacing: var(--body-2xs-letter-spacing);
+}
+.label-md {
+  font-size: var(--label-md-font-size);
+  line-height: var(--label-md-line-height);
+  font-weight: var(--label-md-font-weight);
+  letter-spacing: var(--label-md-letter-spacing);
+}
+.label-sm {
+  font-size: var(--label-sm-font-size);
+  line-height: var(--label-sm-line-height);
+  font-weight: var(--label-sm-font-weight);
+  letter-spacing: var(--label-sm-letter-spacing);
+}
+.label-xs {
+  font-size: var(--label-xs-font-size);
+  line-height: var(--label-xs-line-height);
+  font-weight: var(--label-xs-font-weight);
+  letter-spacing: var(--label-xs-letter-spacing);
+}
+.label-2xs {
+  font-size: var(--label-2xs-font-size);
+  line-height: var(--label-2xs-line-height);
+  font-weight: var(--label-2xs-font-weight);
+  letter-spacing: var(--label-2xs-letter-spacing);
+}

@@ -1,0 +1,14 @@
+{
+  "identifier": "main",
+  "description": "Orka project sync window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "deep-link:default"
+  ]
+}

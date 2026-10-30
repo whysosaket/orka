@@ -1,0 +1,179 @@
+name: On-demand macOS build
+run-name: Orka ${{ inputs.target }} · ${{ inputs.signing }}
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Mac architecture (universal supports both Intel and Apple Silicon)
+        type: choice
+        required: true
+        default: aarch64-apple-darwin
+        options:
+          - aarch64-apple-darwin
+          - universal-apple-darwin
+          - x86_64-apple-darwin
+      signing:
+        description: Development needs no Apple credentials; notarized requires signing secrets
+        type: choice
+        required: true
+        default: development
+        options:
+          - development
+          - notarized
+permissions:
+  contents: read
+concurrency:
+  group: on-demand-macos-build
+  cancel-in-progress: false
+jobs:
+  mac:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-14
+    environment: ${{ inputs.signing == 'notarized' && 'macos-signing' || 'macos-development' }}
+    timeout-minutes: 60
+    env:
+      BUILD_TARGET: ${{ inputs.target }}
+      SIGNING_MODE: ${{ inputs.signing }}
+      BUNDLE_DIR: apps/mac/src-tauri/target/${{ inputs.target }}/release/bundle
+      VITE_ORKA_CLOUD_URL: ${{ vars.ORKA_CLOUD_URL || 'https://api.tryorka.ai' }}
+    steps:
+      - name: Validate build options and signing configuration
+        env:
+          APPLE_CERTIFICATE: ${{ inputs.signing == 'notarized' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ inputs.signing == 'notarized' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ inputs.signing == 'notarized' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ inputs.signing == 'notarized' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ inputs.signing == 'notarized' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ inputs.signing == 'notarized' && secrets.APPLE_TEAM_ID || '' }}
+        run: |
+          case "$BUILD_TARGET" in
+            aarch64-apple-darwin|universal-apple-darwin|x86_64-apple-darwin) ;;
+            *) echo '::error::Unsupported build target'; exit 1 ;;
+          esac
+          case "$SIGNING_MODE" in
+            development) ;;
+            notarized)
+              missing=0
+              for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+                if [ -z "${!name}" ]; then
+                  echo "::error::Configure $name in the macos-signing environment before requesting a notarized build."
+                  missing=1
+                fi
+              done
+              test "$missing" = 0
+              ;;
+            *) echo '::error::Unsupported signing mode'; exit 1 ;;
+          esac
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          targets: ${{ inputs.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || inputs.target }}
+      - name: Cache Cargo dependencies and build outputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ inputs.target }}-${{ hashFiles('apps/mac/src-tauri/Cargo.lock', 'apps/mac/src-tauri/Cargo.toml') }}
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            apps/mac/src-tauri/target/
+      - name: Validate managed cloud endpoint
+        run: node -e 'const u = new URL(process.env.VITE_ORKA_CLOUD_URL); if (u.protocol !== "https:" || u.username || u.password || u.search || u.hash) process.exit(1)'
+      - run: npm ci
+      - name: Check build inputs
+        run: npm run check:repository && npm run typecheck && npm test && npm run licenses:check
+      - name: Remove cached bundles before building
+        run: rm -rf "$BUNDLE_DIR"
+      - name: Build development app and DMG
+        if: inputs.signing == 'development'
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
+        run: npm run mac -- --ci --target "$BUILD_TARGET"
+      - name: Build signed app and DMG
+        if: inputs.signing == 'notarized'
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: apps/mac
+          tauriScript: npm run tauri --
+          args: --ci --target ${{ inputs.target }}
+      - name: Verify app signature
+        run: codesign --verify --deep --strict "$BUNDLE_DIR/macos/Orka.app"
+      - name: Notarize and verify installer
+        if: inputs.signing == 'notarized'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool store-credentials orka-notary --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID"
+          for dmg in "$BUNDLE_DIR"/dmg/*.dmg; do
+            xcrun notarytool submit "$dmg" --keychain-profile orka-notary --output-format json > "$dmg.submission.json"
+            submission=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).id)' "$dmg.submission.json")
+            xcrun notarytool wait "$submission" --keychain-profile orka-notary --timeout 20m --output-format json > "$dmg.status.json"
+            node -e 'if (JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).status !== "Accepted") process.exit(1)' "$dmg.status.json"
+            xcrun notarytool log "$submission" --keychain-profile orka-notary "$dmg.notary-log.json"
+            xcrun stapler staple "$dmg"
+            xcrun stapler validate "$dmg"
+            codesign --verify --strict "$dmg"
+            spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+          done
+          xcrun stapler staple "$BUNDLE_DIR/macos/Orka.app"
+          xcrun stapler validate "$BUNDLE_DIR/macos/Orka.app"
+          codesign --verify --deep --strict "$BUNDLE_DIR/macos/Orka.app"
+          spctl --assess --type execute --verbose=2 "$BUNDLE_DIR/macos/Orka.app"
+      - name: Package downloads and record checksums
+        run: |
+          mkdir -p artifacts/manual-build
+          cp "$BUNDLE_DIR"/dmg/*.dmg artifacts/manual-build/
+          tar -czf artifacts/manual-build/Orka.app.tar.gz -C "$BUNDLE_DIR/macos" Orka.app
+          node <<'NODE'
+          const fs = require('fs');
+          fs.writeFileSync('artifacts/manual-build/build.json', JSON.stringify({
+            commit: process.env.GITHUB_SHA,
+            version: JSON.parse(fs.readFileSync('apps/mac/src-tauri/tauri.conf.json', 'utf8')).version,
+            target: process.env.BUILD_TARGET,
+            signing: process.env.SIGNING_MODE,
+            cloudUrl: process.env.VITE_ORKA_CLOUD_URL,
+            run: process.env.GITHUB_SERVER_URL + '/' + process.env.GITHUB_REPOSITORY + '/actions/runs/' + process.env.GITHUB_RUN_ID,
+          }, null, 2) + '\n');
+          NODE
+          (cd artifacts/manual-build && shasum -a 256 -- *.dmg *.tar.gz build.json > SHA256SUMS)
+          {
+            echo '## Orka build ready'
+            echo "- Source: $GITHUB_SHA"
+            echo "- Target: $BUILD_TARGET"
+            echo "- Signing: $SIGNING_MODE"
+            echo '- Download the artifact below for the DMG, preserved app archive, build metadata and checksums.'
+            if [ "$SIGNING_MODE" = development ]; then
+              echo '- This development build is ad-hoc signed and is not Apple-notarized.'
+            fi
+            echo '- Downloads expire after 7 days.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: orka-macos-${{ inputs.target }}-${{ inputs.signing }}-${{ github.run_number }}
+          path: artifacts/manual-build/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve notarization receipts
+        if: always() && inputs.signing == 'notarized'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: orka-notarization-${{ github.run_number }}
+          path: apps/mac/src-tauri/target/${{ inputs.target }}/release/bundle/dmg/*.json
+          if-no-files-found: ignore
+          retention-days: 7

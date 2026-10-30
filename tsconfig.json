@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"]
+  },
+  "include": [
+    "apps/mac/src/**/*.ts",
+    "apps/mac/src/**/*.tsx",
+    "tests/**/*.ts",
+    "scripts/**/*.ts",
+    "playwright*.config.ts"
+  ]
+}
