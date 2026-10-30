@@ -108,7 +108,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: apps/mac
-          tauriScript: npm run tauri --
+          tauriScript: npm run tauri
           args: --ci --target ${{ inputs.target }}
       - name: Verify app signature
         run: codesign --verify --deep --strict "$BUNDLE_DIR/macos/Orka.app"
