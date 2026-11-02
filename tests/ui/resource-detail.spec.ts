@@ -811,7 +811,9 @@ test("Home recent rows and collection rows open the reading view", async ({
   await detailFixture(page);
   for (const width of [1160, 900]) {
     await page.setViewportSize({ width, height: width === 900 ? 640 : 800 });
-    await expect(page.locator(".home-overview-totals")).toHaveCount(0);
+    await expect(
+      page.getByRole("region", { name: "Project totals" }).locator("strong"),
+    ).toHaveText(["2", "1", "2", "2"]);
     await page.screenshot({ path: info.outputPath(`home-${width}.png`) });
   }
   await page.setViewportSize({ width: 1160, height: 800 });

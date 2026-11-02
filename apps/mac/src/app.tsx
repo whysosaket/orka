@@ -650,6 +650,12 @@ function WorkspaceApp({
                   project={selectedProject}
                   user={state.user}
                   resources={catalogResources}
+                  onNavigate={(kind) => {
+                    index.setRepository("all");
+                    setEnvSet("");
+                    setTab(kind);
+                    setResource("");
+                  }}
                   onOpen={(item) => {
                     setTab(item.kind);
                     openResource(item.resourceId);
