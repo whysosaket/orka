@@ -142,7 +142,7 @@ export function DetailHeader({
                 </Button>
               )}
             {/* Keep the menu open so the inline Copied confirmation is visible. */}
-            {!resource.local && (
+            {!resource.local && resource.revision > 0 && (
               <div data-keep-open>
                 <CopyLinkButton
                   value={`orka://project/${project.id}/${resource.resourceId}`}
@@ -171,7 +171,7 @@ export function DetailHeader({
                 {view.rawMarkdown ? "Show formatted" : "Show Markdown"}
               </Button>
             )}
-            {session && (
+            {session && resource.revision > 0 && (
               <>
                 <Button
                   disabled={busy}
@@ -194,7 +194,9 @@ export function DetailHeader({
               </>
             )}
             <div className="resource-diagnostics">
-              {!resource.local && <p>Revision {resource.revision}</p>}
+              {!resource.local && resource.revision > 0 && (
+                <p>Revision {resource.revision}</p>
+              )}
               <p className="detail-path">{resource.logicalPath}</p>
               {resource.title.trim() !== title.trim() && (
                 <p>Stored as “{resource.title}”</p>
@@ -226,6 +228,12 @@ export function DetailHeader({
       {session && actions.launchError && (
         <p className="detail-note detail-launch-error" role="alert">
           {actions.launchError}
+        </p>
+      )}
+      {session && resource.fork && resource.owner === user && (
+        <p className="detail-note">
+          Forked session. Opening continues this session; choose Fork and open
+          to create another.
         </p>
       )}
       {session && resource.owner !== user && (

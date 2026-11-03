@@ -44,6 +44,7 @@ pub fn snapshot() -> Result<Value> {
             resource["global"] = json!(crate::global_skills::global_origin(&db, resource)?);
         }
     }
+    crate::session_forks::annotate(&db, &mut resources)?;
     Ok(json!({
         "profile":crate::profiles::current(), "onboarding":onboarding, "accountProfile":db::get(&db,"accountProfile")?,
         "user":db::get(&db,"user")?, "config":db::get(&db,"config")?,
@@ -395,7 +396,7 @@ fn inspected_resource(
         None => crate::global_skills::local_skill(db, id)?.ok_or("Resource not found")?,
     };
     let Some(conflict_id) = conflict_id else {
-        return Ok(resource);
+        return crate::session_forks::current_resource(db, &resource);
     };
     let conflict = db::rows(
         db,
@@ -624,13 +625,16 @@ pub async fn resume_session(
     id: String,
     tool: String,
     destination: Option<crate::session_launcher::Destination>,
+    fork: Option<bool>,
 ) -> Result<Value> {
     tauri::async_runtime::spawn_blocking(move || {
-        crate::session_launcher::resume(
-            &id,
-            crate::session_launcher::Tool::parse(&tool)?,
-            destination.unwrap_or(crate::session_launcher::Destination::Desktop),
-        )
+        let tool = crate::session_launcher::Tool::parse(&tool)?;
+        let destination = destination.unwrap_or(crate::session_launcher::Destination::Desktop);
+        if fork.unwrap_or(false) {
+            crate::session_launcher::launch(&id, tool, destination, true)
+        } else {
+            crate::session_launcher::resume(&id, tool, destination)
+        }
     })
     .await
     .map_err(|error| error.to_string())?

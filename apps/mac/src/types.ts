@@ -5,6 +5,13 @@ export type ProjectResource = Resource & {
   local?: true;
   global?: boolean;
   sharing?: "queued" | "approval" | "paused" | "blocked";
+  fork?: {
+    parentId: string;
+    nativeId: string | null;
+    destination: "desktop" | "terminal" | "warp" | "iterm2";
+    createdAt: string;
+  };
+  localForkId?: string;
 };
 export type ProjectPage = "home" | "env" | "members" | Resource["kind"];
 export type ProjectSharing = Record<Resource["kind"] | "env", boolean>;
@@ -58,7 +65,7 @@ export interface Snapshot {
     selfHostedUrl?: string;
   } | null;
   projects: Project[];
-  resources: Resource[];
+  resources: ProjectResource[];
   bindings: Binding[];
   conflicts: SessionConflict[];
   activity: Activity[];

@@ -19,6 +19,7 @@ mod plans;
 mod profiles;
 mod projects;
 mod repair;
+mod session_forks;
 mod session_launcher;
 mod session_presentation;
 mod session_translation;
@@ -136,7 +137,8 @@ fn main() {
             "session-handoff-prompt"=>session_launcher::handoff_prompt(input["id"].as_str().unwrap_or("")),
             "resume-session"=>session_launcher::Tool::parse(input["tool"].as_str().unwrap_or("")).and_then(|tool| {
                 let destination=serde_json::from_value(input.get("destination").cloned().unwrap_or(json!("desktop"))).map_err(|e|e.to_string())?;
-                session_launcher::resume(input["id"].as_str().unwrap_or(""),tool,destination)
+                if input["fork"] == true { session_launcher::launch(input["id"].as_str().unwrap_or(""),tool,destination,true) }
+                else { session_launcher::resume(input["id"].as_str().unwrap_or(""),tool,destination) }
             }),
             "onboarding"=>tokio::runtime::Runtime::new().expect("Test runtime").block_on(onboarding::onboarding_command(input["operation"].as_str().unwrap_or("").into(),input["input"].clone(),input.get("context").cloned())),
             "profile-info"=>(|| -> db::Result<Value> { Ok(json!({"profile":profiles::current(),"root":db::root()?,"keychain":profiles::credential_service()?,"agent":profiles::label(),"codexHome":native::codex_home()?,"claudeHome":native::claude_home()?})) })(),

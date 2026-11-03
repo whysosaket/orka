@@ -182,6 +182,17 @@ fn collect(
     }
     seen.insert(id.clone());
     let mut b = binding(db, &id)?;
+    if kind == "session" {
+        let fork = crate::session_forks::info(db, &id)?;
+        if let (Some(parent), Some(destination), Some(native_id)) = (
+            fork["parentId"].as_str(),
+            fork["destination"].as_str(),
+            native_id,
+        ) {
+            b["base"]["logicalPath"] =
+                json!(format!("{source}/forks/{parent}/{destination}/{native_id}"));
+        }
+    }
     if project["governed"] == true {
         let existing = db::rows(db, "SELECT value FROM resources WHERE id=?", &[&id])?
             .into_iter()
@@ -1096,13 +1107,25 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                         }
                     }
                 }
+                let handoff = crate::session_forks::handoff_origin(db, project, tool, &records)?;
+                let logical = if let Some(origin) = &handoff {
+                    format!(
+                        "{tool}/forks/{}/{}/{id}",
+                        origin["parentId"].as_str().ok_or("Missing parent")?,
+                        origin["destination"]
+                            .as_str()
+                            .ok_or("Missing destination")?
+                    )
+                } else {
+                    format!("{tool}/{id}")
+                };
                 let result = collect(
                     db,
                     project,
                     Scanned {
                         kind: "session",
                         source: tool,
-                        logical: &format!("{tool}/{id}"),
+                        logical: &logical,
                         title: &title,
                         files,
                         paths: vec![e.path().into()],

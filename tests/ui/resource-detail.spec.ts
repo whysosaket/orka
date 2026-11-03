@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
 
 type Options = {
+  forks?: number;
   appIcons?: Record<string, string | null>;
   launchOptions?: "missing-default" | "slow" | "error";
   disconnected?: boolean;
@@ -96,6 +97,15 @@ async function detailFixture(page: Page, options: Options = {}) {
         title: "Writing guide",
       },
     ].map((r) => ({
+      fork: undefined as
+        | {
+            parentId: string;
+            nativeId: string;
+            destination: string;
+            createdAt: string;
+          }
+        | undefined,
+      localForkId: undefined as string | undefined,
       source: "codex",
       updatedAt: "2026-10-04T10:00:00Z",
       deleted: false,
@@ -118,6 +128,28 @@ async function detailFixture(page: Page, options: Options = {}) {
       "session-c": options.sessionTitle ?? "Polish navigation",
       "session-m": "Shared planning",
     };
+    const addFork = (parentId: string) => {
+      const parent = resources.find((r) => r.resourceId === parentId)!;
+      const id = `fork-${resources.filter((r) => r.fork).length + 1}`;
+      const child = {
+        ...parent,
+        resourceId: id,
+        revision: 0,
+        localForkId: undefined,
+        fork: {
+          parentId,
+          nativeId: `native-${id}`,
+          destination: "desktop",
+          createdAt: "2026-11-02T00:00:00Z",
+        },
+      };
+      titles[id] = `Fork ${resources.filter((r) => r.fork).length + 1}`;
+      resources.push(child);
+      parent.localForkId = id;
+      return child;
+    };
+    for (let n = 0; n < (options.forks ?? 0); n++) addFork("session-c");
+    if ((options.forks ?? 0) > 1) addFork("fork-1");
     const calls: { name: string; args?: Record<string, unknown> }[] = [];
     let snapshots = 0;
     // Deterministic clipboard: record the text instead of relying on permissions.
@@ -165,7 +197,7 @@ async function detailFixture(page: Page, options: Options = {}) {
                   role: "owner",
                 },
               ],
-              resources,
+              resources: resources.map((resource) => ({ ...resource })),
               bindings: [],
               conflicts: [
                 {
@@ -229,6 +261,7 @@ async function detailFixture(page: Page, options: Options = {}) {
             const source =
               resources.find((r) => r.resourceId === args?.id)?.source ??
               "codex";
+            const selected = resources.find((r) => r.resourceId === args?.id);
             if (options.noApps) return [];
             const tools = [source, source === "codex" ? "claude" : "codex"];
             const destinations = options.cliOrigin
@@ -267,7 +300,13 @@ async function detailFixture(page: Page, options: Options = {}) {
                     ? "Update the desktop resume integration"
                     : null,
                 isDefault: false,
-                mode: tool === source ? "resume" : "handoff",
+                mode:
+                  tool === source
+                    ? selected?.fork || selected?.localForkId
+                      ? "resume"
+                      : "fork"
+                    : "handoff",
+                forkAvailable: !options.disconnected,
               })),
             );
             const primary = result.find((option) => option.available);
@@ -291,6 +330,26 @@ async function detailFixture(page: Page, options: Options = {}) {
             if (options.resumeError)
               throw new Error("Could not launch destination");
             const resource = resources.find((r) => r.resourceId === args?.id);
+            if (
+              options.forks !== undefined &&
+              resource &&
+              args?.tool === resource.source
+            ) {
+              const child =
+                args?.fork || (!resource.fork && !resource.localForkId)
+                  ? addFork(resource.resourceId)
+                  : resource.fork
+                    ? resource
+                    : resources.find(
+                        (r) => r.resourceId === resource.localForkId,
+                      )!;
+              return {
+                opened: true,
+                nativeId: child.fork?.nativeId,
+                resourceId: child.resourceId,
+                instruction: "Session opening requested.",
+              };
+            }
             return {
               opened: true,
               instruction:
@@ -1063,6 +1122,159 @@ async function chooseTerminal(page: Page, name: string) {
   await page.getByRole("option", { name, exact: true }).click();
 }
 
+test("fork groups expand, paginate, filter and restore focus on nested sessions", async ({
+  page,
+}) => {
+  await detailFixture(page, { forks: 7 });
+  await page.getByRole("button", { name: /^Sessions/ }).click();
+  const expand = page.getByRole("button", {
+    name: "Expand 7 forks of Polish navigation",
+  });
+  await expect(
+    page.getByRole("button", { name: "Fork 1", exact: true }),
+  ).toHaveCount(0);
+  await expand.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("button", { name: "Fork 1", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Fork 7", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Show more forks of Polish navigation" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Fork 7", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Expand 1 fork of Fork 1" }).click();
+  await page.getByRole("button", { name: "Fork 8", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Open in Codex", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Back to Sessions" }).click();
+  await expect(
+    page.getByRole("button", { name: "Fork 8", exact: true }),
+  ).toBeFocused();
+  await page
+    .getByRole("button", { name: "Show more forks of Polish navigation" })
+    .click();
+  await page.getByRole("button", { name: "Fork 7", exact: true }).click();
+  await page.getByRole("button", { name: "Back to Sessions" }).click();
+  await expect(
+    page.getByRole("button", { name: "Fork 7", exact: true }),
+  ).toBeFocused();
+  await page.getByRole("searchbox").fill("Fork 7");
+  await expect(
+    page.getByRole("button", { name: "Fork 7", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".resource-table tbody tr")).toHaveCount(1);
+});
+
+test("opening retains the existing fork and only the explicit action creates another", async ({
+  page,
+}) => {
+  await detailFixture(page, { forks: 0, offline: true });
+  await openSession(page);
+  await page
+    .getByRole("button", { name: "Fork and open in Codex", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Open in Codex", exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Open in Codex", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Back to Sessions" }).click();
+  await page
+    .getByRole("button", { name: "Expand 1 fork of Polish navigation" })
+    .click();
+  await page.getByRole("button", { name: "Fork 1", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Open in Codex", exact: true })
+    .click();
+  await expect.poll(() => calls(page, "resume_session")).toHaveLength(3);
+  expect((await calls(page, "resume_session")).at(-1)).toEqual({
+    id: "fork-1",
+    tool: "codex",
+    destination: "desktop",
+  });
+  await page
+    .getByRole("button", { name: "Choose how to open session" })
+    .click();
+  await page
+    .getByRole("menuitem", {
+      name: /^Fork and open in Codex Creates another session$/,
+    })
+    .click();
+  await expect.poll(() => calls(page, "resume_session")).toHaveLength(4);
+  expect((await calls(page, "resume_session")).at(-1)).toEqual({
+    id: "fork-1",
+    tool: "codex",
+    destination: "desktop",
+    fork: true,
+  });
+  await page.getByRole("button", { name: "Back to Sessions" }).click();
+  await expect(
+    page.getByRole("button", { name: "Expand 1 fork of Fork 1" }),
+  ).toBeVisible();
+});
+
+test("explicit forks can use the selected terminal without changing the opening default", async ({
+  page,
+}) => {
+  await detailFixture(page, { forks: 1 });
+  await openSession(page);
+  await page
+    .getByRole("button", { name: "Choose how to open session" })
+    .click();
+  await chooseTerminal(page, "Warp");
+  await page
+    .getByRole("menuitem", {
+      name: /^Fork and open in Codex CLI Creates another session in Warp$/,
+    })
+    .click();
+  expect((await calls(page, "resume_session")).at(-1)).toEqual({
+    id: "session-c",
+    tool: "codex",
+    destination: "warp",
+    fork: true,
+  });
+  await expect(
+    page.getByRole("button", { name: "Open in Codex", exact: true }),
+  ).toBeEnabled();
+});
+
+for (const viewport of [
+  { width: 1160, height: 800 },
+  { width: 900, height: 640 },
+]) {
+  test(`expanded fork rows fit and remain accessible at ${viewport.width}×${viewport.height}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await detailFixture(page, { forks: 3 });
+    await page.getByRole("button", { name: /^Sessions/ }).click();
+    await page
+      .getByRole("button", { name: "Expand 3 forks of Polish navigation" })
+      .click();
+    await page.getByRole("button", { name: "Expand 1 fork of Fork 1" }).click();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    const results = await new AxeBuilder({ page })
+      .include(".resource-table")
+      .analyze();
+    expect(results.violations).toEqual([]);
+    await page.screenshot({
+      path: `artifacts/fork-list-${viewport.width}.png`,
+    });
+  });
+}
+
 for (const [title, tool, label] of [
   ["Polish navigation", "codex", "Codex"],
   ["Shared planning", "claude", "Claude Desktop"],
@@ -1091,7 +1303,7 @@ for (const [title, tool, label] of [
       await page
         .getByRole("menuitem", {
           name: new RegExp(
-            `^Fork in ${tool === "claude" ? "Claude Code CLI" : "Codex CLI"} Fresh session copy in ${name}`,
+            `^Fork in ${tool === "claude" ? "Claude Code CLI" : "Codex CLI"} New fork in ${name}`,
           ),
         })
         .click();
@@ -1135,8 +1347,8 @@ test("session destinations render icons provided by the local app discovery", as
     .getByRole("button", { name: "Choose how to open session" })
     .click();
   for (const [label, app] of [
-    ["Fork in Codex Opens a fresh session copy Default", "codex"],
-    ["Fork in Codex CLI Fresh session copy in Terminal", "terminal"],
+    ["Fork in Codex Creates a new fork Default", "codex"],
+    ["Fork in Codex CLI New fork in Terminal", "terminal"],
     [
       "Continue in Claude Code CLI… Starts immediately in Terminal with context",
       "terminal",
@@ -1162,7 +1374,7 @@ test("session destinations render icons provided by the local app discovery", as
     image?.dispatchEvent(new Event("error"));
   });
   const warp = page.getByRole("menuitem", {
-    name: "Fork in Codex CLI Fresh session copy in Warp",
+    name: "Fork in Codex CLI New fork in Warp",
     exact: true,
   });
   await expect(warp.locator("img")).toHaveCount(0);
@@ -1252,7 +1464,7 @@ test("missing default app leaves alternatives and download available", async ({
   ).toBeDisabled();
   await expect(
     page.getByRole("menuitem", {
-      name: /^Fork in Codex CLI Fresh session copy in Terminal/,
+      name: /^Fork in Codex CLI New fork in Terminal/,
     }),
   ).toBeEnabled();
   await expect(
@@ -1261,7 +1473,7 @@ test("missing default app leaves alternatives and download available", async ({
   await page.keyboard.press("Home");
   await expect(
     page.getByRole("menuitem", {
-      name: /^Fork in Codex CLI Fresh session copy in Terminal/,
+      name: /^Fork in Codex CLI New fork in Terminal/,
     }),
   ).toBeFocused();
   await page.keyboard.press("Escape");
@@ -1300,7 +1512,7 @@ test("opening the destination menu rechecks apps installed since the reader load
     .click();
   await expect(
     page.getByRole("menuitem", {
-      name: "Fork in Codex Opens a fresh session copy Default",
+      name: "Fork in Codex Creates a new fork Default",
       exact: true,
     }),
   ).toBeEnabled();
@@ -1425,7 +1637,7 @@ test("Warp falls back to a copyable command without claiming the session opened"
   await chooseTerminal(page, "Warp");
   await page
     .getByRole("menuitem", {
-      name: "Fork in Codex CLI Fresh session copy in Warp",
+      name: "Fork in Codex CLI New fork in Warp",
       exact: true,
     })
     .click();
@@ -1592,7 +1804,7 @@ for (const dimension of ["profile", "user", "service"] as const) {
         await chooseTerminal(page, "Warp");
         await page
           .getByRole("menuitem", {
-            name: "Fork in Codex CLI Fresh session copy in Warp",
+            name: "Fork in Codex CLI New fork in Warp",
             exact: true,
           })
           .click();
@@ -1670,7 +1882,7 @@ for (const [tool, sourceTitle, label] of [
       await page.keyboard.press("Home");
       await expect(
         page.getByRole("menuitem", {
-          name: `Fork in ${label} Opens a fresh session copy Default`,
+          name: `Fork in ${label} Creates a new fork Default`,
           exact: true,
         }),
       ).toBeFocused();
@@ -1678,7 +1890,7 @@ for (const [tool, sourceTitle, label] of [
       await expect(
         page.getByRole("menuitem", {
           name: new RegExp(
-            `^Fork in ${tool === "claude" ? "Claude Code CLI" : "Codex CLI"} Fresh session copy in Terminal`,
+            `^Fork in ${tool === "claude" ? "Claude Code CLI" : "Codex CLI"} New fork in Terminal`,
           ),
         }),
       ).toBeFocused();
@@ -2026,7 +2238,7 @@ for (const [title, label, tool] of [
       .getByRole("button", { name: "Choose how to open session" })
       .click();
     await expect(page.getByRole("menuitem").first()).toContainText(
-      `Fork in ${label}Fresh session copy in TerminalDefault`,
+      `Fork in ${label}New fork in TerminalDefault`,
     );
   });
 }

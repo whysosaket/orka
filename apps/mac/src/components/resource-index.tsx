@@ -171,6 +171,8 @@ export function ResourceIndex({
             duplicateTitles={duplicateTitles}
             conflicted={conflicted}
             loading={loading}
+            focusResource={focusResource}
+            filtered={filtered}
             onOpen={onOpen}
           />
         )}

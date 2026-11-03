@@ -26,7 +26,9 @@ export interface SessionLaunchOption {
   reason: string | null;
   icon?: string | null;
   isDefault: boolean;
-  mode: "resume" | "handoff";
+  mode: "resume" | "fork" | "handoff";
+  forkAvailable?: boolean;
+  forkReason?: string | null;
 }
 
 export const sessionTool = (
@@ -99,7 +101,10 @@ export function useResourceActions({
           );
         return result.text;
       },
-      resume: (target?: Pick<SessionLaunchOption, "tool" | "destination">) => {
+      resume: (
+        target?: Pick<SessionLaunchOption, "tool" | "destination">,
+        fork = false,
+      ) => {
         if (launching.current) return Promise.resolve();
         launching.current = true;
         return act(
@@ -115,6 +120,7 @@ export function useResourceActions({
               ...(target
                 ? { tool: target.tool, destination: target.destination }
                 : {}),
+              ...(fork ? { fork: true } : {}),
             }).catch((error: unknown) => {
               if (activeKey.current !== commandKey) return null;
               setLaunchFailure({ key: commandKey, message: String(error) });
