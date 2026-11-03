@@ -113,20 +113,37 @@ export function SettingsFolder({
               </p>
             </div>
             {source.path ? (
-              <Button
-                size="sm"
-                disabled={busy || queued > 0}
-                onClick={() =>
-                  void run(() =>
-                    invoke("disconnect_project_source", {
-                      id: project.id,
-                      sourceId: source.id,
-                    }),
-                  )
-                }
-              >
-                Disconnect
-              </Button>
+              <div className="actions">
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(() =>
+                      connectProject(
+                        project.id,
+                        source.id,
+                        source.path ?? undefined,
+                      ),
+                    )
+                  }
+                >
+                  Reconnect folder
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={busy || queued > 0}
+                  onClick={() =>
+                    void run(() =>
+                      invoke("disconnect_project_source", {
+                        id: project.id,
+                        sourceId: source.id,
+                      }),
+                    )
+                  }
+                >
+                  Disconnect
+                </Button>
+              </div>
             ) : (
               <Button
                 size="sm"

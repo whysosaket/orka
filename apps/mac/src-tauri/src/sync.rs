@@ -264,7 +264,7 @@ fn automatic_skill_binding(
     let root = Path::new(project["path"].as_str().ok_or("Connect a folder")?);
     if !root.is_dir()
         || project["folderIdentity"].as_str().is_some_and(|identity| {
-            indexer::folder_identity(root).ok().as_deref() != Some(identity)
+            !indexer::folder_identity_matches(root, identity).unwrap_or(false)
         })
     {
         return Err("Connected folder changed or unavailable; reconnect it in Settings".into());

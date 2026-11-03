@@ -14,6 +14,7 @@ async function fixture(
     failRename?: boolean;
     failLocalName?: boolean;
     ownerLocalName?: string;
+    sourceFolders?: boolean;
   } = {},
 ) {
   await page.addInitScript((options) => {
@@ -33,6 +34,13 @@ async function fixture(
             localName: options.ownerLocalName ?? null,
             role: "owner",
             path: "/Projects/orka",
+            ...(options.sourceFolders
+              ? {
+                  sources: [
+                    { id: "source-one", name: "orka", path: "/Projects/orka" },
+                  ],
+                }
+              : {}),
             sharing: { ...off, memory: true, skill: true },
           },
           {
@@ -105,7 +113,10 @@ async function fixture(
             };
           if (command === "auth_capabilities")
             return { auth: { password: true, github: true, magicLink: true } };
-          if (command === "plugin:dialog|open") return "/Projects/website";
+          if (command === "plugin:dialog|open")
+            return options.sourceFolders
+              ? "/Projects/orka"
+              : "/Projects/website";
           if (command.startsWith("plugin:")) return null;
           if (command === "project_command" && args.action === "local_name") {
             if (options.failLocalName && !failedLocalName) {
@@ -517,6 +528,35 @@ test("folder mutations use the project selected inside settings", async ({
       ?.args,
   ).toEqual({ id: "two", paths: ["/Projects/website"] });
 });
+
+for (const width of [1160, 900]) {
+  test(`source folders reconnect queued changes at ${width}`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize({ width, height: width === 900 ? 640 : 800 });
+    const dialog = await fixture(page, { sourceFolders: true, queued: true });
+    await exactButton(dialog, "Source folders").click();
+    await expect(exactButton(dialog, "Disconnect")).toBeDisabled();
+    await page.screenshot({
+      path: info.outputPath(`source-folders-${width}.png`),
+    });
+    await exactButton(dialog, "Reconnect folder").click();
+    const commands = await calls(page);
+    expect(
+      commands.find((c) => c.command === "plugin:dialog|open")?.args.options,
+    ).toMatchObject({ defaultPath: "/Projects/orka", multiple: false });
+    expect(
+      commands.find((c) => c.command === "connect_project_sources")?.args,
+    ).toEqual({ id: "one", sourceId: "source-one", paths: ["/Projects/orka"] });
+    expect(
+      commands.some((c) => c.command === "disconnect_project_source"),
+    ).toBe(false);
+    expect(
+      (await new AxeBuilder({ page }).include(".settings-modal").analyze())
+        .violations,
+    ).toEqual([]);
+  });
+}
 
 test("service setup is staged, discarded safely, and reviewed before switching", async ({
   page,

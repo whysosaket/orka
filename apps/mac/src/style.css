@@ -604,6 +604,9 @@
     height: 1px;
     background: var(--surface-stroke);
   }
+  .session-launcher-host {
+    @apply flex items-center justify-between gap-3 px-3 py-2 text-body-xs text-secondary;
+  }
   .ui-button--primary .resume-source-icon--codex {
     filter: invert(1);
   }

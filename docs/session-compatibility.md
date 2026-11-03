@@ -13,13 +13,13 @@ The implementation follows four boundaries:
 
 ## Native import strategies
 
-| Source | Receiver | Translation |
-| --- | --- | --- |
-| Claude JSONL | Claude CLI | New session identity in the native project directory; message graph and content retained. |
-| Codex legacy | Codex app server | Remap execution coordinates, then native fork and registration. |
-| Codex paginated | Server with `thread/turns/list` | Flatten the exact inherited prefix into an independent paginated rollout, rebuild ordinals, and register without starting a turn. |
-| Codex paginated | Server explicitly lacking `thread/turns/list` | Flatten into independent legacy framing and use the native fork path. Source pagination and metadata remain in the shared snapshot. |
-| Claude ↔ Codex | Other provider | Export a normalized Markdown transcript and open the existing new-session composer workflow. This transfers context, not provider-internal executable state. |
+| Source          | Receiver                                      | Translation                                                                                                                                                  |
+| --------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Claude JSONL    | Claude CLI                                    | New session identity in the native project directory; message graph and content retained.                                                                    |
+| Codex legacy    | Codex app server                              | Remap execution coordinates, then native fork and registration.                                                                                              |
+| Codex paginated | Server with `thread/turns/list`               | Flatten the exact inherited prefix into an independent paginated rollout, rebuild ordinals, and register without starting a turn.                            |
+| Codex paginated | Server explicitly lacking `thread/turns/list` | Flatten into independent legacy framing and use the native fork path. Source pagination and metadata remain in the shared snapshot.                          |
+| Claude ↔ Codex  | Other provider                                | Export a normalized Markdown transcript and open the existing new-session composer workflow. This transfers context, not provider-internal executable state. |
 
 Pagination detection makes a read-only request for an absent thread. Only an explicit unsupported-method response selects the legacy adapter. Recognized missing-thread responses establish method support; other failures remain errors. Unsupported project registration, metadata updates, naming, or unsubscribe methods are optional enhancements. Permission errors, invalid parameters, timeouts, and malformed RPC responses are never treated as missing capabilities.
 
@@ -31,22 +31,32 @@ Both importers persist identities before writing. Retrying reuses the same ident
 - Indexing never rewrites native source files. Incomplete live tails wait for a later scan.
 - Snapshot ancestry still enforces byte/ordinal boundaries, project scope, cycle detection, file limits, and complete inherited history. Unknown nested ordinal references prevent unsafe rebasing.
 - Execution-folder changes apply to metadata, turn contexts, thread settings, and known world-state cwd fields. Paths inside historical messages and tool input/output are unchanged.
-- Unknown content remains raw JSON in the full handoff transcript. A native receiver may not understand a future provider feature; format-based acceptance is not a promise of universal forward compatibility.
+- Unknown content remains raw JSON in the full exported transcript. A native receiver may not understand a future provider feature; format-based acceptance is not a promise of universal forward compatibility.
 - Claude Desktop automatic sidebar registration and physical two-Mac UI behavior remain release checks. Claude's existing desktop resume command still requires a CLI with desktop support.
 
 ## Open session destinations
 
-The session reader uses an **Open in Codex** or **Open in Claude Desktop** split button. Codex sessions default to Codex Desktop; Claude sessions default to Claude Desktop's Code tab. The dropdown offers installed supported terminals, cross-provider continuation, and Download session (.zip). AppKit resolves icons from each locally installed application's bundle; icon lookup failures use a source or terminal fallback without blocking launch. Selecting another destination does not change the source-based default.
+The session reader has one split button and four destination choices: Codex Desktop, Claude Desktop's Code tab, Codex CLI, and Claude Code CLI. A shared terminal selector offers installed Terminal, Warp, and iTerm2 hosts in that priority order. Uninstalled apps and CLIs are hidden; installed destinations with missing prerequisites remain disabled with a reason. Local AppKit icons have source/terminal fallbacks.
 
-`resume_session` accepts the optional `destination` enum: `desktop` (the existing default), `terminal`, `warp`, or `iterm2`. All same-provider destinations use the existing native ID, source-specific repository validation, and teammate-copy marker. Terminal destinations reject a session that may already be open. Unsupported tools/destinations, deleted resources, and unavailable projects fail before launch. Read-only `session_launch_options` uses macOS Launch Services through NSWorkspace, without AppleScript discovery or a cloud API. Missing apps, CLI prerequisites, and disconnected repositories have disabled options with a reason.
+Read-only `session_launch_options` returns `isDefault` and `mode` (`resume` or `handoff`) alongside the existing tool/destination fields. The native layer reads original surface metadata from the shared snapshot rather than the imported native copy. Codex desktop originators take precedence over generic `source` values; CLI source metadata and Claude's `cli`/`local-agent` entrypoints distinguish the original surface. Unknown origins prefer the provider's desktop. Fallback order is original surface, same provider's other surface, other provider's equivalent surface, then its remaining surface. Explicit choices do not persist a new default.
 
-Terminal runs a private generated command file. Warp uses its supported launch-configuration format for compatibility with versions before Tab Configs. Both receive the exact CLI path, native ID, working directory, and configured native home without a prompt argument. Startup files delete themselves when consumed; errors and bounded startup timeouts remove this attempt's files. If Warp does not confirm startup, Orka offers an explicit copyable resume command and does not claim the session opened. Check for an already-open session before running that command. iTerm2 uses its documented command-review URL, where the user chooses a new tab or window; it needs no AppleScript automation grant. An unconsumed iTerm2 review can retain its private launcher until it runs.
+`resume_session` retains its optional `destination` enum (`desktop`, `terminal`, `warp`, `iterm2`) and legacy desktop default. Every same-provider open now creates a fresh local native session from the complete cached snapshot, using the existing lossless import adapters, and resumes that new ID. It never resumes or replaces the source binding, even for the current owner's sessions or an active source. A missing native source installation does not require sync first. New forks retain source attribution; ordinary indexing and sharing can publish them later under the existing permissions.
 
-Cross-provider continuation remains a new desktop composer referencing the normalized transcript. It never submits the prompt. Download retains the existing ZIP format: manifest, hashed original blobs, and complete readable transcript. It works from accessible cached snapshots without the repository connected. Native import/export formats, sync protocols, server packages, and database schemas are unchanged in both hosting modes.
+Launching uses a separate session-launch lock for duplicate protection and never acquires the workspace sync lock or waits for the Orka service. Failed/offline sync and queued changes do not block a cached launch. Account, service, resource revision, repository access, and destination prerequisites are revalidated before opening. Missing/corrupt cached history and unavailable local prerequisites remain explicit errors. A prepared copy is preserved if validation or launching fails; uncertain attempts are never automatically resubmitted.
+
+Claude Desktop additionally requires supported CLI flags, a Claude subscription login verified through `claude auth status`, an inactive target copy, and an explicit exact-session confirmation from the CLI. A successful app launch alone is insufficient. Native desktop continuation is disabled for custom native homes that the independently running GUI app cannot be proven to use. CLI discovery handles executable symlinks, PATH, native/Homebrew/npm-user and version-manager locations, and bundled Codex binaries without executing shell startup files.
+
+Terminal runs a private generated command file. Warp uses its supported launch-configuration format; when startup is unconfirmed, Orka offers a manual command without claiming the session opened. iTerm2 opens its documented command-review URL and asks the user to run the command in a tab/window. Launchers preserve literal arguments, the resolved executable, working directory, PATH, and configured native home. Consumed startup files remove themselves; failures clean up this attempt's files. An unconsumed iTerm2 review can retain its private launcher. There is no automatic retry or destination switch after a launch request.
+
+Cross-provider launches create a new conversation using an immutable, private context file per source revision. Desktop opens a prefilled composer without sending. CLI starts a fresh interactive process with the continuation instruction as its initial prompt, immediately beginning model work once the destination's own sign-in/trust requirements allow it. Cross-provider commands never receive the source native ID or a resume flag. Existing handoff attribution remains attached to every retained context file.
+
+`session_handoff_prompt` returns a self-contained continuation instruction plus the complete readable conversation and its revision. Copy session prompt works from cached snapshots without an app or repository connection, confirms clipboard success inline, and reports errors inside the menu. It includes inherited Codex history and meaningful repeated turns while omitting injected setup, analysis, and raw tool records. Empty/corrupt history fails visibly; there is no model summary or silent truncation. Async copy/launch responses are discarded when the selection or account/service scope changes.
+
+Download retains the existing ZIP format with original blobs and the full transcript. Native import formats, sync protocols, server packages, and database schemas are unchanged in both hosting modes.
 
 ### Launcher verification
 
-Native fixtures verify exact-session routing and retries, copy safeguards, active-session errors, repository selection, missing CLI support, invalid native bindings, account/service changes during validation, failed launches, and manual fallback. Download checks inspect the real ZIP manifest, original blobs, and complete transcript from cached history with the repository absent. Process checks cover literal shell arguments, large stdout/stderr, failed exit codes, and inherited pipes that must not bypass timeouts. These fixtures never open personal sessions.
+Native fixtures verify fresh identities for every provider/surface/terminal combination while the sync lock is held, source immutability, cached launches without native bindings, active originals, repository selection, missing CLI support, duplicate launches, account/service/revision changes during preparation, failed launches, and manual fallback. Adapter fixtures verify complete inherited Codex history and Claude message/tool graphs across independent copies. Download checks inspect the real ZIP manifest, original blobs, and complete transcript from cached history with the repository absent. Process checks cover literal shell arguments, large stdout/stderr, failed exit codes, and inherited pipes that must not bypass timeouts. These fixtures never open personal sessions.
 
 Browser checks cover command payloads, source-based defaults, refreshed app availability, local icons and fallback, disabled-menu keyboard navigation, pending-action guards, ZIP saving/cancel/failure, disconnected folders, stale responses, and cleared state across profile/user/service changes. Focus, reduced motion, long titles, and both provider buttons are checked at both window sizes.
 
@@ -56,6 +66,7 @@ An opt-in smoke script uses isolated synthetic resources and fake CLIs, so it ca
 cargo build --manifest-path apps/mac/src-tauri/Cargo.toml
 npx tsx scripts/session-launcher-smoke.ts discover
 npx tsx scripts/session-launcher-smoke.ts terminal
+npx tsx scripts/session-launcher-smoke.ts terminal --handoff
 npx tsx scripts/session-launcher-smoke.ts warp
 ```
 
@@ -63,11 +74,31 @@ The destination commands open the named real terminal. Their JSON reports under 
 
 On October 26, 2026, automatic startup in Terminal was verified for both fake CLIs with exact IDs, special-character paths, and native homes. Warp `0.2026.10.14.08.27.01` accepted its launch URI but did not confirm CLI startup; the manual fallback command was verified for both providers. Warp visual inspection was unavailable through the computer-use tool. iTerm2 was absent, so its real command-review flow remains an acceptance check. These checks do not establish signed-installed-app behavior, desktop sidebar registration, other architectures/macOS versions, or physical two-Mac continuation.
 
-Final local validation passed 165 standard native tests (seven optional checks excluded from that run), all four selected installed-Codex import integrations, the opt-in AppKit icon check, 15 TypeScript unit tests, and the full browser suite of 251 tests with two workers (25 disabled-ENV cases skipped). This includes all 60 resource-detail checks. Typecheck, lint, formatting, native/frontend builds, strict Clippy, repository boundaries, and the dependency-license inventory also passed. A fresh synthetic smoke run verified automatic Terminal startup and Warp's manual fallback for both providers.
+Earlier local validation passed 165 standard native tests (seven optional checks excluded from that run), all four selected installed-Codex import integrations, the opt-in AppKit icon check, 15 TypeScript unit tests, and the full browser suite of 251 tests with two workers (25 disabled-ENV cases skipped). This includes all 60 resource-detail checks. Typecheck, lint, formatting, native/frontend builds, strict Clippy, repository boundaries, and the dependency-license inventory also passed. A fresh synthetic smoke run verified automatic Terminal startup and Warp's manual fallback for both providers.
 
 Layout and accessibility were checked at 1160×800 and 900×640, including a long session title. Local Codex, Claude Desktop, Terminal, and Warp icons were confirmed as small PNGs, and previews using those returned icons passed at both window sizes. Run the installed-app icon check with `cargo test --manifest-path apps/mac/src-tauri/Cargo.toml installed_app_icons_are_small_pngs -- --ignored`; it only reads local app icons.
 
 Integration references: [Warp launch configurations](https://docs.warp.dev/terminal/sessions/launch-configurations/), [Warp URI limitations](https://docs.warp.dev/terminal/more-features/uri-scheme), and [iTerm2 command-review URLs](https://iterm2.com/documentation-url-scheme.html).
+
+### Cross-app launcher validation — 1 November 2026
+
+The cross-app launcher passed 173 standard native tests, four installed-Codex import integrations, the read-only installed-app icon check, 15 TypeScript unit tests, and all 258 enabled browser tests (25 disabled-ENV tests skipped). The browser run includes 67 resource-detail checks, with keyboard, accessibility, long-title, clipboard, scope-change, and layout coverage at 1160×800 and 900×640. Typecheck, lint, formatting, repository boundaries, frontend/native builds, and strict Clippy passed.
+
+Real Terminal startup was verified with isolated fake Codex and Claude executables for both exact-session resume and immediate cross-provider initial-prompt delivery. All four checks preserved literal arguments, special-character repository paths, and configured native homes. No model work was submitted or personal session history changed. Warp and iTerm2 were absent on this Mac, so their real-app checks were unavailable; their command construction, review/fallback behavior, and UI wiring remain covered by fixtures. Real Codex/Claude Desktop transfer and real-provider model execution remain release acceptance checks.
+
+### Local fork launch validation — 2 November 2026
+
+The updated launcher passed 175 standard native tests (eight opt-in checks skipped)
+and all 68 resource-detail UI checks, including offline launches, duplicate clicks,
+stale preparation, keyboard access, reduced motion, and both window sizes. The
+installed Codex acceptance check created two independent, readable native forks
+from complete cached inherited history while the workspace sync lock was held;
+the source files remained byte-for-byte unchanged and no model turn was started.
+Real Terminal startup with synthetic Codex/Claude CLIs verified the new fork IDs
+and unchanged source bindings, plus both cross-provider initial prompts. Typecheck,
+lint, formatting, repository boundaries, strict Clippy, and the bundled debug app
+build passed. Desktop GUI transfer and real-provider inference remain separate
+acceptance checks.
 
 ## Validation — 6 October 2026
 

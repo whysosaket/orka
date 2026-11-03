@@ -23,7 +23,7 @@ pub fn workspace(db: &rusqlite::Connection) -> Result<()> {
         };
         if !root.is_dir()
             || project["folderIdentity"].as_str().is_some_and(|expected| {
-                indexer::folder_identity(root).map_or(true, |actual| actual != expected)
+                !indexer::folder_identity_matches(root, expected).unwrap_or(false)
             })
         {
             continue;

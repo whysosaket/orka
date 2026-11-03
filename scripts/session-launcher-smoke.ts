@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdtemp,
   mkdir,
@@ -15,14 +15,16 @@ import { DatabaseSync } from "node:sqlite";
 
 // Uses synthetic resources and fake CLIs. --launch explicitly opens the chosen terminal.
 const destination = process.argv[2];
+const handoff = process.argv.includes("--handoff");
 assert(
   ["discover", "terminal", "warp", "iterm2"].includes(destination),
   "Choose discover, terminal, warp, or iterm2",
 );
 const home = await mkdtemp(join(tmpdir(), "orka-session-launcher-"));
-const projectPath = join(home, "repository ' $literal 🌊");
+const projectFolder = join(home, "repository ' $literal 🌊");
 const nativeHome = join(home, "native home ' $literal");
-await mkdir(projectPath);
+await mkdir(projectFolder);
+const projectPath = await realpath(projectFolder);
 await mkdir(nativeHome);
 const bin = join(home, ".local/bin");
 await mkdir(bin, { recursive: true });
@@ -77,12 +79,14 @@ database.prepare("INSERT OR REPLACE INTO projects VALUES (?,?)").run(
   }),
 );
 const fakeCLI = `#!/usr/bin/python3
-import sys, json, os
+import sys, json, os, uuid
 from pathlib import Path
 root = Path(__file__).resolve().parents[2]
 tool = Path(__file__).name
 if '--help' in sys.argv:
  print('--desktop --resume')
+elif sys.argv[1:] == ['auth', 'status']:
+ print(json.dumps({'loggedIn': True, 'authMethod': 'claude.ai'}))
 elif '--version' in sys.argv:
  print('codex-cli 0.160.0')
 elif 'app-server' in sys.argv:
@@ -90,6 +94,13 @@ elif 'app-server' in sys.argv:
   message = json.loads(line)
   if 'id' not in message: continue
   result = {'codexHome': os.environ['CODEX_HOME']} if message['method'] == 'initialize' else {'data': []}
+  if message['method'] == 'thread/fork':
+   records = [json.loads(line) for line in Path(message['params']['path']).read_text().splitlines()]
+   id = str(uuid.uuid4())
+   records[0]['payload'].update(id=id, forked_from_id=records[0]['payload']['id'])
+   path = Path(message['params']['path']).with_name('rollout-fork-'+id+'.jsonl')
+   path.write_text(''.join(json.dumps(record)+'\\n' for record in records))
+   result = {'thread': {'id': id, 'path': str(path)}}
   print(json.dumps({'id': message['id'], 'result': result}), flush=True)
 else:
  (root / (tool + '-received.json')).write_text(json.dumps({'tool': tool, 'args': sys.argv[1:], 'cwd': os.getcwd(), 'codexHome': os.environ.get('CODEX_HOME'), 'claudeHome': os.environ.get('CLAUDE_CONFIG_DIR')}))
@@ -100,17 +111,51 @@ for (const tool of ["codex", "claude"])
 
 const evidence = [];
 for (const tool of ["codex", "claude"]) {
+  const source = handoff ? (tool === "codex" ? "claude" : "codex") : tool;
   const id = randomUUID(),
     nativeId = randomUUID();
+  const records =
+    source === "codex"
+      ? [
+          {
+            type: "session_meta",
+            payload: { id: nativeId, cwd: projectPath, source: "cli" },
+          },
+          {
+            type: "event_msg",
+            payload: {
+              type: "user_message",
+              message: "Synthetic continuation. Do not submit real model work.",
+            },
+          },
+        ]
+      : [
+          {
+            type: "user",
+            sessionId: nativeId,
+            cwd: projectPath,
+            entrypoint: "cli",
+            message: {
+              role: "user",
+              content: "Synthetic continuation. Do not submit real model work.",
+            },
+          },
+        ];
+  const bytes = Buffer.from(
+    records.map((record) => JSON.stringify(record)).join("\n") + "\n",
+  );
+  const hash = createHash("sha256").update(bytes).digest("hex");
+  await mkdir(join(home, "orka/blobs"), { recursive: true });
+  await writeFile(join(home, "orka/blobs", hash), bytes);
   const resource = {
     resourceId: id,
     projectId,
     kind: "session",
-    source: tool,
+    source,
     owner: user,
     revision: 1,
     deleted: false,
-    files: [],
+    files: [{ path: "session.jsonl", hash, size: bytes.length }],
   };
   database
     .prepare("INSERT INTO resources VALUES (?,?,?)")
@@ -129,7 +174,7 @@ for (const tool of ["codex", "claude"]) {
   );
   assert(
     option?.available,
-    `${destination} unavailable for ${tool}: ${JSON.stringify(options)}`,
+    `${destination} unavailable for ${tool}: ${JSON.stringify(options.map(({ tool, destination, available, reason }: Record<string, unknown>) => ({ tool, destination, available, reason })))}`,
   );
   const launched = await command({
     action: "resume-session",
@@ -162,10 +207,30 @@ for (const tool of ["codex", "claude"]) {
     received,
     `${destination} accepted the launch but did not run the synthetic ${tool} CLI. Evidence: ${home}`,
   );
-  assert.deepEqual(received.args, [
-    tool === "codex" ? "resume" : "--resume",
-    nativeId,
-  ]);
+  if (handoff) {
+    assert.equal(received.args.length, 1);
+    assert.match(received.args[0], /This is a new session/);
+    assert(received.args[0].includes(launched.handoff));
+    assert(
+      (await readFile(launched.handoff, "utf8")).includes(
+        "Synthetic continuation",
+      ),
+    );
+  } else {
+    assert.equal(launched.forked, true);
+    assert.notEqual(launched.nativeId, nativeId);
+    assert.deepEqual(received.args, [
+      tool === "codex" ? "resume" : "--resume",
+      launched.nativeId,
+    ]);
+    assert.deepEqual(
+      JSON.parse(
+        database.prepare("SELECT value FROM bindings WHERE id=?").get(id)!
+          .value as string,
+      ),
+      { nativeId, base: resource },
+    );
+  }
   assert.equal(received.cwd, await realpath(projectPath));
   assert.equal(
     received[tool === "codex" ? "codexHome" : "claudeHome"],
@@ -180,9 +245,9 @@ const launchers = await readdir(join(home, "orka/session-launchers")).catch(
 if (destination !== "discover")
   assert.deepEqual(launchers, [], "Consumed launcher files should be removed");
 await mkdir("artifacts", { recursive: true });
-const report = { home, checkedAt: new Date().toISOString(), evidence };
+const report = { home, handoff, checkedAt: new Date().toISOString(), evidence };
 await writeFile(
-  `artifacts/session-launcher-${destination}.json`,
+  `artifacts/session-launcher-${destination}${handoff ? "-handoff" : ""}.json`,
   JSON.stringify(report, null, 2),
 );
 console.log(JSON.stringify(report, null, 2));

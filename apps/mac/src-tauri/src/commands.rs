@@ -614,6 +614,12 @@ pub async fn session_launch_options(
         .map_err(|error| error.to_string())?
 }
 #[tauri::command]
+pub async fn session_handoff_prompt(id: String) -> Result<Value> {
+    tauri::async_runtime::spawn_blocking(move || crate::session_launcher::handoff_prompt(&id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+#[tauri::command]
 pub async fn resume_session(
     id: String,
     tool: String,

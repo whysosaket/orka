@@ -5,8 +5,12 @@ type Options = {
   appIcons?: Record<string, string | null>;
   launchOptions?: "missing-default" | "slow" | "error";
   disconnected?: boolean;
+  cliOrigin?: boolean;
+  noApps?: boolean;
+  promptError?: boolean;
   savePath?: string | null;
   resumeError?: boolean;
+  offline?: boolean;
   exportError?: boolean;
   manualResume?: boolean;
   sessionTitle?: string;
@@ -188,7 +192,9 @@ async function detailFixture(page: Page, options: Options = {}) {
                 : [],
               outbox: [],
               errors: [],
-              sync: { online: true },
+              sync: options.offline
+                ? { online: false, error: "Service unavailable" }
+                : { online: true },
               daemon: { running: true },
               devices: [],
               deviceId: "device",
@@ -223,49 +229,57 @@ async function detailFixture(page: Page, options: Options = {}) {
             const source =
               resources.find((r) => r.resourceId === args?.id)?.source ??
               "codex";
-            return [
-              {
-                tool: source,
-                destination: "desktop",
-                label: source === "claude" ? "Claude Desktop" : "Codex",
-                icon: options.appIcons?.[source] ?? null,
+            if (options.noApps) return [];
+            const tools = [source, source === "codex" ? "claude" : "codex"];
+            const destinations = options.cliOrigin
+              ? ["terminal", "warp", "iterm2", "desktop"]
+              : ["desktop", "terminal", "warp", "iterm2"];
+            const result = tools.flatMap((tool) =>
+              destinations.map((destination) => ({
+                tool,
+                destination,
+                label:
+                  destination === "desktop"
+                    ? tool === "claude"
+                      ? "Claude Desktop"
+                      : "Codex"
+                    : destination === "terminal"
+                      ? "Terminal"
+                      : destination === "warp"
+                        ? "Warp"
+                        : "iTerm2",
+                icon:
+                  options.appIcons?.[
+                    destination === "desktop" ? tool : destination
+                  ] ?? null,
                 available:
                   !options.disconnected &&
-                  options.launchOptions !== "missing-default",
+                  !(
+                    options.launchOptions === "missing-default" &&
+                    tool === source &&
+                    destination === "desktop"
+                  ),
                 reason: options.disconnected
                   ? "Connect this session's repository on this Mac"
-                  : options.launchOptions === "missing-default"
-                    ? "Install Codex to open sessions here"
+                  : options.launchOptions === "missing-default" &&
+                      tool === source &&
+                      destination === "desktop"
+                    ? "Update the desktop resume integration"
                     : null,
-              },
-              ...["terminal", "warp", "iterm2"].map((destination) => ({
-                tool: source,
-                destination,
-                icon: options.appIcons?.[destination] ?? null,
-                label:
-                  destination === "terminal"
-                    ? "Terminal"
-                    : destination === "warp"
-                      ? "Warp"
-                      : "iTerm2",
-                available: !options.disconnected,
-                reason: options.disconnected
-                  ? "Connect this session's repository on this Mac"
-                  : null,
+                isDefault: false,
+                mode: tool === source ? "resume" : "handoff",
               })),
-              {
-                tool: source === "codex" ? "claude" : "codex",
-                destination: "desktop",
-                label: source === "codex" ? "Claude Desktop" : "Codex",
-                icon:
-                  options.appIcons?.[source === "codex" ? "claude" : "codex"] ??
-                  null,
-                available: !options.disconnected,
-                reason: options.disconnected
-                  ? "Connect this session's repository on this Mac"
-                  : null,
-              },
-            ];
+            );
+            const primary = result.find((option) => option.available);
+            if (primary) primary.isDefault = true;
+            return result;
+          }
+          if (name === "session_handoff_prompt") {
+            if (options.promptError) throw new Error("Missing session history");
+            return {
+              text: "Continue the task from this conversation.\n\n## You\n\nOriginal request\n\n## Assistant\n\nComplete answer",
+              revision: 1,
+            };
           }
           if (name === "resume_session") {
             if (options.manualResume && args?.destination === "warp")
@@ -613,7 +627,10 @@ test("another owner's session shows the copy note and hides Remove from history"
     "Resuming saves your continuation as a copy.",
   );
   await expect(
-    page.getByRole("button", { name: "Open in Claude Desktop", exact: true }),
+    page.getByRole("button", {
+      name: "Fork and open in Claude Desktop",
+      exact: true,
+    }),
   ).toBeVisible();
   await more(page).click();
   await expect(menu(page)).not.toContainText("Continue in Codex");
@@ -1021,7 +1038,7 @@ test("resuming a shared session uses the floating toast and keeps the reader lay
   const header = page.locator(".workspace-header");
   const before = await header.boundingBox();
   const resume = page.getByRole("button", {
-    name: "Open in Claude Desktop",
+    name: "Fork and open in Claude Desktop",
     exact: true,
   });
   await resume.click();
@@ -1041,6 +1058,11 @@ async function openSession(page: Page, title = "Polish navigation") {
   await page.getByRole("button", { name: title, exact: true }).click();
 }
 
+async function chooseTerminal(page: Page, name: string) {
+  await page.getByRole("combobox", { name: "Terminal application" }).click();
+  await page.getByRole("option", { name, exact: true }).click();
+}
+
 for (const [title, tool, label] of [
   ["Polish navigation", "codex", "Codex"],
   ["Shared planning", "claude", "Claude Desktop"],
@@ -1051,11 +1073,11 @@ for (const [title, tool, label] of [
     await detailFixture(page);
     await openSession(page, title);
     const primary = page.getByRole("button", {
-      name: `Open in ${label}`,
+      name: `Fork and open in ${label}`,
       exact: true,
     });
     await expect(primary).toBeEnabled();
-    await expect(primary).toHaveText(`Open in ${label}`);
+    await expect(primary).toHaveText(`Fork and open in ${label}`);
     await primary.click();
     for (const [name, destination] of [
       ["Terminal", "terminal"],
@@ -1065,7 +1087,14 @@ for (const [title, tool, label] of [
       await page
         .getByRole("button", { name: "Choose how to open session" })
         .click();
-      await page.getByRole("menuitem", { name, exact: true }).click();
+      await chooseTerminal(page, name);
+      await page
+        .getByRole("menuitem", {
+          name: new RegExp(
+            `^Fork in ${tool === "claude" ? "Claude Code CLI" : "Codex CLI"} Fresh session copy in ${name}`,
+          ),
+        })
+        .click();
       await expect(
         page.getByRole("menu", { name: "Open session" }),
       ).toHaveCount(0);
@@ -1098,7 +1127,7 @@ test("session destinations render icons provided by the local app discovery", as
   await detailFixture(page, { appIcons });
   await openSession(page);
   const primary = page.getByRole("button", {
-    name: "Open in Codex",
+    name: "Fork and open in Codex",
     exact: true,
   });
   await expect(primary.locator("img")).toHaveAttribute("src", appIcons.codex);
@@ -1106,10 +1135,12 @@ test("session destinations render icons provided by the local app discovery", as
     .getByRole("button", { name: "Choose how to open session" })
     .click();
   for (const [label, app] of [
-    ["Codex Default", "codex"],
-    ["Terminal", "terminal"],
-    ["Warp", "warp"],
-    ["iTerm2", "iterm2"],
+    ["Fork in Codex Opens a fresh session copy Default", "codex"],
+    ["Fork in Codex CLI Fresh session copy in Terminal", "terminal"],
+    [
+      "Continue in Claude Code CLI… Starts immediately in Terminal with context",
+      "terminal",
+    ],
     ["Continue in Claude Desktop… New conversation with context", "claude"],
   ]) {
     const image = page
@@ -1122,6 +1153,7 @@ test("session destinations render icons provided by the local app discovery", as
       )
       .toBe(32);
   }
+  await chooseTerminal(page, "Warp");
   // An unreadable app icon must preserve the destination and its action.
   await page.evaluate(() => {
     const image = document.querySelector(
@@ -1129,7 +1161,10 @@ test("session destinations render icons provided by the local app discovery", as
     );
     image?.dispatchEvent(new Event("error"));
   });
-  const warp = page.getByRole("menuitem", { name: "Warp", exact: true });
+  const warp = page.getByRole("menuitem", {
+    name: "Fork in Codex CLI Fresh session copy in Warp",
+    exact: true,
+  });
   await expect(warp.locator("img")).toHaveCount(0);
   await warp.click();
   expect((await calls(page, "resume_session")).at(-1)).toEqual({
@@ -1152,7 +1187,7 @@ test("cross-provider continuation is labeled as new context and routes to the ot
       .getByRole("button", { name: "Choose how to open session" })
       .click();
     const handoff = page.getByRole("menuitem", {
-      name: new RegExp(`Continue in ${other}`),
+      name: new RegExp(`^Continue in ${other}…`),
     });
     await expect(handoff).toContainText("New conversation with context");
     await handoff.click();
@@ -1176,7 +1211,7 @@ for (const savePath of [null, "/test/export/session.zip"]) {
     await detailFixture(page, { disconnected: true, savePath });
     await openSession(page);
     await expect(
-      page.getByRole("button", { name: "Open in Codex", exact: true }),
+      page.getByRole("button", { name: "Fork and open in Codex", exact: true }),
     ).toBeDisabled();
     await page
       .getByRole("button", { name: "Choose how to open session" })
@@ -1204,23 +1239,30 @@ test("missing default app leaves alternatives and download available", async ({
   await detailFixture(page, { launchOptions: "missing-default" });
   await openSession(page);
   await expect(
-    page.getByRole("button", { name: "Open in Codex", exact: true }),
-  ).toBeDisabled();
+    page.getByRole("button", {
+      name: "Fork and open in Codex CLI",
+      exact: true,
+    }),
+  ).toBeEnabled();
   await page
     .getByRole("button", { name: "Choose how to open session" })
     .click();
   await expect(
-    page.getByRole("menuitem", { name: /Codex.*Install Codex/ }),
+    page.getByRole("menuitem", { name: /Codex.*Update the desktop/ }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("menuitem", { name: "Terminal", exact: true }),
+    page.getByRole("menuitem", {
+      name: /^Fork in Codex CLI Fresh session copy in Terminal/,
+    }),
   ).toBeEnabled();
   await expect(
     page.getByRole("menuitem", { name: "Download session (.zip)…" }),
   ).toBeEnabled();
   await page.keyboard.press("Home");
   await expect(
-    page.getByRole("menuitem", { name: "Terminal", exact: true }),
+    page.getByRole("menuitem", {
+      name: /^Fork in Codex CLI Fresh session copy in Terminal/,
+    }),
   ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(
@@ -1234,18 +1276,19 @@ test("opening the destination menu rechecks apps installed since the reader load
   await detailFixture(page, { launchOptions: "missing-default" });
   await openSession(page);
   const primary = page.getByRole("button", {
-    name: "Open in Codex",
+    name: "Fork and open in Codex CLI",
     exact: true,
   });
-  await expect(primary).toBeDisabled();
+  await expect(primary).toBeEnabled();
   await page.evaluate(() => {
     const w = window as any;
     const original = w.__TAURI_INTERNALS__.invoke;
     w.__TAURI_INTERNALS__.invoke = async (name: string, args: unknown) => {
       const result = await original(name, args);
       return name === "session_launch_options"
-        ? result.map((option: any) => ({
+        ? result.map((option: any, index: number) => ({
             ...option,
+            isDefault: index === 0,
             available: true,
             reason: null,
           }))
@@ -1256,9 +1299,14 @@ test("opening the destination menu rechecks apps installed since the reader load
     .getByRole("button", { name: "Choose how to open session" })
     .click();
   await expect(
-    page.getByRole("menuitem", { name: "Codex Default", exact: true }),
+    page.getByRole("menuitem", {
+      name: "Fork in Codex Opens a fresh session copy Default",
+      exact: true,
+    }),
   ).toBeEnabled();
-  await expect(primary).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Fork and open in Codex", exact: true }),
+  ).toBeEnabled();
   expect(await calls(page, "resume_session")).toEqual([]);
 });
 
@@ -1280,7 +1328,7 @@ test("a pending launch disables both controls and prevents repeated activation",
   });
   await openSession(page);
   const primary = page.getByRole("button", {
-    name: "Open in Codex",
+    name: "Fork and open in Codex",
     exact: true,
   });
   const trigger = page.getByRole("button", {
@@ -1374,7 +1422,13 @@ test("Warp falls back to a copyable command without claiming the session opened"
   await page
     .getByRole("button", { name: "Choose how to open session" })
     .click();
-  await page.getByRole("menuitem", { name: "Warp", exact: true }).click();
+  await chooseTerminal(page, "Warp");
+  await page
+    .getByRole("menuitem", {
+      name: "Fork in Codex CLI Fresh session copy in Warp",
+      exact: true,
+    })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Continue in Warp" });
   await expect(dialog).toBeVisible();
   await expect(
@@ -1404,7 +1458,7 @@ test("a failed launch gives an error without success or automatic retry", async 
   await detailFixture(page, { resumeError: true });
   await openSession(page);
   await page
-    .getByRole("button", { name: "Open in Codex", exact: true })
+    .getByRole("button", { name: "Fork and open in Codex", exact: true })
     .click();
   await expect(
     page.locator("[data-orka-toast]").getByRole("alert"),
@@ -1418,6 +1472,23 @@ test("a failed launch gives an error without success or automatic retry", async 
       .getByRole("button", { name: "Try again" }),
   ).toHaveCount(0);
   expect(await calls(page, "resume_session")).toHaveLength(1);
+});
+
+test("offline sync does not disable fork and open from cached session history", async ({
+  page,
+}) => {
+  await detailFixture(page, { offline: true });
+  await openSession(page);
+  const primary = page.getByRole("button", {
+    name: "Fork and open in Codex",
+    exact: true,
+  });
+  await expect(primary).toBeEnabled();
+  await primary.click();
+  await expect
+    .poll(() => calls(page, "resume_session"))
+    .toEqual([{ id: "session-c", tool: "codex", destination: "desktop" }]);
+  await expect(primary).toBeEnabled();
 });
 
 test("failed app discovery keeps download available and can be retried", async ({
@@ -1456,14 +1527,20 @@ test("late launch options cannot enable a different session", async ({
   await page.evaluate(() => (window as any).finishLaunchOptions());
   await openSession(page, "Shared planning");
   await expect(
-    page.getByRole("button", { name: "Open in Claude Desktop", exact: true }),
+    page.getByRole("button", {
+      name: "Fork and open in Claude Desktop",
+      exact: true,
+    }),
   ).toBeDisabled();
   await expect
     .poll(() => calls(page, "session_launch_options"))
     .toHaveLength(2);
   await page.evaluate(() => (window as any).finishLaunchOptions());
   await expect(
-    page.getByRole("button", { name: "Open in Claude Desktop", exact: true }),
+    page.getByRole("button", {
+      name: "Fork and open in Claude Desktop",
+      exact: true,
+    }),
   ).toBeEnabled();
 });
 
@@ -1512,7 +1589,13 @@ for (const dimension of ["profile", "user", "service"] as const) {
         await page
           .getByRole("button", { name: "Choose how to open session" })
           .click();
-        await page.getByRole("menuitem", { name: "Warp", exact: true }).click();
+        await chooseTerminal(page, "Warp");
+        await page
+          .getByRole("menuitem", {
+            name: "Fork in Codex CLI Fresh session copy in Warp",
+            exact: true,
+          })
+          .click();
         await expect(
           page.getByRole("dialog", { name: "Continue in Warp" }),
         ).toBeVisible();
@@ -1529,7 +1612,7 @@ for (const dimension of ["profile", "user", "service"] as const) {
         page.getByRole("dialog", { name: "Continue in Warp" }),
       ).toHaveCount(0);
       const primary = page.getByRole("button", {
-        name: "Open in Codex",
+        name: "Fork and open in Codex",
         exact: true,
       });
       if (pendingOptions) {
@@ -1566,8 +1649,11 @@ for (const [tool, sourceTitle, label] of [
       await detailFixture(page, { sessionTitle: title });
       await openSession(page, tool === "codex" ? title : sourceTitle);
       await expect(
-        page.getByRole("button", { name: `Open in ${label}`, exact: true }),
-      ).toHaveText(`Open in ${label}`);
+        page.getByRole("button", {
+          name: `Fork and open in ${label}`,
+          exact: true,
+        }),
+      ).toHaveText(`Fork and open in ${label}`);
       const heading = page.locator(".detail-title");
       expect((await heading.boundingBox())!.width).toBeGreaterThanOrEqual(280);
       const trigger = page.getByRole("button", {
@@ -1583,11 +1669,18 @@ for (const [tool, sourceTitle, label] of [
       ).toBeFocused();
       await page.keyboard.press("Home");
       await expect(
-        page.getByRole("menuitem", { name: `${label} Default`, exact: true }),
+        page.getByRole("menuitem", {
+          name: `Fork in ${label} Opens a fresh session copy Default`,
+          exact: true,
+        }),
       ).toBeFocused();
       await page.keyboard.press("ArrowDown");
       await expect(
-        page.getByRole("menuitem", { name: "Terminal", exact: true }),
+        page.getByRole("menuitem", {
+          name: new RegExp(
+            `^Fork in ${tool === "claude" ? "Claude Code CLI" : "Codex CLI"} Fresh session copy in Terminal`,
+          ),
+        }),
       ).toBeFocused();
       const bounds = await menu.boundingBox();
       expect(bounds!.x).toBeGreaterThanOrEqual(0);
@@ -1910,4 +2003,153 @@ test("reduced motion keeps navigation aligned and Settings keyboard focus intact
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(settings).toBeFocused();
+});
+
+for (const [title, label, tool] of [
+  ["Polish navigation", "Codex CLI", "codex"],
+  ["Shared planning", "Claude Code CLI", "claude"],
+] as const) {
+  test(`CLI-origin ${tool} sessions default to their original CLI`, async ({
+    page,
+  }) => {
+    await detailFixture(page, { cliOrigin: true });
+    await openSession(page, title);
+    await page
+      .getByRole("button", { name: `Fork and open in ${label}`, exact: true })
+      .click();
+    expect((await calls(page, "resume_session")).at(-1)).toEqual({
+      id: tool === "codex" ? "session-c" : "session-m",
+      tool,
+      destination: "terminal",
+    });
+    await page
+      .getByRole("button", { name: "Choose how to open session" })
+      .click();
+    await expect(page.getByRole("menuitem").first()).toContainText(
+      `Fork in ${label}Fresh session copy in TerminalDefault`,
+    );
+  });
+}
+
+test("cross-provider CLI continuation names immediate startup and uses the selected terminal", async ({
+  page,
+}) => {
+  await detailFixture(page);
+  await openSession(page);
+  await page
+    .getByRole("button", { name: "Choose how to open session" })
+    .click();
+  await chooseTerminal(page, "Warp");
+  const cli = page.getByRole("menuitem", {
+    name: /^Continue in Claude Code CLI/,
+  });
+  await expect(cli).toContainText("Starts immediately in Warp with context");
+  await cli.click();
+  expect((await calls(page, "resume_session")).at(-1)).toEqual({
+    id: "session-c",
+    tool: "claude",
+    destination: "warp",
+  });
+});
+
+test("copy session prompt works without apps or a connected folder and confirms inline", async ({
+  page,
+}) => {
+  await detailFixture(page, { noApps: true, disconnected: true });
+  await openSession(page);
+  await page
+    .getByRole("button", { name: "Choose how to open session" })
+    .click();
+  const copy = page.getByRole("menuitem", {
+    name: /Copy session prompt/,
+  });
+  const before = await copy.evaluate((element) => element.clientWidth);
+  await copy.click();
+  await expect(copy).toHaveAttribute("data-copied", "true");
+  expect(await page.evaluate(() => (window as any).copiedText)).toContain(
+    "Original request",
+  );
+  expect(await page.evaluate(() => (window as any).copiedText)).toContain(
+    "Complete answer",
+  );
+  await expect(page.getByRole("menu", { name: "Open session" })).toBeVisible();
+  expect(await copy.evaluate((element) => element.clientWidth)).toBe(before);
+  expect(
+    (await new AxeBuilder({ page }).include('[role="menu"]').analyze())
+      .violations,
+  ).toEqual([]);
+  expect(await calls(page, "resume_session")).toEqual([]);
+});
+
+for (const failure of ["history", "clipboard"] as const) {
+  test(`copy session prompt reports ${failure} failure without copied feedback`, async ({
+    page,
+  }) => {
+    await detailFixture(page, { promptError: failure === "history" });
+    if (failure === "clipboard")
+      await page.evaluate(() =>
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: {
+            writeText: async () => {
+              throw new Error("Clipboard denied");
+            },
+          },
+        }),
+      );
+    await openSession(page);
+    await page
+      .getByRole("button", { name: "Choose how to open session" })
+      .click();
+    const copy = page.getByRole("menuitem", {
+      name: "Copy session prompt",
+      exact: true,
+    });
+    await copy.click();
+    await expect(copy).toHaveAttribute("data-copied", "false");
+    await expect(page.locator(".session-launcher-copy-error")).toContainText(
+      "Couldn’t copy session prompt",
+    );
+  });
+}
+
+test("a late prompt cannot copy context after selecting another session", async ({
+  page,
+}) => {
+  await detailFixture(page);
+  await page.evaluate(() => {
+    const w = window as any;
+    const original = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = async (name: string, args: unknown) => {
+      const result = await original(name, args);
+      if (name === "session_handoff_prompt")
+        await new Promise<void>((resolve) => {
+          w.finishPrompt = resolve;
+        });
+      return result;
+    };
+  });
+  await openSession(page);
+  await page
+    .getByRole("button", { name: "Choose how to open session" })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Copy session prompt", exact: true })
+    .click();
+  await expect
+    .poll(() => calls(page, "session_handoff_prompt"))
+    .toHaveLength(1);
+  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Back to Sessions", exact: true })
+    .click();
+  await openSession(page, "Shared planning");
+  await page.evaluate(() => (window as any).finishPrompt());
+  await expect(
+    page.getByRole("button", {
+      name: "Fork and open in Claude Desktop",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  expect(await page.evaluate(() => (window as any).copiedText)).toBeUndefined();
 });

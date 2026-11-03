@@ -7,11 +7,16 @@ import { privateSharing } from "./project-sharing.js";
 import { parseProjectInvite, sameServiceUrl } from "./project-invite.js";
 import { useSourceFolders } from "./source-folders.js";
 
-export async function connectProject(id: string, sourceId?: string) {
+export async function connectProject(
+  id: string,
+  sourceId?: string,
+  defaultPath?: string,
+) {
   const path = await open({
     directory: true,
     multiple: !sourceId,
     title: "Connect source folders on this Mac",
+    defaultPath,
   });
   const paths = typeof path === "string" ? [path] : (path ?? []);
   if (paths.length)

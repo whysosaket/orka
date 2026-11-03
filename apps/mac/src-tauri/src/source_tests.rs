@@ -14,6 +14,65 @@ fn multi_source(f: &Fixture) -> Value {
 }
 
 #[test]
+fn folder_identity_preserves_directory_moves_and_rejects_replacements() {
+    let home = tempfile::tempdir().unwrap();
+    let root = home.path().join("项目 checkout");
+    fs::create_dir(&root).unwrap();
+    let identity = indexer::folder_identity(&root).unwrap();
+    #[cfg(target_os = "macos")]
+    assert!(identity.starts_with("volume:"));
+    let moved = home.path().join("moved");
+    fs::rename(&root, &moved).unwrap();
+    assert!(indexer::folder_identity_matches(&moved, &identity).unwrap());
+    let linked = home.path().join("linked");
+    std::os::unix::fs::symlink(&moved, &linked).unwrap();
+    assert!(indexer::folder_identity_matches(&linked, &identity).unwrap());
+    fs::create_dir(&root).unwrap();
+    assert!(!indexer::folder_identity_matches(&root, &identity).unwrap());
+    assert!(sources::validate(&json!({"path":root,"folderIdentity":identity})).is_err());
+    fs::remove_dir(&root).unwrap();
+    assert!(sources::validate(&json!({"path":root,"folderIdentity":identity})).is_err());
+}
+
+#[test]
+fn catalog_upgrades_verified_legacy_identities_without_trusting_changed_devices() {
+    use std::os::unix::fs::MetadataExt;
+    let f = Fixture::new();
+    let mut project = multi_source(&f);
+    for (index, source) in project["sources"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .enumerate()
+    {
+        let meta = fs::metadata(source["path"].as_str().unwrap()).unwrap();
+        source["folderIdentity"] = json!(format!("{}:{}", meta.dev() + index as u64, meta.ino()));
+    }
+    let views = sources::views(&project);
+    sources::validate(&views[0]).unwrap();
+    assert!(sources::validate(&views[1]).is_err());
+    let id = project["id"].as_str().unwrap();
+    db::upsert(&f.db, "projects", id, id, &project).unwrap();
+    let mut remote = project.clone();
+    for source in remote["sources"].as_array_mut().unwrap() {
+        source.as_object_mut().unwrap().remove("path");
+        source.as_object_mut().unwrap().remove("folderIdentity");
+    }
+    crate::projects::merge_catalog(&f.db, &json!([remote])).unwrap();
+    let saved = db::rows(&f.db, "SELECT value FROM projects WHERE id=?", &[&id])
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        saved["sources"][0]["folderIdentity"],
+        indexer::folder_identity(&f.root).unwrap()
+    );
+    assert_eq!(saved["sources"][1], project["sources"][1]);
+    let views = sources::views(&saved);
+    sources::validate(&views[0]).unwrap();
+    assert!(sources::validate(&views[1]).is_err());
+}
+
+#[test]
 fn global_skill_publication_adopts_the_selected_repository_in_a_multi_source_project() {
     let f = Fixture::new();
     let mut project = multi_source(&f);

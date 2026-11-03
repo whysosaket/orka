@@ -84,16 +84,31 @@ pub fn validate(project: &Value) -> Result<()> {
         .ok_or("Connect this repository's folder")?;
     let root = Path::new(raw);
     if !root.is_dir()
-        || project["folderIdentity"]
-            .as_str()
-            .is_some_and(|identity| indexer::folder_identity(root).as_deref() != Ok(identity))
+        || project["folderIdentity"].as_str().is_some_and(|identity| {
+            !indexer::folder_identity_matches(root, identity).unwrap_or(false)
+        })
     {
         return Err(
-            "Connected source folder changed or is unavailable; local writes and deletions paused"
+            "Connected source folder changed or is unavailable; local writes and deletions paused. Reconnect it in Settings → Source folders."
                 .into(),
         );
     }
     Ok(())
+}
+
+pub fn upgrade_identity(source: &mut Value) {
+    let (Some(path), Some(expected)) = (source["path"].as_str(), source["folderIdentity"].as_str())
+    else {
+        return;
+    };
+    let root = Path::new(path);
+    if !expected.starts_with("volume:")
+        && indexer::folder_identity_matches(root, expected) == Ok(true)
+    {
+        if let Ok(identity) = indexer::folder_identity(root) {
+            source["folderIdentity"] = json!(identity);
+        }
+    }
 }
 
 pub fn resource_id(project: &Value, kind: &str, path: &str) -> Result<String> {

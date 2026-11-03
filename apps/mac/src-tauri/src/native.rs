@@ -25,13 +25,62 @@ pub fn binary(tool: &str) -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("PATH") {
         candidates.extend(std::env::split_paths(&path).map(|p| p.join(tool)));
     }
+    let home = db::home()?;
+    for directory in [
+        ".volta/bin",
+        ".npm-global/bin",
+        "Library/pnpm",
+        ".local/share/pnpm",
+        ".asdf/shims",
+        ".local/share/mise/shims",
+    ] {
+        candidates.push(home.join(directory).join(tool));
+    }
+    if tool == "claude" {
+        candidates.push(home.join(".claude/local/claude"));
+    }
+    if let Ok(entries) = fs::read_dir(home.join(".nvm/versions/node")) {
+        let mut versions: Vec<_> = entries
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .collect();
+        versions.sort_by_key(|path| {
+            std::cmp::Reverse(fs::metadata(path).and_then(|meta| meta.modified()).ok())
+        });
+        candidates.extend(versions.into_iter().map(|path| path.join("bin").join(tool)));
+    }
+    if tool == "codex" {
+        candidates.extend(crate::session_launcher::bundled_cli());
+        for applications in [PathBuf::from("/Applications"), home.join("Applications")] {
+            candidates.push(applications.join("Codex.app/Contents/Resources/codex"));
+            candidates.push(applications.join("ChatGPT.app/Contents/Resources/codex"));
+        }
+    }
     candidates
         .into_iter()
-        .find(|p| p.is_file())
+        .find(|p| {
+            use std::os::unix::fs::PermissionsExt;
+            fs::metadata(p)
+                .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+        })
         .ok_or(format!("Install {tool} to enable native sessions"))
 }
+pub(crate) fn cli_path(binary: &Path) -> std::ffi::OsString {
+    let mut paths = vec![binary
+        .parent()
+        .unwrap_or(Path::new("/usr/bin"))
+        .to_path_buf()];
+    if let Some(path) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&path));
+    }
+    paths.extend(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].map(PathBuf::from));
+    std::env::join_paths(paths).unwrap_or_else(|_| "/usr/bin:/bin".into())
+}
+
 pub fn version(tool: &str) -> Result<String> {
-    let mut child = Command::new(binary(tool)?)
+    let binary = binary(tool)?;
+    let mut child = Command::new(&binary)
+        .env("PATH", cli_path(&binary))
         .arg("--version")
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -103,7 +152,10 @@ pub fn record_handoff(
     }
     db::set(
         db,
-        &format!("handoff:{project_id}:{id}"),
+        &format!(
+            "handoff:{project_id}:{id}:{}",
+            db::digest(path.to_string_lossy().as_bytes())
+        ),
         &json!({"path":path,"resource":resource,"sources":sources,"hash":db::digest(&fs::read(path).map_err(|e|e.to_string())?)}),
     )?;
     let mut pending = db::get(db, &format!("pendingHandoffSources:{project_id}"))?
@@ -188,7 +240,9 @@ pub struct Rpc {
 }
 impl Rpc {
     fn spawn(proxy: bool) -> Result<Self> {
-        let mut command = Command::new(binary("codex")?);
+        let binary = binary("codex")?;
+        let mut command = Command::new(&binary);
+        command.env("PATH", cli_path(&binary));
         command.args(if proxy {
             vec!["app-server", "proxy"]
         } else {
@@ -509,6 +563,14 @@ pub fn materialize(
         json!({"nativeId":id,"paths":[path],"base":resource,"writeGuard":db::digest(&json!(files).to_string().into_bytes())}),
     )
 }
+pub fn fork_session(db: &rusqlite::Connection, project: &Value, resource: &Value) -> Result<Value> {
+    let mut fork = resource.clone();
+    fork["resourceId"] = json!(Uuid::new_v4().to_string());
+    fork["owner"] = db::get(db, "user")?;
+    // A fresh import identity and no old binding keep every source file untouched.
+    materialize(db, project, &fork, &Value::Null)
+}
+
 pub fn install_hooks(project: &Path) -> Result<()> {
     let base = project.canonicalize().map_err(|e| e.to_string())?;
     let executable = std::env::current_exe().map_err(|e| e.to_string())?;

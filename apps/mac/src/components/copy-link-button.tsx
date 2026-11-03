@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import { CheckIcon, LinkIcon } from "@primer/octicons-react";
-import { Button } from "./button.js";
+import {
+  CheckIcon,
+  LinkIcon,
+  type Icon as OcticonIcon,
+} from "@primer/octicons-react";
+import { Button, type ButtonVariant } from "./button.js";
 import { Icon } from "./icon.js";
 
 export function CopyLinkButton({
@@ -10,6 +14,10 @@ export function CopyLinkButton({
   disabled,
   onError,
   iconOnly = false,
+  loadValue,
+  icon = LinkIcon,
+  variant,
+  role,
 }: {
   value: string;
   label?: string;
@@ -17,6 +25,10 @@ export function CopyLinkButton({
   disabled?: boolean;
   onError: (message: string) => void;
   iconOnly?: boolean;
+  loadValue?: () => Promise<string>;
+  icon?: OcticonIcon;
+  variant?: ButtonVariant;
+  role?: React.AriaRole;
 }) {
   const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState(false);
@@ -38,7 +50,9 @@ export function CopyLinkButton({
     clearTimeout(timer.current);
     onError("");
     try {
-      await navigator.clipboard.writeText(value);
+      const text = loadValue ? await loadValue() : value;
+      if (current !== generation.current) return;
+      await navigator.clipboard.writeText(text);
       if (current !== generation.current) return;
       setCopied(true);
       timer.current = setTimeout(() => setCopied(false), 2000);
@@ -53,30 +67,35 @@ export function CopyLinkButton({
   return (
     <>
       <Button
-        variant={iconOnly ? "tertiary" : "secondary"}
+        variant={variant ?? (iconOnly ? "tertiary" : "secondary")}
         size="sm"
         className={`copy-link-button${iconOnly ? " ui-icon-button" : ""}`}
         disabled={disabled || pending}
         data-copied={copied}
         data-motion={motion}
-        aria-label={label}
+        aria-label={copied && role === "menuitem" ? `${label} Copied` : label}
+        role={role}
+        aria-live={role === "menuitem" ? "polite" : undefined}
+        data-keep-open={loadValue ? true : undefined}
         title={iconOnly ? (copied ? "Link copied" : label) : undefined}
         onClick={(event) => void copy(event)}
       >
         <span className="copy-link-content" aria-hidden="true">
           <span className="copy-link-default">
-            <Icon icon={LinkIcon} size="sm" />
+            <Icon icon={icon} size="sm" />
             {!iconOnly && label}
-          </span>
+          </span>{" "}
           <span className="copy-link-success">
             <Icon icon={CheckIcon} size="sm" />
             {!iconOnly && "Copied"}
           </span>
         </span>
+        {copied && role !== "menuitem" && (
+          <span className="sr-only" role="status">
+            Link copied
+          </span>
+        )}
       </Button>
-      <span className="sr-only" role="status">
-        {copied ? "Link copied" : ""}
-      </span>
     </>
   );
 }

@@ -138,6 +138,120 @@ fn claude_import_reuses_identity_and_preserves_graph_tools_and_local_edits() {
 }
 
 #[test]
+fn local_codex_forks_use_complete_cached_history_and_never_replace_source_files() {
+    let f = Fixture::new();
+    let (resource, paths) = paginated_chain(&f);
+    let original = History::resource(&resource).unwrap().records();
+    let original_files: Vec<_> = paths.iter().map(|path| fs::read(path).unwrap()).collect();
+    mock_codex(&f);
+    let _sync = crate::projects::lock().unwrap();
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        let binding = native::fork_session(&f.db, &f.project, &resource).unwrap();
+        let id = binding["nativeId"].as_str().unwrap();
+        assert!(!ids.iter().any(|previous| previous == id));
+        let copy = History::local(
+            PathBuf::from(binding["paths"][0].as_str().unwrap()).as_path(),
+            Some(&f.root),
+        )
+        .unwrap()
+        .records();
+        assert_eq!(native::transcript(&copy), native::transcript(&original));
+        assert!(copy.iter().any(|record| record["type"] == "compacted"));
+        ids.push(id.to_string());
+    }
+    for (path, bytes) in paths.iter().zip(original_files) {
+        assert_eq!(fs::read(path).unwrap(), bytes);
+    }
+    assert_eq!(History::resource(&resource).unwrap().records(), original);
+}
+
+#[test]
+fn local_claude_forks_preserve_native_graphs_and_leave_an_active_original_untouched() {
+    let f = Fixture::new();
+    let bin = f._home.path().join(".local/bin");
+    fs::create_dir_all(&bin).unwrap();
+    fs::write(
+        bin.join("claude"),
+        "#!/bin/sh\nprintf '2.1.286 (Claude Code)\\n'\n",
+    )
+    .unwrap();
+    fs::set_permissions(bin.join("claude"), fs::Permissions::from_mode(0o700)).unwrap();
+    let original_id = uuid::Uuid::new_v4().to_string();
+    let records = vec![
+        json!({"type":"user","sessionId":original_id,"cwd":f.root,"uuid":"first","parentUuid":null,"message":{"role":"user","content":"Keep this history"}}),
+        json!({"type":"assistant","sessionId":original_id,"cwd":f.root,"uuid":"second","parentUuid":"first","message":{"role":"assistant","content":[{"type":"tool_use","id":"call","name":"Read","input":{"path":"historical"}}]}}),
+    ];
+    let bytes = native::encode(&records);
+    let original_path = f.root.join("original.jsonl");
+    fs::write(&original_path, &bytes).unwrap();
+    f.db.execute(
+        "INSERT INTO active VALUES(?,?)",
+        rusqlite::params![original_id, json!({"pid":std::process::id()}).to_string()],
+    )
+    .unwrap();
+    let resource = json!({"resourceId":uuid::Uuid::new_v4().to_string(),"projectId":f.project["id"],"source":"claude","revision":1,"files":[{"path":"session.jsonl","hash":db::blob(&bytes).unwrap(),"size":bytes.len()}]});
+    let _sync = crate::projects::lock().unwrap();
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        let fork = native::fork_session(&f.db, &f.project, &resource).unwrap();
+        let id = fork["nativeId"].as_str().unwrap();
+        assert_ne!(id, original_id);
+        assert!(!ids.iter().any(|previous| previous == id));
+        let copy = native::complete_records(&fs::read(fork["paths"][0].as_str().unwrap()).unwrap())
+            .unwrap();
+        for (old, new) in records.iter().zip(copy) {
+            for key in ["message", "uuid", "parentUuid"] {
+                assert_eq!(old[key], new[key]);
+            }
+            assert_eq!(new["sessionId"], id);
+        }
+        ids.push(id.to_string());
+    }
+    assert_eq!(fs::read(original_path).unwrap(), bytes);
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
+#[ignore = "requires installed Codex; isolated cached fork acceptance without model work"]
+fn cached_forks_are_independent_and_readable_by_installed_codex_while_sync_is_locked() {
+    let f = Fixture::new();
+    f.select_codex_binary();
+    let (resource, paths) = paginated_chain(&f);
+    let history = History::resource(&resource).unwrap().records();
+    let originals: Vec<_> = paths.iter().map(|path| fs::read(path).unwrap()).collect();
+    let _sync = crate::projects::lock().unwrap();
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        let fork = native::fork_session(&f.db, &f.project, &resource).unwrap();
+        let id = fork["nativeId"].as_str().unwrap();
+        assert!(!ids.iter().any(|previous| previous == id));
+        let local = History::local(
+            std::path::Path::new(fork["paths"][0].as_str().unwrap()),
+            Some(&f.root),
+        )
+        .unwrap()
+        .records();
+        assert_eq!(native::transcript(&local), native::transcript(&history));
+        let read = native::Rpc::connect()
+            .unwrap()
+            .call("thread/read", json!({"threadId":id,"includeTurns":false}))
+            .unwrap();
+        assert_eq!(read["thread"]["id"], id);
+        assert!(!native::active_for_resume(
+            &f.db,
+            id,
+            "codex",
+            &[PathBuf::from(fork["paths"][0].as_str().unwrap())]
+        ));
+        ids.push(id.to_string());
+    }
+    for (path, bytes) in paths.iter().zip(originals) {
+        assert_eq!(fs::read(path).unwrap(), bytes);
+    }
+}
+
+#[test]
 fn legacy_import_relocates_execution_context_without_changing_historical_paths() {
     let f = Fixture::new();
     let (resource, _) = paginated_chain(&f);
