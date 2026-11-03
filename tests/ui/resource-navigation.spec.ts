@@ -654,7 +654,9 @@ for (const width of [1160, 900])
   }, testInfo) => {
     await page.setViewportSize({ width, height: 640 });
     await resourceFixture(page);
-    await expect(page.locator(".home-overview-totals")).toHaveCount(0);
+    await expect(
+      page.getByRole("region", { name: "Project totals" }).getByRole("button"),
+    ).toHaveCount(4);
     await expect(
       page.getByRole("heading", { name: "Orka", exact: true }),
     ).toHaveCount(0);

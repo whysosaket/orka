@@ -9,7 +9,57 @@
   padding: 40px 24px 24px;
 }
 
-/* The Home collection palette matches the selected Figma screen. */
+.home-overview-totals {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.home-overview-total {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  border: 0;
+  border-radius: var(--radius-surface);
+  padding: 12px 16px;
+  background: var(--surface-tertiary);
+  color: var(--text-primary);
+  text-align: left;
+  transition: background-color var(--motion-control-duration)
+    var(--motion-control-ease);
+}
+
+.home-overview-total:hover {
+  background: var(--interaction-hover);
+}
+
+.home-overview-total:focus-visible {
+  outline-offset: 2px;
+}
+
+.home-overview-total-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: var(--body-sm-font-size);
+  font-weight: var(--body-sm-font-weight);
+  line-height: var(--body-sm-line-height);
+  letter-spacing: var(--body-sm-letter-spacing);
+}
+
+.home-overview-total > strong {
+  font-size: var(--heading-lg-font-size);
+  font-weight: var(--heading-lg-font-weight);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--heading-lg-line-height);
+  letter-spacing: var(--heading-lg-letter-spacing);
+}
+
+/* The recent-update palette matches the selected Figma screen. */
 .home-overview-kind--memory {
   --home-kind-color: #60a5fa;
   --home-kind-surface: rgba(96, 165, 250, 0.12);
@@ -166,6 +216,12 @@
   letter-spacing: var(--body-sm-letter-spacing);
 }
 
+@media (max-width: 1100px) {
+  .home-overview-totals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 760px) {
   .project-home-overview {
     padding: 24px 16px;
@@ -173,6 +229,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .home-overview-total,
   .home-update {
     transition: none;
   }

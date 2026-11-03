@@ -54,11 +54,13 @@ export function ProjectHome({
   project,
   resources,
   user,
+  onNavigate,
   onOpen,
 }: {
   project: Project;
   resources: Resource[];
   user?: string | null;
+  onNavigate: (kind: Resource["kind"]) => void;
   onOpen: (resource: Resource) => void;
 }) {
   const memberName = useMemberLabel(user ?? null);
@@ -86,6 +88,30 @@ export function ProjectHome({
 
   return (
     <div className="project-home-overview">
+      <section className="home-overview-totals" aria-label="Project totals">
+        {collections.map(({ kind, label, icon: CollectionIcon }) => {
+          const count = items.filter((item) => item.kind === kind).length;
+          return (
+            <button
+              type="button"
+              className="home-overview-total"
+              key={kind}
+              onClick={() => onNavigate(kind)}
+            >
+              <span className="sr-only">View </span>
+              <span className="home-overview-total-label">
+                <CollectionIcon
+                  size={16}
+                  aria-hidden="true"
+                  focusable="false"
+                />
+                {label}
+              </span>
+              <strong>{count}</strong>
+            </button>
+          );
+        })}
+      </section>
       <section className="home-updates" aria-labelledby="home-updates-title">
         <h2 id="home-updates-title">Recent Updates</h2>
         {recent.length ? (

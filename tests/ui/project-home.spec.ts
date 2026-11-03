@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { AxeBuilder } from "@axe-core/playwright";
 
 async function homeFixture(page: Page) {
   await page.clock.install({ time: new Date("2026-10-20T12:00:00Z") });
@@ -46,6 +47,7 @@ async function homeFixture(page: Page) {
         kind: "memory",
         title: "Older update",
         updatedAt: "2026-10-19T06:00:00Z",
+        sourceId: "backend",
       },
       {
         resourceId: "home-deleted",
@@ -63,6 +65,7 @@ async function homeFixture(page: Page) {
       },
     ].map((resource) => ({
       projectId: "one",
+      sourceId: "desktop",
       source: "codex",
       owner: "user",
       updatedBy: "user",
@@ -111,6 +114,14 @@ async function homeFixture(page: Page) {
                   name: "OpenWhispr",
                   path: "/test/openwhispr",
                   role: "owner",
+                  sources: [
+                    {
+                      id: "desktop",
+                      name: "Desktop",
+                      path: "/test/openwhispr",
+                    },
+                    { id: "backend", name: "Backend", path: "/test/backend" },
+                  ],
                 },
                 {
                   id: "empty",
@@ -120,6 +131,17 @@ async function homeFixture(page: Page) {
                 },
               ],
               resources,
+              localSkills: [
+                {
+                  ...resources[1],
+                  resourceId: "home-local-skill",
+                  logicalPath: "codex/local-skill",
+                  title: "Local review skill",
+                  local: true,
+                  updatedAt: "2026-10-18T06:00:00Z",
+                },
+                { ...resources[1], local: true },
+              ],
               bindings: [],
               conflicts: [],
               activity: [],
@@ -165,6 +187,28 @@ async function homeFixture(page: Page) {
 
 const updates = (page: Page) =>
   page.getByRole("list", { name: "Recently updated resources" });
+const totals = (page: Page) =>
+  page.getByRole("region", { name: "Project totals" });
+
+test("Home totals include the entire project and local skills, excluding deleted items and other projects", async ({
+  page,
+}) => {
+  await homeFixture(page);
+  for (const [label, count] of [
+    ["memories", "4"],
+    ["skills", "2"],
+    ["sessions", "1"],
+    ["plans", "1"],
+  ]) {
+    await expect(
+      totals(page)
+        .getByRole("button", {
+          name: new RegExp(`^View ${label} [0-9]+$`, "i"),
+        })
+        .locator("strong"),
+    ).toHaveText(count);
+  }
+});
 
 test("Home shows the selected project's six latest resources and real update metadata", async ({
   page,
@@ -193,7 +237,7 @@ test("Home shows the selected project's six latest resources and real update met
   await expect(list).not.toContainText("Other project update");
   await expect(list).not.toContainText("Deleted update");
   await expect(list).not.toContainText("Older update");
-  await expect(page.locator(".home-overview-totals")).toHaveCount(0);
+  await expect(totals(page).getByRole("button")).toHaveCount(4);
   await expect(
     page.getByText("Needs your attention", { exact: true }),
   ).toHaveCount(0);
@@ -233,29 +277,114 @@ test("recent memory, skill, session, and plan rows open their existing reading v
   await expect(page.locator(".workspace-header h1")).toHaveText("Skills");
 });
 
-test("Home keeps the unified recent list and fits the minimum window without total cards", async ({
+test("each project total opens its collection instead of the previously selected detail", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
   await homeFixture(page);
-  await expect(updates(page)).toContainText("Interface review");
-  await page.evaluate(() => document.fonts.ready);
-  await expect(page.locator(".home-overview-totals")).toHaveCount(0);
-  await expect(updates(page)).toBeVisible();
-  await page.screenshot({ path: "artifacts/home-1440.png" });
-  await page.setViewportSize({ width: 900, height: 640 });
-  await page.clock.runFor(100);
-  await expect(page.locator(".app")).toHaveCount(1);
-  expect((await page.locator(".app").boundingBox())!.height).toBe(640);
-  const home = page.locator(".project-home-overview");
-  expect(
-    await home.evaluate(
-      (element) => element.scrollWidth <= element.clientWidth,
-    ),
-  ).toBe(true);
-  await expect(page.locator(".home-overview-totals")).toHaveCount(0);
-  await page.screenshot({ path: "artifacts/home-900.png" });
+  for (const [label, collection] of [
+    ["memories", "Memories"],
+    ["skills", "Skills"],
+    ["sessions", "Sessions"],
+    ["plans", "Plans"],
+  ]) {
+    await updates(page).locator('[data-resource-id="home-memory"]').click();
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+    await totals(page)
+      .getByRole("button", { name: new RegExp(`^View ${label} [0-9]+$`, "i") })
+      .click();
+    await expect(page.locator(".workspace-header h1")).toHaveText(collection);
+    await expect(
+      page.getByRole("button", { name: `Back to ${collection}`, exact: true }),
+    ).toHaveCount(0);
+    await expect(page.locator(".resource-index")).toBeVisible();
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+  }
 });
+
+test("project totals open all repositories after browsing a filtered collection", async ({
+  page,
+}) => {
+  await homeFixture(page);
+  await totals(page)
+    .getByRole("button", { name: /^View Memories [0-9]+$/ })
+    .click();
+  const filter = page.getByRole("combobox", {
+    name: "Filter by repository",
+    exact: true,
+  });
+  await filter.click();
+  await page.getByRole("option", { name: "Desktop", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Older update", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Home", exact: true }).click();
+  await expect(
+    totals(page)
+      .getByRole("button", { name: /^View Memories [0-9]+$/ })
+      .locator("strong"),
+  ).toHaveText("4");
+  await totals(page)
+    .getByRole("button", { name: /^View Memories [0-9]+$/ })
+    .click();
+  await expect(filter).toContainText("All repositories");
+  await expect(
+    page.getByRole("button", { name: "Older update", exact: true }),
+  ).toBeVisible();
+});
+
+test("project totals support keyboard navigation and have no accessibility violations", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await homeFixture(page);
+  const memories = totals(page).getByRole("button", {
+    name: /^View Memories [0-9]+$/,
+  });
+  await memories.focus();
+  await expect(memories).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    totals(page).getByRole("button", { name: /^View Skills [0-9]+$/ }),
+  ).toBeFocused();
+  expect(
+    (await new AxeBuilder({ page }).include(".project-home-overview").analyze())
+      .violations,
+  ).toEqual([]);
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".workspace-header h1")).toHaveText("Skills");
+});
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 1160, height: 800 },
+  { width: 900, height: 640 },
+]) {
+  test(`Home totals and recent updates fit at ${viewport.width} by ${viewport.height}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await homeFixture(page);
+    await page.evaluate(() => document.fonts.ready);
+    await expect(updates(page)).toContainText("Interface review");
+    const cards = totals(page).getByRole("button");
+    await expect(cards).toHaveCount(4);
+    for (const card of await cards.all()) await expect(card).toBeInViewport();
+    expect((await page.locator(".app").boundingBox())!.height).toBe(
+      viewport.height,
+    );
+    const home = page.locator(".project-home-overview");
+    expect(
+      await home.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    const first = (await cards.nth(0).boundingBox())!;
+    const third = (await cards.nth(2).boundingBox())!;
+    if (viewport.width === 900) expect(third.y).toBeGreaterThan(first.y);
+    else expect(third.y).toBe(first.y);
+    await page.screenshot({ path: `artifacts/home-${viewport.width}.png` });
+  });
+}
 
 test("an empty project keeps folder connection available and shows an honest empty state", async ({
   page,
@@ -270,9 +399,19 @@ test("an empty project keeps folder connection available and shows an honest emp
   await expect(
     page.getByRole("heading", { name: "No updates yet", exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".home-overview-totals")).toHaveCount(0);
+  await expect(totals(page).locator("strong")).toHaveText(["0", "0", "0", "0"]);
   await expect(
     page.getByRole("button", { name: /Connect folder/i }),
   ).toBeVisible();
   await expect(updates(page)).toHaveCount(0);
+  await totals(page)
+    .getByRole("button", { name: /^View Plans [0-9]+$/ })
+    .click();
+  await expect(page.locator(".workspace-header h1")).toHaveText("Plans");
+  await page.getByRole("button", { name: "Home", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "Select project", exact: true })
+    .click();
+  await page.getByRole("option", { name: "OpenWhispr", exact: true }).click();
+  await expect(totals(page).locator("strong")).toHaveText(["4", "2", "1", "1"]);
 });
