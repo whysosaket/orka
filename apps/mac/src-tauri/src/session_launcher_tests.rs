@@ -1,5 +1,5 @@
 use super::*;
-use crate::session_launcher::{self, Destination, Host, Tool};
+use crate::session_launcher::{self, Destination, Host, LaunchIntent, Tool};
 use std::{
     cell::RefCell, os::unix::fs::PermissionsExt, path::Path, process::Command, time::Duration,
 };
@@ -9,25 +9,57 @@ struct FakeHost {
     active: bool,
     native_activity: bool,
     missing: Option<Destination>,
+    missing_target: Option<(Destination, Tool)>,
+    missing_cli: Option<Tool>,
     fail: bool,
     manual: bool,
     cli_error: Option<&'static str>,
     desktop_cli_error: Option<&'static str>,
     scope_change: Option<(&'static str, Value)>,
+    fork_change: Option<&'static str>,
+    forks: RefCell<Vec<Value>>,
     calls: RefCell<Vec<Value>>,
 }
 impl Host for FakeHost {
-    fn installed(&self, destination: Destination, _: Tool) -> bool {
+    fn fork(
+        &self,
+        db: &rusqlite::Connection,
+        project: &Value,
+        resource: &Value,
+    ) -> db::Result<Value> {
+        self.forks.borrow_mut().push(resource.clone());
+        if self.fork_change == Some("revision") {
+            let mut changed = resource.clone();
+            changed["revision"] = json!(2);
+            db::upsert(
+                db,
+                "resources",
+                resource["resourceId"].as_str().unwrap(),
+                project["id"].as_str().unwrap(),
+                &changed,
+            )?;
+        } else if self.fork_change == Some("account") {
+            db::set(db, "user", &json!(uuid::Uuid::new_v4().to_string()))?;
+        }
+        Ok(json!({"nativeId":uuid::Uuid::new_v4().to_string(),"paths":[]}))
+    }
+    fn cli_installed(&self, tool: Tool) -> bool {
+        self.missing_cli != Some(tool)
+    }
+    fn installed(&self, destination: Destination, tool: Tool) -> bool {
         if let Some((key, value)) = &self.scope_change {
             db::set(&db::open().unwrap(), key, value).unwrap();
         }
-        self.missing != Some(destination)
+        self.missing != Some(destination) && self.missing_target != Some((destination, tool))
     }
     fn icon(&self, destination: Destination, tool: Tool) -> Option<String> {
         self.installed(destination, tool)
             .then(|| "data:image/png;base64,test-icon".into())
     }
-    fn cli(&self, _: Tool, desktop: bool) -> db::Result<PathBuf> {
+    fn cli(&self, tool: Tool, desktop: bool) -> db::Result<PathBuf> {
+        if self.missing_cli == Some(tool) {
+            return Err("Install this CLI".into());
+        }
         let error = if desktop {
             self.desktop_cli_error.or(self.cli_error)
         } else {
@@ -61,13 +93,19 @@ impl Host for FakeHost {
         &self,
         destination: Destination,
         tool: Tool,
-        id: &str,
+        intent: LaunchIntent<'_>,
         root: &Path,
         _: Option<&Path>,
     ) -> db::Result<Option<String>> {
-        self.calls
-            .borrow_mut()
-            .push(json!({"destination":destination,"tool":tool,"id":id,"root":root}));
+        let call = match intent {
+            LaunchIntent::Resume(id) => {
+                json!({"destination":destination,"tool":tool,"id":id,"root":root})
+            }
+            LaunchIntent::Handoff(prompt) => {
+                json!({"destination":destination,"tool":tool,"prompt":prompt,"root":root})
+            }
+        };
+        self.calls.borrow_mut().push(call);
         if self.fail {
             Err("Launch failed".into())
         } else {
@@ -77,7 +115,20 @@ impl Host for FakeHost {
 }
 
 fn session(f: &Fixture, source: &str, teammate: bool) -> Value {
-    let resource = json!({"resourceId":uuid::Uuid::new_v4().to_string(),"projectId":f.project["id"],"kind":"session","source":source,"owner":if teammate {json!(uuid::Uuid::new_v4().to_string())} else {db::get(&f.db,"user").unwrap()},"revision":1,"deleted":false,"files":[]});
+    let native_id = uuid::Uuid::new_v4().to_string();
+    let records = if source == "codex" {
+        vec![
+            json!({"type":"session_meta","payload":{"id":native_id,"cwd":f.root}}),
+            json!({"type":"event_msg","payload":{"type":"user_message","message":"Continue this task"}}),
+        ]
+    } else {
+        vec![
+            json!({"type":"user","sessionId":native_id,"cwd":f.root,"message":{"role":"user","content":"Continue this task"}}),
+        ]
+    };
+    let bytes = native::encode(&records);
+    let hash = db::blob(&bytes).unwrap();
+    let resource = json!({"resourceId":uuid::Uuid::new_v4().to_string(),"projectId":f.project["id"],"kind":"session","source":source,"owner":if teammate {json!(uuid::Uuid::new_v4().to_string())} else {db::get(&f.db,"user").unwrap()},"revision":1,"deleted":false,"files":[{"path":"session.jsonl","hash":hash,"size":bytes.len()}]});
     let id = resource["resourceId"].as_str().unwrap();
     db::upsert(
         &f.db,
@@ -87,13 +138,20 @@ fn session(f: &Fixture, source: &str, teammate: bool) -> Value {
         &resource,
     )
     .unwrap();
-    db::upsert(&f.db,"bindings",id,f.project["id"].as_str().unwrap(),&json!({"nativeId":uuid::Uuid::new_v4().to_string(),"base":resource,"paths":[f.root.join("original.jsonl")],"copyRequest":"existing-request"})).unwrap();
+    db::upsert(&f.db,"bindings",id,f.project["id"].as_str().unwrap(),&json!({"nativeId":native_id,"base":resource,"paths":[f.root.join("original.jsonl")],"copyRequest":"existing-request"})).unwrap();
     resource
 }
 
 #[test]
-fn exact_native_identity_and_copy_guard_survive_every_destination_and_retry() {
+fn every_open_forks_a_fresh_native_identity_and_preserves_the_source() {
     let f = Fixture::new();
+    let _sync = crate::projects::lock().unwrap();
+    db::set(
+        &f.db,
+        "sync",
+        &json!({"online":false,"error":"Service unavailable"}),
+    )
+    .unwrap();
     for tool in [Tool::Codex, Tool::Claude] {
         for teammate in [false, true] {
             let source = if tool == Tool::Codex {
@@ -120,17 +178,19 @@ fn exact_native_identity_and_copy_guard_survive_every_destination_and_retry() {
                     );
                 }
                 assert_eq!(host.calls.borrow().len(), 2);
-                assert_eq!(
-                    host.calls.borrow()[0],
-                    json!({"destination":destination,"tool":tool,"id":binding["nativeId"],"root":f.root})
-                );
+                let calls = host.calls.borrow();
+                assert_eq!(calls[0]["destination"], json!(destination));
+                assert_eq!(calls[0]["tool"], json!(tool));
+                assert_eq!(calls[0]["root"], json!(f.root));
+                assert_ne!(calls[0]["id"], binding["nativeId"]);
+                assert_ne!(calls[0]["id"], calls[1]["id"]);
                 assert_eq!(
                     fs::read_to_string(f.root.join("original.jsonl")).unwrap(),
                     "original native bytes"
                 );
                 let after = indexer::binding(&f.db, id).unwrap();
                 assert_eq!(after["copyRequest"], "existing-request");
-                assert_eq!(after["needsCopy"] == true, teammate);
+                assert_eq!(after, binding);
                 assert_eq!(governance_resource(&f, id), resource);
                 assert!(f.outbox().is_empty());
             }
@@ -140,6 +200,95 @@ fn exact_native_identity_and_copy_guard_survive_every_destination_and_retry() {
 
 fn governance_resource(f: &Fixture, id: &str) -> Value {
     crate::governance::resource(&f.db, id).unwrap()
+}
+
+#[test]
+fn launch_forks_without_waiting_for_sync_and_rechecks_before_opening_once() {
+    for change in [None, Some("revision"), Some("account")] {
+        let f = Fixture::new();
+        let resource = session(&f, "codex", false);
+        let id = resource["resourceId"].as_str().unwrap();
+        let native_id = indexer::binding(&f.db, id).unwrap()["nativeId"].clone();
+        let _sync = crate::projects::lock().unwrap();
+        let host = FakeHost {
+            fork_change: change,
+            ..FakeHost::default()
+        };
+        let result = session_launcher::resume_with(id, Tool::Codex, Destination::Desktop, &host);
+        if let Some(change) = change {
+            assert!(result.unwrap_err().contains(if change == "revision" {
+                "The session changed"
+            } else {
+                "Account or service changed"
+            }));
+            assert!(host.calls.borrow().is_empty());
+        } else {
+            assert_eq!(result.unwrap()["forked"], true);
+            assert_eq!(host.calls.borrow().len(), 1);
+            assert_ne!(host.calls.borrow()[0]["id"], native_id);
+        }
+        assert_eq!(host.forks.borrow().len(), 1);
+        assert!(!crate::projects::foreground_waiting().unwrap());
+    }
+}
+
+#[test]
+fn another_launch_blocks_duplicates_without_involving_the_sync_lock() {
+    let f = Fixture::new();
+    let resource = session(&f, "codex", false);
+    let host = FakeHost::default();
+    let _launch = crate::projects::launch_lock().unwrap();
+    assert!(session_launcher::resume_with(
+        resource["resourceId"].as_str().unwrap(),
+        Tool::Codex,
+        Destination::Desktop,
+        &host
+    )
+    .unwrap_err()
+    .contains("launch is already in progress"));
+    assert!(host.forks.borrow().is_empty());
+    assert!(host.calls.borrow().is_empty());
+}
+
+#[test]
+fn fork_attribution_follows_the_new_native_id_without_changing_source_ownership() {
+    let f = Fixture::new();
+    let mut project = f.project.clone();
+    project["governed"] = json!(true);
+    db::upsert(
+        &f.db,
+        "projects",
+        project["id"].as_str().unwrap(),
+        "",
+        &project,
+    )
+    .unwrap();
+    let mut resource = session(&f, "codex", true);
+    resource["contextSources"] = json!(["inherited-source"]);
+    let id = resource["resourceId"].as_str().unwrap();
+    db::upsert(
+        &f.db,
+        "resources",
+        id,
+        project["id"].as_str().unwrap(),
+        &resource,
+    )
+    .unwrap();
+    let binding = indexer::binding(&f.db, id).unwrap();
+    let result =
+        session_launcher::resume_with(id, Tool::Codex, Destination::Desktop, &FakeHost::default())
+            .unwrap();
+    assert_eq!(
+        native::session_sources(
+            &f.db,
+            project["id"].as_str().unwrap(),
+            result["nativeId"].as_str().unwrap()
+        )
+        .unwrap(),
+        json!(["inherited-source", id])
+    );
+    assert_eq!(indexer::binding(&f.db, id).unwrap(), binding);
+    assert_eq!(governance_resource(&f, id), resource);
 }
 
 #[test]
@@ -214,10 +363,9 @@ fn claude_terminal_activity_is_scoped_to_the_selected_transcript_and_hooks() {
 
     let selected_file = fs::File::open(&selected).unwrap();
     for destination in destinations {
-        assert!(
-            session_launcher::resume_with(id, Tool::Claude, destination, &host)
-                .unwrap_err()
-                .contains("already be open")
+        assert_eq!(
+            session_launcher::resume_with(id, Tool::Claude, destination, &host).unwrap()["forked"],
+            true
         );
     }
     drop(selected_file);
@@ -234,14 +382,14 @@ fn claude_terminal_activity_is_scoped_to_the_selected_transcript_and_hooks() {
         )
         .unwrap();
         for destination in destinations {
-            assert!(
-                session_launcher::resume_with(id, Tool::Claude, destination, &host)
-                    .unwrap_err()
-                    .contains("already be open")
+            assert_eq!(
+                session_launcher::resume_with(id, Tool::Claude, destination, &host).unwrap()
+                    ["forked"],
+                true
             );
         }
     }
-    assert_eq!(host.calls.borrow().len(), destinations.len());
+    assert_eq!(host.calls.borrow().len(), destinations.len() * 4);
     assert_eq!(governance_resource(&f, id), resource);
     assert!(f.outbox().is_empty());
 }
@@ -259,8 +407,7 @@ fn missing_cli_support_disables_only_destinations_that_require_it() {
         let options =
             serde_json::to_value(session_launcher::options_with(id, &host).unwrap()).unwrap();
         for option in options.as_array().unwrap() {
-            let needs_cli = option["destination"] != "desktop"
-                || (source == "claude" && option["tool"] == source);
+            let needs_cli = option["destination"] != "desktop" || option["tool"] == source;
             assert_eq!(option["available"], !needs_cli, "{source}: {option}");
             if needs_cli {
                 assert_eq!(option["reason"], "Install the session CLI");
@@ -299,7 +446,7 @@ fn missing_cli_support_disables_only_destinations_that_require_it() {
 }
 
 #[test]
-fn missing_or_invalid_native_bindings_never_launch_or_mark_a_copy() {
+fn missing_or_invalid_source_bindings_do_not_require_sync_before_forking() {
     let f = Fixture::new();
     let resource = session(&f, "codex", true);
     let id = resource["resourceId"].as_str().unwrap();
@@ -319,11 +466,19 @@ fn missing_or_invalid_native_bindings_never_launch_or_mark_a_copy() {
             Destination::Warp,
             Destination::Iterm2,
         ] {
-            assert!(session_launcher::resume_with(id, Tool::Codex, destination, &host).is_err());
+            assert_eq!(
+                session_launcher::resume_with(id, Tool::Codex, destination, &host).unwrap()
+                    ["forked"],
+                true
+            );
         }
         assert_eq!(indexer::binding(&f.db, id).unwrap(), binding);
         assert_eq!(governance_resource(&f, id), resource);
-        assert!(host.calls.borrow().is_empty());
+        assert!(host
+            .calls
+            .borrow()
+            .iter()
+            .all(|call| call["id"] != binding["nativeId"]));
         assert!(f.outbox().is_empty());
     }
     f.db.execute("DELETE FROM bindings WHERE id=?", [id])
@@ -331,14 +486,11 @@ fn missing_or_invalid_native_bindings_never_launch_or_mark_a_copy() {
     let options =
         serde_json::to_value(session_launcher::options_with(id, &FakeHost::default()).unwrap())
             .unwrap();
-    for option in options.as_array().unwrap() {
-        if option["tool"] == "codex" {
-            assert_eq!(option["available"], false);
-            assert_eq!(option["reason"], "Sync first to install the native session");
-        } else {
-            assert_eq!(option["available"], true);
-        }
-    }
+    assert!(options
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|option| option["available"] == true));
 }
 
 #[test]
@@ -424,6 +576,11 @@ fn cached_session_download_keeps_original_bytes_and_complete_context_without_a_r
             .unwrap();
         assert!(transcript.contains("First request"));
         assert!(transcript.contains("Last response"));
+        let prompt = session_launcher::handoff_prompt(id).unwrap();
+        assert_eq!(prompt["revision"], resource["revision"]);
+        assert!(prompt["text"].as_str().unwrap().contains("First request"));
+        assert!(prompt["text"].as_str().unwrap().contains("Last response"));
+        assert!(!prompt["text"].as_str().unwrap().contains(".orka/handoffs"));
         assert_eq!(governance_resource(&f, id), resource);
         assert_eq!(indexer::binding(&f.db, id).unwrap(), binding);
         assert!(f.outbox().is_empty());
@@ -494,7 +651,7 @@ fn capability_reads_do_not_write_or_queue_and_hide_absent_terminals() {
     };
     let binding = indexer::binding(&f.db, id).unwrap();
     let options = serde_json::to_value(session_launcher::options_with(id, &host).unwrap()).unwrap();
-    assert_eq!(options.as_array().unwrap().len(), 4);
+    assert_eq!(options.as_array().unwrap().len(), 6);
     assert_eq!(options[0]["tool"], "codex");
     assert_eq!(options[0]["destination"], "desktop");
     assert_eq!(options[0]["available"], true);
@@ -610,9 +767,22 @@ fn handoff_opens_a_composer_without_submitting_or_rewriting_the_source() {
                 && value.contains("This is a new session")));
         assert_eq!(governance_resource(&f, id), resource);
         assert_eq!(db::blob_read(&blob).unwrap(), bytes);
-        assert!(
-            session_launcher::resume_with(id, destination, Destination::Terminal, &host).is_err()
-        );
+        drop(calls);
+        for terminal in [
+            Destination::Terminal,
+            Destination::Warp,
+            Destination::Iterm2,
+        ] {
+            session_launcher::resume_with(id, destination, terminal, &host).unwrap();
+            let calls = host.calls.borrow();
+            let call = calls.last().unwrap();
+            assert!(call["id"].is_null());
+            assert!(call["prompt"]
+                .as_str()
+                .unwrap()
+                .contains("This is a new session"));
+            assert_eq!(call["destination"], json!(terminal));
+        }
     }
 }
 
@@ -640,7 +810,7 @@ fn terminal_scripts_preserve_arguments_working_directory_and_native_home_literal
             let script = session_launcher::terminal_script(
                 &binary,
                 tool,
-                "exact-session-id",
+                LaunchIntent::Resume("exact-session-id"),
                 &root,
                 &home,
                 cleanup_config.then_some(config.as_path()),
@@ -788,4 +958,329 @@ fn unavailable_resources_and_projects_never_reach_a_launcher() {
     .unwrap();
     assert!(session_launcher::resume_with(id, Tool::Codex, Destination::Desktop, &host).is_err());
     assert!(host.calls.borrow().is_empty());
+}
+
+#[test]
+fn original_surface_distinguishes_desktop_cli_and_ambiguous_metadata() {
+    assert!(!session_launcher::original_desktop(
+        Tool::Codex,
+        &[
+            json!({"type":"session_meta","payload":{"id":"same-thread","source":"cli"}}),
+            json!({"type":"session_meta","payload":{"id":"same-thread","originator":"Codex Desktop","source":"vscode"}}),
+        ]
+    ));
+    assert!(!session_launcher::original_desktop(
+        Tool::Codex,
+        &[
+            json!({"type":"session_meta","payload":{"originator":"Codex Desktop","source":"vscode"}}),
+            json!({"type":"session_meta","payload":{"source":"cli"}}),
+        ]
+    ));
+    for (meta, desktop) in [
+        (
+            json!({"originator":"Codex Desktop","source":"vscode"}),
+            true,
+        ),
+        (
+            json!({"originator":"codex_work_desktop","source":"cli"}),
+            true,
+        ),
+        (json!({"source":"cli"}), false),
+        (json!({"source":"vscode"}), true),
+        (json!({"source":"future-client"}), true),
+    ] {
+        assert_eq!(
+            session_launcher::original_desktop(
+                Tool::Codex,
+                &[json!({"type":"session_meta","payload":meta})]
+            ),
+            desktop
+        );
+    }
+    for (entrypoint, desktop) in [
+        ("cli", false),
+        ("local-agent", true),
+        ("sdk-cli", true),
+        ("future-client", true),
+    ] {
+        assert_eq!(
+            session_launcher::original_desktop(Tool::Claude, &[json!({"entrypoint":entrypoint})]),
+            desktop
+        );
+    }
+    assert!(!session_launcher::original_desktop(
+        Tool::Claude,
+        &[
+            json!({"entrypoint":"local-agent","isSidechain":true}),
+            json!({"entrypoint":"cli"}),
+            json!({"entrypoint":"local-agent"})
+        ]
+    ));
+}
+
+fn replace_records(f: &Fixture, resource: &mut Value, records: &[Value]) {
+    let bytes = native::encode(records);
+    resource["files"] =
+        json!([{"path":"session.jsonl","hash":db::blob(&bytes).unwrap(),"size":bytes.len()}]);
+    db::upsert(
+        &f.db,
+        "resources",
+        resource["resourceId"].as_str().unwrap(),
+        f.project["id"].as_str().unwrap(),
+        resource,
+    )
+    .unwrap();
+}
+
+#[test]
+fn defaults_use_shared_origin_and_fall_back_within_the_provider_first() {
+    let f = Fixture::new();
+    for source in ["codex", "claude"] {
+        let mut resource = session(&f, source, false);
+        let id = resource["resourceId"].as_str().unwrap().to_owned();
+        let tool = Tool::parse(source).unwrap();
+        let records = if source == "codex" {
+            vec![
+                json!({"type":"session_meta","payload":{"id":uuid::Uuid::new_v4().to_string(),"cwd":f.root,"source":"cli"}}),
+                json!({"type":"event_msg","payload":{"type":"user_message","message":"Keep the original origin"}}),
+            ]
+        } else {
+            vec![
+                json!({"type":"user","entrypoint":"cli","message":{"role":"user","content":"Keep the original origin"}}),
+            ]
+        };
+        replace_records(&f, &mut resource, &records);
+        fs::write(
+            f.root.join("original.jsonl"),
+            "rewritten receiving desktop metadata",
+        )
+        .unwrap();
+        for (host, expected_tool, destination) in [
+            (FakeHost::default(), tool, Destination::Terminal),
+            (
+                FakeHost {
+                    missing_cli: Some(tool),
+                    ..FakeHost::default()
+                },
+                if source == "codex" {
+                    Tool::Claude
+                } else {
+                    Tool::Codex
+                },
+                Destination::Terminal,
+            ),
+            (
+                FakeHost {
+                    missing_cli: Some(tool),
+                    missing: Some(Destination::Desktop),
+                    ..FakeHost::default()
+                },
+                if source == "codex" {
+                    Tool::Claude
+                } else {
+                    Tool::Codex
+                },
+                Destination::Terminal,
+            ),
+        ] {
+            let options =
+                serde_json::to_value(session_launcher::options_with(&id, &host).unwrap()).unwrap();
+            let defaults: Vec<_> = options
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|option| option["isDefault"] == true)
+                .collect();
+            assert_eq!(defaults.len(), 1);
+            assert_eq!(defaults[0]["tool"], json!(expected_tool));
+            assert_eq!(defaults[0]["destination"], json!(destination));
+        }
+    }
+}
+
+#[test]
+fn portable_context_is_complete_readable_and_handoffs_are_immutable() {
+    let f = Fixture::new();
+    let mut resource = session(&f, "claude", true);
+    let id = resource["resourceId"].as_str().unwrap().to_owned();
+    let long = "Complete context 🌊\n".repeat(20_000);
+    let original_records = [
+        json!({"type":"user","message":{"role":"user","content":"<environment_context>private setup</environment_context>\nFirst request"}}),
+        json!({"type":"assistant","message":{"role":"assistant","content":long}}),
+        json!({"type":"assistant","message":{"role":"assistant","channel":"analysis","content":"hidden reasoning"}}),
+        json!({"type":"user","message":{"role":"user","content":"Repeated request"}}),
+        json!({"type":"user","message":{"role":"user","content":"Repeated request"}}),
+    ];
+    replace_records(&f, &mut resource, &original_records);
+    let prompt = session_launcher::handoff_prompt(&id).unwrap();
+    let text = prompt["text"].as_str().unwrap();
+    assert!(text.contains(&long));
+    assert_eq!(text.matches("Repeated request").count(), 2);
+    assert!(!text.contains("private setup"));
+    assert!(!text.contains("hidden reasoning"));
+    let host = FakeHost::default();
+    let first =
+        session_launcher::resume_with(&id, Tool::Codex, Destination::Terminal, &host).unwrap();
+    let path = PathBuf::from(first["handoff"].as_str().unwrap());
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(fs::read_to_string(&path).unwrap(), text);
+    let retry = session_launcher::resume_with(&id, Tool::Codex, Destination::Warp, &host).unwrap();
+    assert_eq!(retry["handoff"], first["handoff"]);
+    resource["revision"] = json!(2);
+    replace_records(
+        &f,
+        &mut resource,
+        &[json!({"type":"user","message":{"role":"user","content":"A later request"}})],
+    );
+    let later =
+        session_launcher::resume_with(&id, Tool::Codex, Destination::Desktop, &host).unwrap();
+    assert_ne!(later["handoff"], first["handoff"]);
+    assert_eq!(fs::read_to_string(&path).unwrap(), text);
+    fs::write(&path, "local edit").unwrap();
+    resource["revision"] = json!(1);
+    replace_records(&f, &mut resource, &original_records);
+    assert!(
+        session_launcher::resume_with(&id, Tool::Codex, Destination::Terminal, &host)
+            .unwrap_err()
+            .contains("context changed")
+    );
+    assert_eq!(fs::read_to_string(&path).unwrap(), "local edit");
+    replace_records(
+        &f,
+        &mut resource,
+        &[
+            json!({"type":"user","message":{"role":"user","content":"<environment_context>setup only</environment_context>"}}),
+        ],
+    );
+    assert!(session_launcher::handoff_prompt(&id)
+        .unwrap_err()
+        .contains("no readable"));
+    assert!(session_launcher::resume_with(&id, Tool::Codex, Destination::Terminal, &host).is_err());
+}
+
+#[test]
+fn cross_provider_cli_receives_one_literal_prompt_without_a_resume_id() {
+    let temp = tempfile::tempdir().unwrap();
+    let binary = temp.path().join("fake cli");
+    fs::write(&binary, "#!/bin/sh\nprintf '%s\\n' \"$#\" \"$1\"\n").unwrap();
+    fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+    let prompt = "Continue at '/a path' with $HOME `touch never`\n🌊";
+    for tool in [Tool::Codex, Tool::Claude] {
+        let path = temp.path().join("start.command");
+        let script = session_launcher::terminal_script(
+            &binary,
+            tool,
+            LaunchIntent::Handoff(prompt),
+            temp.path(),
+            temp.path(),
+            None,
+            None,
+        );
+        fs::write(&path, script).unwrap();
+        let result = Command::new("/bin/sh").arg(&path).output().unwrap();
+        assert!(result.status.success());
+        assert_eq!(
+            String::from_utf8(result.stdout).unwrap(),
+            format!("1\n{prompt}\n")
+        );
+        assert!(!path.exists());
+    }
+}
+
+#[test]
+fn claude_desktop_requires_confirmation_of_the_exact_session_even_on_zero_exit() {
+    let f = Fixture::new();
+    let binary = f.root.join("fake claude");
+    for (body, success) in [
+        ("printf 'Download Claude Desktop to continue\\n'", false),
+        ("printf 'Sign in with a Claude subscription\\n'", false),
+        (
+            "printf 'Opening session another-id in Claude Desktop\\n'",
+            false,
+        ),
+        (
+            "printf 'Opening session %s in Claude Desktop\\n' \"$3\"",
+            true,
+        ),
+        (
+            "printf 'Opening session %s in Claude Desktop\\n' \"$3\"; exit 1",
+            false,
+        ),
+    ] {
+        fs::write(&binary, format!("#!/bin/sh\n{body}\n")).unwrap();
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            session_launcher::open_claude_desktop(&binary, "exact-native-id", &f.root).is_ok(),
+            success
+        );
+    }
+}
+
+#[test]
+fn missing_apps_and_clis_are_hidden_and_defaults_prefer_native_continuation() {
+    let f = Fixture::new();
+    let resource = session(&f, "codex", false);
+    let id = resource["resourceId"].as_str().unwrap();
+    for (host, tool, destination) in [
+        (
+            FakeHost {
+                missing_target: Some((Destination::Desktop, Tool::Codex)),
+                ..FakeHost::default()
+            },
+            Tool::Codex,
+            Destination::Terminal,
+        ),
+        (
+            FakeHost {
+                missing_target: Some((Destination::Desktop, Tool::Codex)),
+                missing_cli: Some(Tool::Codex),
+                ..FakeHost::default()
+            },
+            Tool::Claude,
+            Destination::Desktop,
+        ),
+    ] {
+        let options =
+            serde_json::to_value(session_launcher::options_with(id, &host).unwrap()).unwrap();
+        let options = options.as_array().unwrap();
+        assert!(!options
+            .iter()
+            .any(|option| option["tool"] == "codex" && option["destination"] == "desktop"));
+        let primary = options
+            .iter()
+            .find(|option| option["isDefault"] == true)
+            .unwrap();
+        assert_eq!(primary["tool"], json!(tool));
+        assert_eq!(primary["destination"], json!(destination));
+        if host.missing_cli.is_some() {
+            assert!(!options.iter().any(|option| option["tool"] == "codex"));
+        }
+    }
+}
+
+#[test]
+fn claude_desktop_capability_rejects_api_auth_and_missing_subscription_without_exposing_output() {
+    let f = Fixture::new();
+    let binary = f.root.join("fake authenticated claude");
+    for (auth, success) in [
+        (json!({"loggedIn":true,"authMethod":"claude.ai"}), true),
+        (json!({"loggedIn":false,"authMethod":"claude.ai"}), false),
+        (
+            json!({"loggedIn":true,"authMethod":"api_key","email":"private-address@example.test"}),
+            false,
+        ),
+        (json!({"loggedIn":true,"authMethod":"third_party"}), false),
+    ] {
+        let script = format!("#!/bin/sh\nif [ \"$1\" = '--help' ]; then printf '%s\\n' '--desktop --resume'; else printf '%s\\n' {}; fi\n", session_launcher::shell_quote(&auth.to_string()));
+        fs::write(&binary, script).unwrap();
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+        let result = session_launcher::claude_desktop_capability(&binary);
+        assert_eq!(result.is_ok(), success);
+        if let Err(message) = result {
+            assert!(!message.contains("private-address"));
+        }
+    }
 }

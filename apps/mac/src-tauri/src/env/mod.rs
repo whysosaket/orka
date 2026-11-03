@@ -144,7 +144,7 @@ impl Context {
                 .ok_or("Connect this project’s local folder first")?,
         );
         if project["folderIdentity"].as_str().is_some_and(|expected| {
-            crate::indexer::folder_identity(&path).ok().as_deref() != Some(expected)
+            !crate::indexer::folder_identity_matches(&path, expected).unwrap_or(false)
         }) {
             return Err("Connected project folder changed; reconnect before applying ENVs".into());
         }

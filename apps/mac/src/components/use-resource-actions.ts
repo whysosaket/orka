@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import type { Resource } from "@portable/protocol";
@@ -25,6 +25,8 @@ export interface SessionLaunchOption {
   available: boolean;
   reason: string | null;
   icon?: string | null;
+  isDefault: boolean;
+  mode: "resume" | "handoff";
 }
 
 export const sessionTool = (
@@ -49,9 +51,19 @@ export function useResourceActions({
 }) {
   const { resourceId: id, source, owner, title, kind } = resource;
   const commandKey = JSON.stringify([scope, id, resource.revision]);
+  const activeKey = useRef<string | null>(commandKey);
+  activeKey.current = commandKey;
+  const launching = useRef(false);
+  useEffect(() => {
+    activeKey.current = commandKey;
+    return () => {
+      activeKey.current = null;
+    };
+  }, [commandKey]);
   const [manualResume, setManualCommand] = useState<{
     key: string;
     command: string;
+    label: string;
   } | null>(null);
   const [launchFailure, setLaunchFailure] = useState<{
     key: string;
@@ -64,6 +76,8 @@ export function useResourceActions({
   return useMemo(
     () => ({
       manualCommand,
+      manualDestination:
+        manualResume?.key === commandKey ? manualResume.label : null,
       launchError,
       dismissManualCommand: () => setManualCommand(null),
       openEditor: (file: string) =>
@@ -71,13 +85,30 @@ export function useResourceActions({
           errorTitle: "Couldn’t open editor",
           retryable: true,
         }),
-      resume: (target?: Pick<SessionLaunchOption, "tool" | "destination">) =>
-        act(
+      sessionPrompt: async () => {
+        const result = await invoke<{ text: string; revision: number }>(
+          "session_handoff_prompt",
+          { id },
+        );
+        if (
+          activeKey.current !== commandKey ||
+          result.revision !== resource.revision
+        )
+          throw new Error(
+            "The session changed. Open it again before copying its prompt.",
+          );
+        return result.text;
+      },
+      resume: (target?: Pick<SessionLaunchOption, "tool" | "destination">) => {
+        if (launching.current) return Promise.resolve();
+        launching.current = true;
+        return act(
           async () => {
             setLaunchFailure(null);
             const r = await invoke<{
               instruction?: string;
               manualCommand?: string;
+              destinationLabel?: string;
             }>("resume_session", {
               id,
               tool: source,
@@ -85,22 +116,31 @@ export function useResourceActions({
                 ? { tool: target.tool, destination: target.destination }
                 : {}),
             }).catch((error: unknown) => {
+              if (activeKey.current !== commandKey) return null;
               setLaunchFailure({ key: commandKey, message: String(error) });
               throw error;
             });
+            if (!r || activeKey.current !== commandKey) return;
             if (r.manualCommand) {
-              setManualCommand({ key: commandKey, command: r.manualCommand });
+              setManualCommand({
+                key: commandKey,
+                command: r.manualCommand,
+                label: r.destinationLabel ?? "Warp",
+              });
               return;
             }
             onNotice(
               r.instruction ??
                 (owner === user
-                  ? "Opened native session."
-                  : "Opened native session. Your continuation will be saved as a copy."),
+                  ? "Session launch requested."
+                  : "Session launch requested. Your continuation will be saved as a copy."),
             );
           },
           { errorTitle: "Couldn’t open session" },
-        ),
+        ).finally(() => {
+          launching.current = false;
+        });
+      },
       exportZip: () =>
         act(
           async () => {
@@ -158,6 +198,8 @@ export function useResourceActions({
       manualCommand,
       commandKey,
       launchError,
+      manualResume,
+      resource.revision,
     ],
   );
 }

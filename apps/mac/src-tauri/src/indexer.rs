@@ -15,7 +15,33 @@ pub const SKILL_MIRROR_REVIEW: &str = "Skill copies differ between .agents/skill
 pub fn folder_identity(path: &Path) -> Result<String> {
     use std::os::unix::fs::MetadataExt;
     let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    if let Some(volume) = volume_identity(path) {
+        return Ok(format!("volume:{volume}:{}", meta.ino()));
+    }
     Ok(format!("{}:{}", meta.dev(), meta.ino()))
+}
+
+#[cfg(target_os = "macos")]
+fn volume_identity(path: &Path) -> Option<String> {
+    use objc2_foundation::{NSString, NSURLVolumeUUIDStringKey, NSURL};
+    objc2::rc::autoreleasepool(|_| {
+        let url = NSURL::fileURLWithPath(&NSString::from_str(path.to_str()?));
+        let mut value = None;
+        // This resource key returns an NSString when the volume has a persistent UUID.
+        unsafe { url.getResourceValue_forKey_error(&mut value, NSURLVolumeUUIDStringKey) }.ok()?;
+        let volume = value?.downcast::<NSString>().ok()?.to_string();
+        (!volume.is_empty()).then_some(volume)
+    })
+}
+
+pub fn folder_identity_matches(path: &Path, expected: &str) -> Result<bool> {
+    if expected.starts_with("volume:") {
+        return Ok(folder_identity(path)? == expected);
+    }
+    use std::os::unix::fs::MetadataExt;
+    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+    Ok(format!("{}:{}", meta.dev(), meta.ino()) == expected)
 }
 pub fn claude_memory(root: &Path) -> Result<PathBuf> {
     let encoded = root
@@ -438,7 +464,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
         .map(|source| format!("{project_id}:{source}"))
         .unwrap_or(project_id.into());
     if let Some(identity) = project["folderIdentity"].as_str() {
-        if folder_identity(&root)? != identity {
+        if !folder_identity_matches(&root, identity)? {
             return Err(
                 "Connected folder changed or its mount is missing; deletions paused".into(),
             );

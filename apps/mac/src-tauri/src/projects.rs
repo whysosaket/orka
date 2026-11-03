@@ -104,6 +104,14 @@ pub fn lock() -> Result<File> {
     Ok(file)
 }
 
+pub fn launch_lock() -> Result<File> {
+    let file = lock_file("session-launch.lock")?;
+    file.try_lock_exclusive().map_err(|_| {
+        "A session launch is already in progress. Check that attempt before trying again."
+    })?;
+    Ok(file)
+}
+
 pub fn wait_for_lock(timeout: Duration) -> Result<File> {
     let waiting = lock_file("workspace-waiters.lock")?;
     FileExt::lock_shared(&waiting).map_err(|e| e.to_string())?;
@@ -177,12 +185,14 @@ pub fn merge_catalog(db: &Connection, remote: &Value) -> Result<()> {
                 {
                     source["path"] = local["path"].clone();
                     source["folderIdentity"] = local["folderIdentity"].clone();
+                    crate::sources::upgrade_identity(source);
                 }
             }
         }
         for key in ["path", "folderIdentity", "hidden", "sharing", "localName"] {
             project[key] = old[key].clone();
         }
+        crate::sources::upgrade_identity(&mut project);
         if old["id"].is_null() {
             project["sharing"] = json!(Sharing::default());
         }

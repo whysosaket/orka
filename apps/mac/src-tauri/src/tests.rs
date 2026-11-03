@@ -1056,6 +1056,14 @@ fn paginated_snapshots_preserve_exact_ancestry_and_export_without_sources() {
         .unwrap()
         .contains("Ancestor α 🌊"));
     let bundle = f.root.join("complete.orka-session");
+    let handoff =
+        crate::session_launcher::handoff_prompt(resource["resourceId"].as_str().unwrap()).unwrap();
+    let text = handoff["text"].as_str().unwrap();
+    for marker in ["Ancestor α 🌊", "Middle β", "Leaf γ"] {
+        assert!(text.contains(marker));
+    }
+    assert!(!text.contains("PRIVATE LATER BRANCH"));
+    assert!(!text.contains("Tool result"));
     bundles::export(&f.db, resource["resourceId"].as_str().unwrap(), &bundle).unwrap();
     bundles::import(&f.db, f.project["id"].as_str().unwrap(), &bundle).unwrap();
     let copy = detached

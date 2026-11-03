@@ -181,7 +181,7 @@ pub fn add(db: &Connection, project: &Value, skill_id: &str) -> Result<Value> {
         return Err("Connected folder unavailable. Reconnect it in Settings.".into());
     }
     if let Some(identity) = project["folderIdentity"].as_str() {
-        if indexer::folder_identity(root)? != identity {
+        if !indexer::folder_identity_matches(root, identity)? {
             return Err("Connected folder changed. Reconnect it in Settings.".into());
         }
     }
@@ -429,7 +429,7 @@ pub fn adopt_import(
     };
     if project["folderIdentity"]
         .as_str()
-        .is_some_and(|identity| indexer::folder_identity(root).ok().as_deref() != Some(identity))
+        .is_some_and(|identity| !indexer::folder_identity_matches(root, identity).unwrap_or(false))
     {
         return Ok(binding);
     }
@@ -479,7 +479,7 @@ pub fn local_skills(db: &Connection, project: &Value) -> Result<Vec<Value>> {
     };
     if !root.is_dir()
         || project["folderIdentity"].as_str().is_some_and(|identity| {
-            indexer::folder_identity(root).ok().as_deref() != Some(identity)
+            !indexer::folder_identity_matches(root, identity).unwrap_or(false)
         })
     {
         return Ok(vec![]);

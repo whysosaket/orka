@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ChevronDownIcon,
   DownloadIcon,
+  CopyIcon,
   TerminalIcon,
 } from "@primer/octicons-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -13,11 +14,13 @@ import { Overlay } from "./overlay.js";
 import { Textarea } from "./textarea.js";
 import { CopyLinkButton } from "./copy-link-button.js";
 import { ActionPopover } from "./resource-actions.js";
+import { PermissionSelect } from "./permission-select.js";
 import {
   sessionTool,
   type ResourceActionHandlers,
   type SessionLaunchOption,
   type SessionTool,
+  type SessionDestination,
 } from "./use-resource-actions.js";
 
 function AppIcon({
@@ -75,18 +78,66 @@ export function SessionLauncher({
     error?: string;
   } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [copyFailure, setCopyFailure] = useState<{
+    key: string;
+    message: string;
+  } | null>(null);
+  const [terminalChoice, setTerminalChoice] = useState<{
+    key: string;
+    destination: SessionDestination;
+  } | null>(null);
   const menu = useRef<HTMLDivElement>(null);
   const current = state?.key === key ? state : null;
   const options = current?.options ?? [];
-  const primary = options.find(
-    (option) => option.tool === tool && option.destination === "desktop",
+  const defaultOption =
+    options.find((option) => option.isDefault) ?? options[0];
+  const hosts = options.filter(
+    (option, index) =>
+      option.destination !== "desktop" &&
+      options.findIndex((other) => other.destination === option.destination) ===
+        index,
   );
-  const label =
-    tool === "claude"
+  const host =
+    (terminalChoice?.key === key &&
+    hosts.some((option) => option.destination === terminalChoice.destination)
+      ? terminalChoice.destination
+      : undefined) ??
+    (defaultOption?.destination !== "desktop"
+      ? defaultOption?.destination
+      : undefined) ??
+    hosts[0]?.destination;
+  const primary =
+    defaultOption?.destination === "desktop"
+      ? defaultOption
+      : options.find(
+          (option) =>
+            option.tool === defaultOption?.tool && option.destination === host,
+        );
+  const targetLabel = (option: SessionLaunchOption) =>
+    option.destination === "desktop"
+      ? option.label
+      : option.tool === "claude"
+        ? "Claude Code CLI"
+        : "Codex CLI";
+  const label = primary
+    ? targetLabel(primary)
+    : tool === "claude"
       ? "Claude Desktop"
       : tool === "codex"
         ? "Codex"
         : "source app";
+  const visibleOptions = options
+    .filter(
+      (option) =>
+        option.destination === "desktop" || option.destination === host,
+    )
+    .sort((a, b) => Number(b === primary) - Number(a === primary));
+  const actionLabel =
+    primary?.mode === "handoff"
+      ? primary.destination === "desktop"
+        ? `Continue in ${label}…`
+        : `Start in ${label}`
+      : `Fork and open in ${label}`;
   useEffect(() => {
     let cancelled = false;
     void invoke<SessionLaunchOption[]>("session_launch_options", {
@@ -120,24 +171,38 @@ export function SessionLauncher({
         disabled={busy || !option.available}
         title={
           option.reason ??
-          (option.destination !== "desktop"
-            ? `Resume with ${tool === "claude" ? "Claude Code" : "Codex CLI"}`
+          (handoff && option.destination !== "desktop"
+            ? "Starts a new conversation immediately with the transferred context"
             : undefined)
         }
         onClick={() => void actions.resume(option)}
       >
         <AppIcon option={option} tool={option.tool} />
         <span className="session-launcher-option-text">
-          <span>{handoff ? `Continue in ${option.label}…` : option.label}</span>
+          <span>
+            {handoff
+              ? `Continue in ${targetLabel(option)}…`
+              : `Fork in ${targetLabel(option)}`}
+          </span>
           {option.reason ? (
             <span className="session-launcher-hint">{option.reason}</span>
           ) : handoff ? (
             <span className="session-launcher-hint">
-              New conversation with context
+              {option.destination === "desktop"
+                ? "New conversation with context"
+                : `Starts immediately in ${option.label} with context`}
             </span>
-          ) : null}
+          ) : option.destination !== "desktop" ? (
+            <span className="session-launcher-hint">
+              Fresh session copy in {option.label}
+            </span>
+          ) : (
+            <span className="session-launcher-hint">
+              Opens a fresh session copy
+            </span>
+          )}
         </span>
-        {!handoff && option.destination === "desktop" && (
+        {option === primary && option.available && (
           <span className="session-launcher-default">Default</span>
         )}
       </Button>
@@ -149,19 +214,24 @@ export function SessionLauncher({
         variant="secondary"
         size="sm"
         className="session-launcher-open"
-        aria-label={`Open in ${label}`}
+        aria-label={actionLabel}
         title={
           primary?.reason ??
           (current?.error
             ? "Open the menu to retry checking apps"
             : primary
-              ? `Open in ${label}`
-              : "Checking apps…")
+              ? primary.mode === "handoff" && primary.destination !== "desktop"
+                ? `Starts a new conversation immediately in ${label}`
+                : `Fork and open in ${label}`
+              : current
+                ? "No compatible app available"
+                : "Checking apps…")
         }
         disabled={busy || !tool || !primary?.available}
         onClick={() => void actions.resume(primary)}
       >
-        {tool && <AppIcon option={primary} tool={tool} />} Open in {label}
+        {tool && <AppIcon option={primary} tool={primary?.tool ?? tool} />}{" "}
+        {actionLabel}
       </Button>
       <ActionPopover
         label="Open session"
@@ -227,16 +297,28 @@ export function SessionLauncher({
             </p>
           ) : (
             <>
-              {options
-                .filter((option) => option.tool === tool)
-                .map(renderOption)}
-              <div role="separator" className="session-launcher-separator" />
-              {options
-                .filter((option) => option.tool !== tool)
-                .map(renderOption)}
+              {visibleOptions.map(renderOption)}
+              {options.length === 0 && (
+                <p className="session-launcher-status">
+                  No compatible app available.
+                </p>
+              )}
             </>
           )}
           <div role="separator" className="session-launcher-separator" />
+          <CopyLinkButton
+            value={key}
+            label="Copy session prompt"
+            errorTitle="Couldn’t copy session prompt"
+            loadValue={actions.sessionPrompt}
+            icon={CopyIcon}
+            variant="tertiary"
+            role="menuitem"
+            disabled={busy}
+            onError={(message) =>
+              setCopyFailure(message ? { key, message } : null)
+            }
+          />
           <Button
             variant="tertiary"
             size="sm"
@@ -247,18 +329,45 @@ export function SessionLauncher({
             <Icon icon={DownloadIcon} /> Download session (.zip)…
           </Button>
         </div>
+        {copyFailure?.key === key && (
+          <p
+            role="alert"
+            className="session-launcher-status session-launcher-copy-error"
+          >
+            {copyFailure.message}
+          </p>
+        )}
+        {hosts.length > 1 && host && (
+          <div className="session-launcher-host" data-keep-open>
+            <span>Terminal</span>
+            <PermissionSelect
+              label="Terminal application"
+              value={host}
+              disabled={busy}
+              options={hosts.map((option) => ({
+                value: option.destination,
+                label: option.label,
+              }))}
+              onChange={(destination) =>
+                setTerminalChoice({ key, destination })
+              }
+            />
+          </div>
+        )}
       </ActionPopover>
       {actions.manualCommand && (
         <Overlay
           open
-          title="Continue in Warp"
+          title={`Continue in ${actions.manualDestination}`}
           onClose={actions.dismissManualCommand}
           dismissOnBackdrop
         >
-          <h2>Continue in Warp</h2>
+          <h2>Continue in {actions.manualDestination}</h2>
           <p>
-            Warp hasn’t confirmed startup. If the session isn’t already open,
-            copy this command and run it there to continue.
+            {actions.manualDestination} hasn’t confirmed startup. If the session
+            isn’t already open, copy this command and run it there to continue.
+            A cross-app continuation starts a new conversation when the command
+            runs.
           </p>
           <Textarea
             label="Resume command"

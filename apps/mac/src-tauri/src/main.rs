@@ -133,6 +133,7 @@ fn main() {
             "sign-out"=>auth::sign_out().map(|_|json!({"ok":true})),
             "snapshot"=>commands::snapshot(),
             "session-launch-options"=>session_launcher::options(input["id"].as_str().unwrap_or("")).and_then(|options|serde_json::to_value(options).map_err(|e|e.to_string())),
+            "session-handoff-prompt"=>session_launcher::handoff_prompt(input["id"].as_str().unwrap_or("")),
             "resume-session"=>session_launcher::Tool::parse(input["tool"].as_str().unwrap_or("")).and_then(|tool| {
                 let destination=serde_json::from_value(input.get("destination").cloned().unwrap_or(json!("desktop"))).map_err(|e|e.to_string())?;
                 session_launcher::resume(input["id"].as_str().unwrap_or(""),tool,destination)
@@ -228,6 +229,7 @@ fn main() {
             commands::session_action,
             commands::resume_session,
             commands::session_launch_options,
+            commands::session_handoff_prompt,
             commands::export_bundle,
             commands::import_bundle,
             global_skills::scan_global_skills,

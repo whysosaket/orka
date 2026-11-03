@@ -16,6 +16,14 @@ source on this Mac, or disconnect one source. Owners register shared sources;
 members connect their checkout using Locate folder. Paths can differ between Macs.
 Two source folders cannot cover the same or overlapping local directories.
 
+Use **Reconnect folder** beside a connected source to confirm its existing folder
+after a replacement or a stale connection warning. This preserves queued changes;
+changing the path still requires disconnecting first. On macOS, new connections
+use the volume's persistent UUID and directory ID, so disk device renumbering does
+not invalidate them. Older connections upgrade during catalog refresh only while
+their original device and directory IDs still match. If those IDs already differ,
+select the existing folder once to reconnect; Orka does not silently trust it.
+
 Memories, Skills, Sessions, Plans, and ENVs share an **All repositories** dropdown
 in the top bar beside sync status. The selection follows those pages within a
 project and resets when switching projects, accounts, or services. Search,
