@@ -1,6 +1,6 @@
 use crate::{
     db::{self, Result},
-    governance, native, packages, projects,
+    governance, native, packages, projects, session_forks,
 };
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -128,6 +128,14 @@ pub(crate) fn original_desktop(tool: Tool, records: &[Value]) -> bool {
 }
 
 impl Destination {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Desktop => "desktop",
+            Self::Terminal => "terminal",
+            Self::Warp => "warp",
+            Self::Iterm2 => "iterm2",
+        }
+    }
     fn bundle(self, tool: Tool) -> &'static str {
         match self {
             Self::Desktop if tool == Tool::Codex => "com.openai.codex",
@@ -333,7 +341,9 @@ fn revalidate(db: &Connection, scope: &Value, original: &Session) -> Result<()> 
             .as_str()
             .ok_or("Missing session")?,
     )?;
-    if session.resource["revision"] != original.resource["revision"] {
+    if session.resource["revision"] != original.resource["revision"]
+        || session.resource["files"] != original.resource["files"]
+    {
         return Err("The session changed. Open it again before continuing.".into());
     }
     if root(&session)? != root(original)? {
@@ -395,6 +405,8 @@ pub struct LaunchOption {
     icon: Option<String>,
     is_default: bool,
     mode: &'static str,
+    fork_available: bool,
+    fork_reason: Option<String>,
 }
 
 pub(crate) trait Host {
@@ -524,11 +536,21 @@ pub fn options(id: &str) -> Result<Vec<LaunchOption>> {
 pub(crate) fn options_with(id: &str, host: &impl Host) -> Result<Vec<LaunchOption>> {
     let db = db::open()?;
     let session = session(&db, id)?;
+    let existing = session_forks::resumable(&db, &session.resource)?;
     let folder = root(&session);
     let records = crate::history::resource_records(&session.resource);
-    let desktop = records
+    let fork = session_forks::info(&db, id)?;
+    let desktop = fork["destination"]
+        .as_str()
+        .map(|d| d == "desktop")
+        .unwrap_or_else(|| {
+            records
+                .as_ref()
+                .map_or(true, |records| original_desktop(session.tool, records))
+        });
+    let resume_error = existing
         .as_ref()
-        .map_or(true, |records| original_desktop(session.tool, records));
+        .and_then(|resource| session_forks::binding(&db, resource).err());
     let handoff_error = records
         .as_ref()
         .map_err(Clone::clone)
@@ -573,7 +595,7 @@ pub(crate) fn options_with(id: &str, host: &impl Host) -> Result<Vec<LaunchOptio
             if !installed {
                 continue;
             }
-            let reason = folder
+            let base_reason = folder
                 .as_ref()
                 .err()
                 .cloned()
@@ -582,8 +604,15 @@ pub(crate) fn options_with(id: &str, host: &impl Host) -> Result<Vec<LaunchOptio
                     (tool == session.tool && is_desktop)
                         .then(|| host.desktop_home(tool).err())
                         .flatten()
-                })
-                .or_else(|| handoff_error.clone());
+                });
+            let fork_reason = base_reason.clone().or_else(|| handoff_error.clone());
+            let reason = base_reason.or_else(|| {
+                if tool == session.tool && existing.is_some() {
+                    resume_error.clone()
+                } else {
+                    handoff_error.clone()
+                }
+            });
             options.push(LaunchOption {
                 tool,
                 destination,
@@ -592,8 +621,14 @@ pub(crate) fn options_with(id: &str, host: &impl Host) -> Result<Vec<LaunchOptio
                 reason,
                 icon: host.icon(destination, tool),
                 is_default: false,
+                fork_available: fork_reason.is_none(),
+                fork_reason,
                 mode: if tool == session.tool {
-                    "resume"
+                    if existing.is_some() {
+                        "resume"
+                    } else {
+                        "fork"
+                    }
                 } else {
                     "handoff"
                 },
@@ -619,7 +654,8 @@ fn continuation_prompt(session: &Session, records: &[Value]) -> Result<String> {
 pub fn handoff_prompt(id: &str) -> Result<Value> {
     let db = db::open()?;
     let session = session(&db, id)?;
-    let records = crate::history::resource_records(&session.resource)?;
+    let current = session_forks::current_resource(&db, &session.resource)?;
+    let records = crate::history::resource_records(&current)?;
     Ok(
         json!({"text":continuation_prompt(&session, &records)?,"revision":session.resource["revision"]}),
     )
@@ -807,13 +843,28 @@ fn launch_terminal(
 }
 
 pub fn resume(id: &str, tool: Tool, destination: Destination) -> Result<Value> {
-    resume_with(id, tool, destination, &MacHost)
+    launch_with(id, tool, destination, false, &MacHost)
 }
 
+pub fn launch(id: &str, tool: Tool, destination: Destination, fork: bool) -> Result<Value> {
+    launch_with(id, tool, destination, fork, &MacHost)
+}
+
+#[cfg(test)]
 pub(crate) fn resume_with(
     id: &str,
     tool: Tool,
     destination: Destination,
+    host: &impl Host,
+) -> Result<Value> {
+    launch_with(id, tool, destination, false, host)
+}
+
+pub(crate) fn launch_with(
+    id: &str,
+    tool: Tool,
+    destination: Destination,
+    force_fork: bool,
     host: &impl Host,
 ) -> Result<Value> {
     let db = db::open()?;
@@ -838,12 +889,19 @@ pub(crate) fn resume_with(
     if tool != session.tool {
         let directory = root.join(".orka/handoffs");
         packages::safe_directory(&root, &directory)?;
-        let records = crate::history::resource_records(&session.resource)?;
+        let current_resource = session_forks::current_resource(&db, &session.resource)?;
+        let records = crate::history::resource_records(&current_resource)?;
         let context = continuation_prompt(&session, &records)?;
         let path = directory.join(format!(
-            "{id}-{}-{}.md",
+            "{id}-{}-{}-{}-{}.md",
             session.resource["revision"],
-            db::digest(context.as_bytes())
+            db::digest(context.as_bytes()),
+            tool.name(),
+            if destination == Destination::Desktop {
+                "desktop"
+            } else {
+                "cli"
+            }
         ));
         fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
             .map_err(|e| e.to_string())?;
@@ -861,6 +919,13 @@ pub(crate) fn resume_with(
         }
         revalidate(&db, &scope, &session)?;
         native::record_handoff(&db, &source_project, &session.resource, &path)?;
+        session_forks::handoff(
+            &db,
+            &session.resource,
+            tool.name(),
+            destination.name(),
+            &path,
+        )?;
         let prompt = format!("Continue from the exported {} session at {}. Read that transcript for context. This is a new session; the original conversation state remains in its source tool.", session.tool.name(), path.display());
         if destination != Destination::Desktop {
             let manual = host.open_session(
@@ -893,13 +958,32 @@ pub(crate) fn resume_with(
     if destination == Destination::Desktop {
         host.desktop_home(tool)?;
     }
-    let binding = host.fork(&db, &source_project, &session.resource)?;
+    let existing = if force_fork {
+        None
+    } else {
+        session_forks::resumable(&db, &session.resource)?
+    };
+    let forked = existing.is_none();
+    let binding = if let Some(resource) = &existing {
+        session_forks::binding(&db, resource)?
+    } else {
+        host.fork(
+            &db,
+            &source_project,
+            &session_forks::current_resource(&db, &session.resource)?,
+        )?
+    };
     revalidate(&db, &scope, &session)?;
     let native_id = binding["nativeId"]
         .as_str()
         .ok_or("The local session fork did not return an ID")?
         .to_owned();
     Uuid::parse_str(&native_id).map_err(|_| "Invalid native session ID")?;
+    let target = if let Some(resource) = existing {
+        resource
+    } else {
+        session_forks::record(&db, &session.resource, &binding, destination.name())?
+    };
     if destination != Destination::Desktop || tool == Tool::Claude {
         let paths: Vec<_> = binding["paths"]
             .as_array()
@@ -937,6 +1021,16 @@ pub(crate) fn resume_with(
     if tool == Tool::Codex {
         crate::codex_import::finish(&db, &native_id)?;
     }
+    revalidate(&db, &scope, &session)?;
+    let target_session = Session {
+        resource: target.clone(),
+        project: session.project.clone(),
+        tool,
+    };
+    revalidate(&db, &scope, &target_session)?;
+    if session_forks::binding(&db, &target)?["nativeId"] != native_id {
+        return Err("The fork's native identity changed. Open the session again.".into());
+    }
     if destination != Destination::Desktop {
         let manual_command = host.open_session(
             destination,
@@ -947,16 +1041,16 @@ pub(crate) fn resume_with(
         )?;
         if let Some(command) = manual_command {
             return Ok(
-                json!({"opened":false,"manualCommand":command,"destinationLabel":destination.label(tool),"forked":true,"nativeId":native_id}),
+                json!({"opened":false,"manualCommand":command,"destinationLabel":destination.label(tool),"forked":forked,"nativeId":native_id,"resourceId":target["resourceId"]}),
             );
         }
         if destination == Destination::Iterm2 {
             return Ok(
-                json!({"opened":true,"forked":true,"nativeId":native_id,"instruction":"A fresh session copy is ready. Review the command in iTerm2, then choose a new tab or window to continue."}),
+                json!({"opened":true,"forked":forked,"nativeId":native_id,"resourceId":target["resourceId"],"instruction":"Review the command in iTerm2, then choose a new tab or window to open the session."}),
             );
         }
         return Ok(
-            json!({"opened":true,"forked":true,"nativeId":native_id,"instruction":format!("Created a fresh session copy. Opening requested in {}.",destination.label(tool))}),
+            json!({"opened":true,"forked":forked,"nativeId":native_id,"resourceId":target["resourceId"],"instruction":format!("Session opening requested in {}.",destination.label(tool))}),
         );
     }
     host.open_session(
@@ -967,6 +1061,6 @@ pub(crate) fn resume_with(
         binary.as_deref(),
     )?;
     Ok(
-        json!({"opened":true,"forked":true,"nativeId":native_id,"instruction":format!("Created a fresh session copy. Opening requested in {}.", tool.label())}),
+        json!({"opened":true,"forked":forked,"nativeId":native_id,"resourceId":target["resourceId"],"instruction":format!("Session opening requested in {}.", tool.label())}),
     )
 }

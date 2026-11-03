@@ -965,6 +965,43 @@
   .resource-table-open:focus-visible {
     outline-offset: 2px;
   }
+  .resource-table-title-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .resource-table-title-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .session-forks-toggle {
+    @apply text-body-2xs;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+    min-height: 28px;
+    padding: 4px 0;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: transparent;
+    color: var(--text-secondary);
+  }
+  .session-forks-disclosure {
+    display: inline-flex;
+    flex: 0 0 44px;
+  }
+  .session-fork-icon {
+    flex: none;
+    color: var(--text-tertiary);
+  }
+  .session-forks-more td {
+    height: 40px;
+  }
+  .session-forks-more {
+    cursor: default;
+  }
   .resource-table-title .resource-conflict {
     @apply mt-1 flex items-center gap-1.5 text-xs text-foreground;
   }

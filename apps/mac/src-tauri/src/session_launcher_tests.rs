@@ -41,7 +41,28 @@ impl Host for FakeHost {
         } else if self.fork_change == Some("account") {
             db::set(db, "user", &json!(uuid::Uuid::new_v4().to_string()))?;
         }
-        Ok(json!({"nativeId":uuid::Uuid::new_v4().to_string(),"paths":[]}))
+        let native_id = uuid::Uuid::new_v4().to_string();
+        let home = if resource["source"] == "codex" {
+            native::codex_home()?
+        } else {
+            native::claude_home()?
+        };
+        let directory = home.join("sessions");
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join(format!("{native_id}.jsonl"));
+        let mut records = crate::history::resource_records(resource)?;
+        for record in &mut records {
+            if record["type"] == "session_meta" {
+                record["payload"]["id"] = json!(native_id);
+            }
+            if record["sessionId"].is_string() {
+                record["sessionId"] = json!(native_id);
+            }
+        }
+        fs::write(&path, native::encode(&records)).unwrap();
+        let mut base = resource.clone();
+        base["resourceId"] = json!(uuid::Uuid::new_v4().to_string());
+        Ok(json!({"nativeId":native_id,"paths":[path],"base":base}))
     }
     fn cli_installed(&self, tool: Tool) -> bool {
         self.missing_cli != Some(tool)
@@ -143,7 +164,7 @@ fn session(f: &Fixture, source: &str, teammate: bool) -> Value {
 }
 
 #[test]
-fn every_open_forks_a_fresh_native_identity_and_preserves_the_source() {
+fn explicit_forks_create_fresh_native_identities_and_preserve_the_source() {
     let f = Fixture::new();
     let _sync = crate::projects::lock().unwrap();
     db::set(
@@ -172,7 +193,7 @@ fn every_open_forks_a_fresh_native_identity_and_preserves_the_source() {
                 let host = FakeHost::default();
                 for _ in 0..2 {
                     assert_eq!(
-                        session_launcher::resume_with(id, tool, destination, &host).unwrap()
+                        session_launcher::launch_with(id, tool, destination, true, &host).unwrap()
                             ["opened"],
                         true
                     );
@@ -200,6 +221,450 @@ fn every_open_forks_a_fresh_native_identity_and_preserves_the_source() {
 
 fn governance_resource(f: &Fixture, id: &str) -> Value {
     crate::governance::resource(&f.db, id).unwrap()
+}
+
+#[test]
+fn default_open_reuses_a_persisted_fork_and_explicit_fork_adds_a_child() {
+    for tool in [Tool::Codex, Tool::Claude] {
+        for destination in [
+            Destination::Desktop,
+            Destination::Terminal,
+            Destination::Warp,
+            Destination::Iterm2,
+        ] {
+            let f = Fixture::new();
+            let source = if tool == Tool::Codex {
+                "codex"
+            } else {
+                "claude"
+            };
+            let resource = session(&f, source, true);
+            let id = resource["resourceId"].as_str().unwrap();
+            let _sync = crate::projects::lock().unwrap();
+            db::set(
+                &f.db,
+                "sync",
+                &json!({"online":false,"error":"Sync failed"}),
+            )
+            .unwrap();
+            let host = FakeHost::default();
+            let first = session_launcher::resume_with(id, tool, destination, &host).unwrap();
+            let child = first["resourceId"].as_str().unwrap();
+            let native = first["nativeId"].as_str().unwrap();
+            assert_eq!(first["forked"], true);
+            for selected in [id, child, child, id] {
+                let reopened =
+                    session_launcher::resume_with(selected, tool, destination, &host).unwrap();
+                assert_eq!(reopened["nativeId"], native);
+                assert_eq!(reopened["resourceId"], child);
+                assert_eq!(reopened["forked"], false);
+            }
+            assert_eq!(host.forks.borrow().len(), 1);
+            let snapshot = crate::commands::snapshot().unwrap();
+            let listed = snapshot["resources"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|r| r["resourceId"] == child)
+                .unwrap();
+            assert_eq!(listed["fork"]["parentId"], id);
+            assert_eq!(listed["owner"], db::get(&f.db, "user").unwrap());
+            let options =
+                serde_json::to_value(session_launcher::options_with(child, &host).unwrap())
+                    .unwrap();
+            assert!(options
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|o| o["tool"] == source)
+                .all(|o| o["mode"] == "resume"));
+            let second =
+                session_launcher::launch_with(child, tool, destination, true, &host).unwrap();
+            assert_ne!(second["nativeId"], native);
+            assert_eq!(
+                crate::session_forks::info(&f.db, second["resourceId"].as_str().unwrap()).unwrap()
+                    ["parentId"],
+                child
+            );
+            assert_eq!(host.forks.borrow().len(), 2);
+            assert_eq!(governance_resource(&f, id), resource);
+            assert!(f.outbox().is_empty());
+        }
+    }
+}
+
+#[test]
+fn a_failed_open_or_missing_native_fork_never_creates_another_fork_implicitly() {
+    let f = Fixture::new();
+    let resource = session(&f, "claude", true);
+    let id = resource["resourceId"].as_str().unwrap();
+    let host = FakeHost {
+        fail: true,
+        ..FakeHost::default()
+    };
+    assert_eq!(
+        session_launcher::resume_with(id, Tool::Claude, Destination::Desktop, &host).unwrap_err(),
+        "Launch failed"
+    );
+    assert_eq!(host.forks.borrow().len(), 1);
+    for _ in 0..2 {
+        assert_eq!(
+            session_launcher::resume_with(id, Tool::Claude, Destination::Desktop, &host)
+                .unwrap_err(),
+            "Launch failed"
+        );
+    }
+    assert_eq!(host.forks.borrow().len(), 1);
+    let child = crate::session_forks::resumable(&f.db, &resource)
+        .unwrap()
+        .unwrap();
+    let child_id = child["resourceId"].as_str().unwrap();
+    let binding = indexer::binding(&f.db, child_id).unwrap();
+    fs::remove_file(binding["paths"][0].as_str().unwrap()).unwrap();
+    let available = FakeHost::default();
+    assert!(session_launcher::resume_with(
+        child_id,
+        Tool::Claude,
+        Destination::Desktop,
+        &available
+    )
+    .unwrap_err()
+    .contains("Native fork files unavailable"));
+    assert!(available.calls.borrow().is_empty());
+    assert!(available.forks.borrow().is_empty());
+    let options =
+        serde_json::to_value(session_launcher::options_with(child_id, &available).unwrap())
+            .unwrap();
+    assert_eq!(options[0]["available"], false);
+    assert_eq!(options[0]["forkAvailable"], true);
+    let replacement = session_launcher::launch_with(
+        child_id,
+        Tool::Claude,
+        Destination::Desktop,
+        true,
+        &available,
+    )
+    .unwrap();
+    assert_eq!(replacement["forked"], true);
+    assert_ne!(replacement["nativeId"], binding["nativeId"]);
+}
+
+#[test]
+fn active_forks_require_an_explicit_new_fork_for_cli_and_claude_desktop() {
+    let f = Fixture::new();
+    let resource = session(&f, "claude", false);
+    let first = session_launcher::resume_with(
+        resource["resourceId"].as_str().unwrap(),
+        Tool::Claude,
+        Destination::Desktop,
+        &FakeHost::default(),
+    )
+    .unwrap();
+    let host = FakeHost {
+        active: true,
+        ..FakeHost::default()
+    };
+    for destination in [Destination::Desktop, Destination::Terminal] {
+        assert!(session_launcher::resume_with(
+            first["resourceId"].as_str().unwrap(),
+            Tool::Claude,
+            destination,
+            &host
+        )
+        .unwrap_err()
+        .contains("already be open"));
+    }
+    assert!(host.forks.borrow().is_empty());
+    assert!(host.calls.borrow().is_empty());
+}
+
+#[test]
+fn fork_lineage_survives_sync_without_local_metadata_and_respects_local_native_ids() {
+    let f = Fixture::new();
+    let source = session(&f, "claude", false);
+    let first = session_launcher::resume_with(
+        source["resourceId"].as_str().unwrap(),
+        Tool::Claude,
+        Destination::Desktop,
+        &FakeHost::default(),
+    )
+    .unwrap();
+    let id = first["resourceId"].as_str().unwrap();
+    // Simulate receiving the shared resource on another Mac with its own import ID.
+    f.db.execute(
+        "DELETE FROM meta WHERE key=?",
+        [format!("sessionFork:{id}")],
+    )
+    .unwrap();
+    let mut binding = indexer::binding(&f.db, id).unwrap();
+    let local_id = uuid::Uuid::new_v4().to_string();
+    binding["nativeId"] = json!(local_id);
+    db::upsert(
+        &f.db,
+        "bindings",
+        id,
+        f.project["id"].as_str().unwrap(),
+        &binding,
+    )
+    .unwrap();
+    let snapshot = crate::commands::snapshot().unwrap();
+    let listed = snapshot["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["resourceId"] == id)
+        .unwrap();
+    assert_eq!(listed["fork"]["parentId"], source["resourceId"]);
+    assert_eq!(listed["fork"]["nativeId"], local_id);
+    let host = FakeHost::default();
+    let opened =
+        session_launcher::resume_with(id, Tool::Claude, Destination::Desktop, &host).unwrap();
+    assert_eq!(opened["nativeId"], local_id);
+    assert_eq!(opened["forked"], false);
+    assert!(host.forks.borrow().is_empty());
+    let mut teammate = governance_resource(&f, id);
+    teammate["owner"] = json!(uuid::Uuid::new_v4().to_string());
+    db::upsert(
+        &f.db,
+        "resources",
+        id,
+        f.project["id"].as_str().unwrap(),
+        &teammate,
+    )
+    .unwrap();
+    let copied =
+        session_launcher::resume_with(id, Tool::Claude, Destination::Desktop, &host).unwrap();
+    assert_ne!(copied["nativeId"], local_id);
+    assert_eq!(copied["forked"], true);
+}
+
+#[test]
+fn cross_provider_lineage_uses_the_first_prompt_in_the_matching_repository() {
+    let f = Fixture::new();
+    let source = session(&f, "codex", false);
+    let result = session_launcher::resume_with(
+        source["resourceId"].as_str().unwrap(),
+        Tool::Claude,
+        Destination::Desktop,
+        &FakeHost::default(),
+    )
+    .unwrap();
+    let path = result["handoff"].as_str().unwrap();
+    let cli_handoff = session_launcher::resume_with(
+        source["resourceId"].as_str().unwrap(),
+        Tool::Claude,
+        Destination::Terminal,
+        &FakeHost::default(),
+    )
+    .unwrap();
+    assert_ne!(cli_handoff["handoff"], result["handoff"]);
+    let native_id = uuid::Uuid::new_v4().to_string();
+    let directory = native::claude_home().unwrap().join("projects/repository");
+    fs::create_dir_all(&directory).unwrap();
+    let records = vec![
+        json!({"type":"user","sessionId":native_id,"cwd":f.root,"uuid":uuid::Uuid::new_v4().to_string(),"message":{"role":"user","content":format!("Continue from {path}")}}),
+    ];
+    fs::write(
+        directory.join(format!("{native_id}.jsonl")),
+        native::encode(&records),
+    )
+    .unwrap();
+    assert!(
+        crate::session_forks::handoff_origin(&f.db, &f.project, "codex", &records)
+            .unwrap()
+            .is_none()
+    );
+    indexer::scan(&f.db, &f.project).unwrap();
+    let child = f
+        .resources()
+        .into_iter()
+        .find(|resource| resource["source"] == "claude")
+        .unwrap();
+    let info = crate::session_forks::info(&f.db, child["resourceId"].as_str().unwrap()).unwrap();
+    assert_eq!(info["parentId"], source["resourceId"]);
+    assert_eq!(info["nativeId"], native_id);
+    assert_eq!(info["destination"], "desktop");
+    assert!(f
+        .outbox()
+        .iter()
+        .any(
+            |change| change["resource"]["resourceId"] == child["resourceId"]
+                && change["resource"]["logicalPath"] == child["logicalPath"]
+        ));
+    let host = FakeHost::default();
+    let resumed = session_launcher::resume_with(
+        child["resourceId"].as_str().unwrap(),
+        Tool::Claude,
+        Destination::Desktop,
+        &host,
+    )
+    .unwrap();
+    assert_eq!(resumed["nativeId"], native_id);
+    assert_eq!(resumed["forked"], false);
+    assert!(host.forks.borrow().is_empty());
+}
+
+#[test]
+fn explicit_fork_uses_the_latest_local_conversation_and_native_home_changes_are_visible() {
+    use std::io::Write;
+    let f = Fixture::new();
+    let source = session(&f, "claude", false);
+    let host = FakeHost::default();
+    let first = session_launcher::resume_with(
+        source["resourceId"].as_str().unwrap(),
+        Tool::Claude,
+        Destination::Terminal,
+        &host,
+    )
+    .unwrap();
+    let child_id = first["resourceId"].as_str().unwrap();
+    let binding = indexer::binding(&f.db, child_id).unwrap();
+    let mut file = fs::OpenOptions::new()
+        .append(true)
+        .open(binding["paths"][0].as_str().unwrap())
+        .unwrap();
+    let message = json!({"type":"user","sessionId":first["nativeId"],"cwd":f.root,"uuid":uuid::Uuid::new_v4().to_string(),"message":{"role":"user","content":"Newest local turn before sync"}});
+    file.write_all(&native::encode(&[message])).unwrap();
+    drop(file);
+    session_launcher::launch_with(child_id, Tool::Claude, Destination::Terminal, true, &host)
+        .unwrap();
+    let copied = host.forks.borrow().last().unwrap().clone();
+    assert!(
+        native::transcript(&crate::history::resource_records(&copied).unwrap())
+            .contains("Newest local turn before sync")
+    );
+    assert!(session_launcher::handoff_prompt(child_id).unwrap()["text"]
+        .as_str()
+        .unwrap()
+        .contains("Newest local turn before sync"));
+    let archive_path = f.root.join("current-fork.zip");
+    bundles::export(&f.db, child_id, &archive_path).unwrap();
+    let mut archive = zip::ZipArchive::new(fs::File::open(archive_path).unwrap()).unwrap();
+    let mut transcript = String::new();
+    std::io::Read::read_to_string(
+        &mut archive.by_name("transcript.md").unwrap(),
+        &mut transcript,
+    )
+    .unwrap();
+    assert!(transcript.contains("Newest local turn before sync"));
+    let changed_home = f._home.path().join("other-claude");
+    fs::create_dir_all(&changed_home).unwrap();
+    std::env::set_var("CLAUDE_CONFIG_DIR", &changed_home);
+    let failed = FakeHost::default();
+    assert!(
+        session_launcher::resume_with(child_id, Tool::Claude, Destination::Terminal, &failed)
+            .unwrap_err()
+            .contains("different native home")
+    );
+    assert!(failed.forks.borrow().is_empty());
+    assert!(failed.calls.borrow().is_empty());
+}
+
+#[test]
+fn legacy_import_receipts_recover_unique_parents_without_guessing_from_titles() {
+    for (tool, provider) in [(Tool::Codex, "codex"), (Tool::Claude, "claude")] {
+        for ambiguous in [false, true] {
+            let f = Fixture::new();
+            let source = session(&f, provider, false);
+            let first = session_launcher::resume_with(
+                source["resourceId"].as_str().unwrap(),
+                tool,
+                Destination::Desktop,
+                &FakeHost::default(),
+            )
+            .unwrap();
+            let id = first["resourceId"].as_str().unwrap();
+            let mut child = governance_resource(&f, id);
+            child["logicalPath"] = json!(format!(
+                "{provider}/{}",
+                first["nativeId"].as_str().unwrap()
+            ));
+            db::upsert(
+                &f.db,
+                "resources",
+                id,
+                f.project["id"].as_str().unwrap(),
+                &child,
+            )
+            .unwrap();
+            f.db.execute(
+                "DELETE FROM meta WHERE key=?",
+                [format!("sessionFork:{id}")],
+            )
+            .unwrap();
+            let receipt_key = format!(
+                "{provider}Import:{}:{}:1:{}",
+                f.project["id"].as_str().unwrap(),
+                uuid::Uuid::new_v4(),
+                db::digest(source["files"].to_string().as_bytes())
+            );
+            let receipt = if tool == Tool::Codex {
+                json!({"child":{"id":first["nativeId"]}})
+            } else {
+                json!({"id":first["nativeId"]})
+            };
+            db::set(&f.db, &receipt_key, &receipt).unwrap();
+            if ambiguous {
+                let mut duplicate = source.clone();
+                duplicate["resourceId"] = json!(uuid::Uuid::new_v4().to_string());
+                db::upsert(
+                    &f.db,
+                    "resources",
+                    duplicate["resourceId"].as_str().unwrap(),
+                    f.project["id"].as_str().unwrap(),
+                    &duplicate,
+                )
+                .unwrap();
+            }
+            let snapshot = crate::commands::snapshot().unwrap();
+            let listed = snapshot["resources"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|r| r["resourceId"] == id)
+                .unwrap();
+            if ambiguous {
+                assert!(listed["fork"].is_null());
+            } else {
+                assert_eq!(listed["fork"]["parentId"], source["resourceId"]);
+            }
+            assert_eq!(
+                governance_resource(&f, source["resourceId"].as_str().unwrap()),
+                source
+            );
+            assert!(f.outbox().is_empty());
+        }
+    }
+}
+
+#[test]
+fn archived_codex_forks_reopen_without_waiting_for_sync_to_update_the_path() {
+    let f = Fixture::new();
+    let source = session(&f, "codex", false);
+    let first = session_launcher::resume_with(
+        source["resourceId"].as_str().unwrap(),
+        Tool::Codex,
+        Destination::Terminal,
+        &FakeHost::default(),
+    )
+    .unwrap();
+    let id = first["resourceId"].as_str().unwrap();
+    let binding = indexer::binding(&f.db, id).unwrap();
+    let old = PathBuf::from(binding["paths"][0].as_str().unwrap());
+    let archive = native::codex_home().unwrap().join("archived_sessions");
+    fs::create_dir_all(&archive).unwrap();
+    fs::rename(&old, archive.join(old.file_name().unwrap())).unwrap();
+    let _sync = crate::projects::lock().unwrap();
+    let host = FakeHost::default();
+    let resumed =
+        session_launcher::resume_with(id, Tool::Codex, Destination::Terminal, &host).unwrap();
+    assert_eq!(resumed["nativeId"], first["nativeId"]);
+    assert_eq!(resumed["forked"], false);
+    assert!(host.forks.borrow().is_empty());
+    assert!(session_launcher::handoff_prompt(id).unwrap()["text"]
+        .as_str()
+        .unwrap()
+        .contains("Continue this task"));
 }
 
 #[test]
@@ -365,7 +830,7 @@ fn claude_terminal_activity_is_scoped_to_the_selected_transcript_and_hooks() {
     for destination in destinations {
         assert_eq!(
             session_launcher::resume_with(id, Tool::Claude, destination, &host).unwrap()["forked"],
-            true
+            false
         );
     }
     drop(selected_file);
@@ -385,7 +850,7 @@ fn claude_terminal_activity_is_scoped_to_the_selected_transcript_and_hooks() {
             assert_eq!(
                 session_launcher::resume_with(id, Tool::Claude, destination, &host).unwrap()
                     ["forked"],
-                true
+                false
             );
         }
     }
@@ -468,7 +933,7 @@ fn missing_or_invalid_source_bindings_do_not_require_sync_before_forking() {
         ] {
             assert_eq!(
                 session_launcher::resume_with(id, Tool::Codex, destination, &host).unwrap()
-                    ["forked"],
+                    ["opened"],
                 true
             );
         }

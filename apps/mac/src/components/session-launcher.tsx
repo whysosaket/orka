@@ -68,6 +68,7 @@ export function SessionLauncher({
     scope,
     resource.resourceId,
     resource.revision,
+    resource.localForkId,
     project.id,
     project.path,
     project.sources,
@@ -132,12 +133,18 @@ export function SessionLauncher({
         option.destination === "desktop" || option.destination === host,
     )
     .sort((a, b) => Number(b === primary) - Number(a === primary));
+  const forkOptions = visibleOptions.filter(
+    (option) => option.tool === tool && option.mode === "resume",
+  );
   const actionLabel =
     primary?.mode === "handoff"
       ? primary.destination === "desktop"
         ? `Continue in ${label}…`
         : `Start in ${label}`
-      : `Fork and open in ${label}`;
+      : primary?.mode === "fork" ||
+          (!primary && !resource.fork && !resource.localForkId)
+        ? `Fork and open in ${label}`
+        : `Open in ${label}`;
   useEffect(() => {
     let cancelled = false;
     void invoke<SessionLaunchOption[]>("session_launch_options", {
@@ -182,7 +189,9 @@ export function SessionLauncher({
           <span>
             {handoff
               ? `Continue in ${targetLabel(option)}…`
-              : `Fork in ${targetLabel(option)}`}
+              : option.mode === "fork"
+                ? `Fork in ${targetLabel(option)}`
+                : `Open in ${targetLabel(option)}`}
           </span>
           {option.reason ? (
             <span className="session-launcher-hint">{option.reason}</span>
@@ -194,11 +203,14 @@ export function SessionLauncher({
             </span>
           ) : option.destination !== "desktop" ? (
             <span className="session-launcher-hint">
-              Fresh session copy in {option.label}
+              {option.mode === "fork" ? "New fork" : "Existing session"} in{" "}
+              {option.label}
             </span>
           ) : (
             <span className="session-launcher-hint">
-              Opens a fresh session copy
+              {option.mode === "fork"
+                ? "Creates a new fork"
+                : "Opens the existing session"}
             </span>
           )}
         </span>
@@ -222,7 +234,7 @@ export function SessionLauncher({
             : primary
               ? primary.mode === "handoff" && primary.destination !== "desktop"
                 ? `Starts a new conversation immediately in ${label}`
-                : `Fork and open in ${label}`
+                : actionLabel
               : current
                 ? "No compatible app available"
                 : "Checking apps…")
@@ -298,6 +310,33 @@ export function SessionLauncher({
           ) : (
             <>
               {visibleOptions.map(renderOption)}
+              {forkOptions.length > 0 && (
+                <div role="separator" className="session-launcher-separator" />
+              )}
+              {forkOptions.map((forkOption) => (
+                <Button
+                  key={`fork:${forkOption.tool}:${forkOption.destination}`}
+                  variant="tertiary"
+                  size="sm"
+                  role="menuitem"
+                  disabled={
+                    busy || !(forkOption.forkAvailable ?? forkOption.available)
+                  }
+                  title={forkOption.forkReason ?? undefined}
+                  onClick={() => void actions.resume(forkOption, true)}
+                >
+                  <AppIcon option={forkOption} tool={forkOption.tool} />
+                  <span className="session-launcher-option-text">
+                    <span>Fork and open in {targetLabel(forkOption)}</span>
+                    <span className="session-launcher-hint">
+                      {forkOption.forkReason ??
+                        (forkOption.destination === "desktop"
+                          ? "Creates another session"
+                          : `Creates another session in ${forkOption.label}`)}
+                    </span>
+                  </span>
+                </Button>
+              ))}
               {options.length === 0 && (
                 <p className="session-launcher-status">
                   No compatible app available.

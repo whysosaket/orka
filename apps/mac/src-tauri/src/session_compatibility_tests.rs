@@ -196,6 +196,16 @@ fn local_claude_forks_preserve_native_graphs_and_leave_an_active_original_untouc
     for _ in 0..2 {
         let fork = native::fork_session(&f.db, &f.project, &resource).unwrap();
         let id = fork["nativeId"].as_str().unwrap();
+        let listed = crate::session_forks::record(&f.db, &resource, &fork, "desktop").unwrap();
+        assert_eq!(
+            crate::session_forks::binding(&f.db, &listed).unwrap()["nativeId"],
+            id
+        );
+        let current = crate::session_forks::current_resource(&f.db, &listed).unwrap();
+        assert_eq!(
+            native::transcript(&crate::history::resource_records(&current).unwrap()),
+            native::transcript(&records)
+        );
         assert_ne!(id, original_id);
         assert!(!ids.iter().any(|previous| previous == id));
         let copy = native::complete_records(&fs::read(fork["paths"][0].as_str().unwrap()).unwrap())
@@ -225,6 +235,16 @@ fn cached_forks_are_independent_and_readable_by_installed_codex_while_sync_is_lo
     for _ in 0..2 {
         let fork = native::fork_session(&f.db, &f.project, &resource).unwrap();
         let id = fork["nativeId"].as_str().unwrap();
+        let listed = crate::session_forks::record(&f.db, &resource, &fork, "desktop").unwrap();
+        assert_eq!(
+            crate::session_forks::binding(&f.db, &listed).unwrap()["nativeId"],
+            id
+        );
+        let current = crate::session_forks::current_resource(&f.db, &listed).unwrap();
+        assert_eq!(
+            native::transcript(&crate::history::resource_records(&current).unwrap()),
+            native::transcript(&history)
+        );
         assert!(!ids.iter().any(|previous| previous == id));
         let local = History::local(
             std::path::Path::new(fork["paths"][0].as_str().unwrap()),

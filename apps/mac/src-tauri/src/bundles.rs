@@ -15,6 +15,7 @@ pub fn export(db: &rusqlite::Connection, id: &str, path: &Path) -> Result<()> {
         .into_iter()
         .next()
         .ok_or("Resource not found")?;
+    let r = crate::session_forks::current_resource(db, &r)?;
     if r["deleted"] == true {
         return Err("Deleted resources cannot be exported".into());
     }

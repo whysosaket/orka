@@ -38,9 +38,11 @@ Both importers persist identities before writing. Retrying reuses the same ident
 
 The session reader has one split button and four destination choices: Codex Desktop, Claude Desktop's Code tab, Codex CLI, and Claude Code CLI. A shared terminal selector offers installed Terminal, Warp, and iTerm2 hosts in that priority order. Uninstalled apps and CLIs are hidden; installed destinations with missing prerequisites remain disabled with a reason. Local AppKit icons have source/terminal fallbacks.
 
-Read-only `session_launch_options` returns `isDefault` and `mode` (`resume` or `handoff`) alongside the existing tool/destination fields. The native layer reads original surface metadata from the shared snapshot rather than the imported native copy. Codex desktop originators take precedence over generic `source` values; CLI source metadata and Claude's `cli`/`local-agent` entrypoints distinguish the original surface. Unknown origins prefer the provider's desktop. Fallback order is original surface, same provider's other surface, other provider's equivalent surface, then its remaining surface. Explicit choices do not persist a new default.
+Read-only `session_launch_options` returns `isDefault` and `mode` (`fork`, `resume`, or `handoff`) alongside the existing tool/destination fields. The native layer reads original surface metadata from the shared snapshot rather than the imported native copy. Codex desktop originators take precedence over generic `source` values; CLI source metadata and Claude's `cli`/`local-agent` entrypoints distinguish the original surface. Unknown origins prefer the provider's desktop. Fallback order is original surface, same provider's other surface, other provider's equivalent surface, then its remaining surface. Explicit choices do not persist a new default.
 
-`resume_session` retains its optional `destination` enum (`desktop`, `terminal`, `warp`, `iterm2`) and legacy desktop default. Every same-provider open now creates a fresh local native session from the complete cached snapshot, using the existing lossless import adapters, and resumes that new ID. It never resumes or replaces the source binding, even for the current owner's sessions or an active source. A missing native source installation does not require sync first. New forks retain source attribution; ordinary indexing and sharing can publish them later under the existing permissions.
+`resume_session` retains its optional `destination` enum (`desktop`, `terminal`, `warp`, `iterm2`) and legacy desktop default. A first same-provider continuation creates a retained local native fork from complete cached history. Later opens of the source reuse its latest local fork, and opening a fork resumes that exact native session. The separate Fork and open menu action (`resume_session` with optional `fork: true`) creates another child. Missing native fork files produce an explicit recovery choice; failed or uncertain launch attempts preserve the prepared fork and never create another implicitly. Teammate sessions retain the private-copy safeguard.
+
+Forks appear immediately in the session table before publication, with expandable parent/child rows, five more children per View more action, and nested forks. Filtering retains matching orphans and returning from the reader expands the required ancestors and restores focus. The existing logical-path namespace carries lineage as `<tool>/forks/<parent-resource-id>/<surface>/<native-id>`, so grouping survives sharing and ZIP export without changing the protocol or backend schema. Each Mac resolves its own native binding; the path's native ID is never used to launch another Mac's session. Cross-provider continuations join their source group once the destination records the first prompt and ordinary indexing discovers the new session. Draft desktop composers are not represented as confirmed sessions. Older forks are linked when an import receipt identifies exactly one parent snapshot. Ambiguous or missing legacy lineage remains available as ordinary rows; matching titles alone never create relationships.
 
 Launching uses a separate session-launch lock for duplicate protection and never acquires the workspace sync lock or waits for the Orka service. Failed/offline sync and queued changes do not block a cached launch. Account, service, resource revision, repository access, and destination prerequisites are revalidated before opening. Missing/corrupt cached history and unavailable local prerequisites remain explicit errors. A prepared copy is preserved if validation or launching fails; uncertain attempts are never automatically resubmitted.
 
@@ -56,7 +58,7 @@ Download retains the existing ZIP format with original blobs and the full transc
 
 ### Launcher verification
 
-Native fixtures verify fresh identities for every provider/surface/terminal combination while the sync lock is held, source immutability, cached launches without native bindings, active originals, repository selection, missing CLI support, duplicate launches, account/service/revision changes during preparation, failed launches, and manual fallback. Adapter fixtures verify complete inherited Codex history and Claude message/tool graphs across independent copies. Download checks inspect the real ZIP manifest, original blobs, and complete transcript from cached history with the repository absent. Process checks cover literal shell arguments, large stdout/stderr, failed exit codes, and inherited pipes that must not bypass timeouts. These fixtures never open personal sessions.
+Native fixtures verify initial forks, stable reopening, explicit nested forks, and fresh identities for every provider/surface/terminal combination while the sync lock is held, source immutability, cached launches without native bindings, active originals, repository selection, missing CLI support, duplicate launches, account/service/revision changes during preparation, failed launches, and manual fallback. Adapter fixtures verify complete inherited Codex history and Claude message/tool graphs across independent copies. Download checks inspect the real ZIP manifest, original blobs, and complete transcript from cached history with the repository absent. Process checks cover literal shell arguments, large stdout/stderr, failed exit codes, and inherited pipes that must not bypass timeouts. These fixtures never open personal sessions.
 
 Browser checks cover command payloads, source-based defaults, refreshed app availability, local icons and fallback, disabled-menu keyboard navigation, pending-action guards, ZIP saving/cancel/failure, disconnected folders, stale responses, and cleared state across profile/user/service changes. Focus, reduced motion, long titles, and both provider buttons are checked at both window sizes.
 
@@ -99,6 +101,27 @@ and unchanged source bindings, plus both cross-provider initial prompts. Typeche
 lint, formatting, repository boundaries, strict Clippy, and the bundled debug app
 build passed. Desktop GUI transfer and real-provider inference remain separate
 acceptance checks.
+
+### Fork list and stable reopening — 2 November 2026
+
+Validation passed 183 standard native tests (eight opt-in checks excluded), 17
+TypeScript tests, the full 263-test enabled browser suite (25 disabled-ENV tests
+skipped), and all 73 session-detail browser checks after the final menu changes.
+The native suite covers reusable fork IDs, explicit nested forks, failed launches,
+missing native files, changed native homes, archived Codex paths, source immutability,
+legacy receipt recovery, and lineage across Mac-specific import IDs. The isolated
+installed-Codex check verified readable, complete inherited history in retained
+forks without starting model work.
+
+API/native compatibility passed 11 tests with one disabled-ENV test skipped.
+Synthetic real-Terminal launches verified both providers' initial fork IDs and
+cross-provider first prompts, then confirmed that reopening keeps the same native
+ID and explicit forking adds exactly one child. Clipboard, keyboard, nested focus
+restoration, pagination, filtering, accessibility, and reduced-motion layouts were
+checked at 1160×800 and 900×640. Typecheck, lint, formatting, strict Clippy,
+repository boundaries, and the debug app bundle build passed. The rebuilt native
+app was opened against real connected-account data; personal desktop sessions
+were not launched as part of verification.
 
 ## Validation — 6 October 2026
 

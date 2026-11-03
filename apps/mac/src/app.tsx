@@ -686,6 +686,7 @@ function WorkspaceApp({
                 />
               ) : (
                 <ResourceIndex
+                  key={`${workspaceScope}:${project}:${tab}`}
                   floatingAction={
                     tab === "skill" ? (
                       <GlobalSkillImport
