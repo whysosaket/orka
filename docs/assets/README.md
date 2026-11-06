@@ -1,8 +1,8 @@
 # README graphics
 
-These static graphics were captured from [the Orka website](https://tryorka.ai/) on November 6, 2026, using a 1440-pixel-wide browser viewport:
+These looping animated WebPs come from [the Orka website](https://tryorka.ai/), captured on November 6, 2026:
 
-- `orka-overview.png`: the opening product illustration (`.journey-stage-surface`), with the demo video on its first frame.
-- `shared-context.png`: the three feature cards (`#how-it-works .solution-grid`), with reduced motion enabled so every card is fully visible.
+- `orka-overview.webp`: one complete cycle of the live hero's Rive animations, showing Claude Code creating a skill, Orka receiving it, and Codex using it. Captured at a 1440 × 1300 browser viewport with motion enabled, cropped to the 1400 × 882 product illustration, and encoded at 1120 × 706 and 15 fps.
+- `product-tour.webp`: the site's [screen-transition video](https://tryorka.ai/rive/screen-transitions.mp4?v=retina-copper), converted to a 1008 × 630 animation at 15 fps. It moves through memories, skills, and session handoffs.
 
-Keep the images in this repository so the main README does not depend on the website's asset URLs or animations.
+Both animations loop automatically and are stored locally so the README can play them without the website's scripts or a video player.
