@@ -4,7 +4,7 @@ Keep project memories, skills, plans, and coding sessions available across your 
 
 Orka is an open-source macOS desktop app for sharing project context from Codex and Claude Code through Orka Cloud or an existing compatible self-hosted service. Repository code stays in Git. You choose what to share for each project and each Mac.
 
-[![Animated demo of Claude Code creating a skill, Orka syncing it, and Codex using it](docs/assets/orka-overview.webp)](https://tryorka.ai/)
+[![Animated demo of Claude Code creating a skill, Orka syncing it, and Codex using it](docs/assets/orka-overview@2x.webp)](https://tryorka.ai/)
 
 **Status: alpha.** Requires macOS 12 or later. See [verification and limitations](docs/verification.md) before relying on native session synchronization.
 
@@ -12,7 +12,7 @@ Orka is an open-source macOS desktop app for sharing project context from Codex 
 
 Share project memories, skills, and plans with teammates and their AI tools, and read session history to understand what changed and why.
 
-![Animated tour of shared memories, reusable team skills, and session handoffs in Orka](docs/assets/product-tour.webp)
+![Animated tour of shared memories, reusable team skills, and session handoffs in Orka](docs/assets/product-tour@2x.webp)
 
 ## Features
 
