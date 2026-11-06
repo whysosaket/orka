@@ -2,7 +2,7 @@ use crate::{bundles, db, history::History, indexer, native, packages, sync};
 use serde_json::{json, Value};
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Mutex, MutexGuard},
 };
 static SERIAL: Mutex<()> = Mutex::new(());
@@ -401,6 +401,33 @@ impl Fixture {
         .unwrap();
         sync::materialize(&self.db, &self.project, &r).unwrap();
         r
+    }
+    fn install_native_session(&self, project: &Value, resource: &Value) -> db::Result<Value> {
+        let id = resource["resourceId"].as_str().unwrap();
+        let mut binding = native::materialize(
+            &self.db,
+            project,
+            resource,
+            &indexer::binding(&self.db, id)?,
+        )?;
+        let guards = sync::live_hash(
+            &binding,
+            "session",
+            Path::new(project["path"].as_str().unwrap()),
+        )?;
+        binding["lastSeenHash"] = json!(guards.first());
+        binding["writeGuard"] = binding["lastSeenHash"].clone();
+        binding["guards"] = json!(guards);
+        binding["managed"] = json!(true);
+        db::upsert(
+            &self.db,
+            "bindings",
+            id,
+            project["id"].as_str().unwrap(),
+            &binding,
+        )?;
+        crate::codex_import::finish(&self.db, binding["nativeId"].as_str().unwrap())?;
+        Ok(binding)
     }
 }
 #[test]
@@ -1159,8 +1186,7 @@ fn check_paginated_native_import(segmented: bool) {
         &resource,
     )
     .unwrap();
-    sync::materialize(&f.db, &project, &resource).unwrap();
-    let binding = indexer::binding(&f.db, resource["resourceId"].as_str().unwrap()).unwrap();
+    let binding = f.install_native_session(&project, &resource).unwrap();
     let id = binding["nativeId"].as_str().unwrap();
     assert!(source_paths.iter().all(|p| !p.exists()));
     assert_eq!(binding["paths"].as_array().unwrap().len(), 1);
@@ -1296,7 +1322,9 @@ fn paginated_import_retries_reuse_identity_and_preserve_local_edits() {
     fs::remove_dir_all(native::codex_home().unwrap()).unwrap();
     let mut broken_project = f.project.clone();
     broken_project["name"] = Value::Null;
-    assert!(sync::materialize(&f.db, &broken_project, &resource).is_err());
+    assert!(f
+        .install_native_session(&broken_project, &resource)
+        .is_err());
     let attempts = db::rows(
         &f.db,
         "SELECT value FROM meta WHERE key LIKE 'codexImport:%'",
@@ -1310,11 +1338,13 @@ fn paginated_import_retries_reuse_identity_and_preserve_local_edits() {
         f.outbox().is_empty(),
         "Partial imports must not be uploaded as new conversations"
     );
-    sync::materialize(&f.db, &f.project, &resource).unwrap();
+    f.install_native_session(&f.project, &resource).unwrap();
     let binding = indexer::binding(&f.db, resource["resourceId"].as_str().unwrap()).unwrap();
     assert_eq!(binding["nativeId"], child["id"]);
     resource["resourceId"] = json!(uuid::Uuid::new_v4().to_string());
-    assert!(sync::materialize(&f.db, &broken_project, &resource).is_err());
+    assert!(f
+        .install_native_session(&broken_project, &resource)
+        .is_err());
     let attempts = db::rows(
         &f.db,
         "SELECT value FROM meta WHERE key LIKE 'codexImport:%'",
@@ -1334,7 +1364,8 @@ fn paginated_import_retries_reuse_identity_and_preserve_local_edits() {
         ],
     )
     .unwrap();
-    assert!(sync::materialize(&f.db, &f.project, &resource)
+    assert!(f
+        .install_native_session(&f.project, &resource)
         .unwrap_err()
         .contains("open"));
     f.db.execute("DELETE FROM active", []).unwrap();
@@ -1347,7 +1378,8 @@ fn paginated_import_retries_reuse_identity_and_preserve_local_edits() {
     ));
     let changed = native::encode(&records);
     fs::write(path, &changed).unwrap();
-    assert!(sync::materialize(&f.db, &f.project, &resource)
+    assert!(f
+        .install_native_session(&f.project, &resource)
         .unwrap_err()
         .contains("changed"));
     assert_eq!(fs::read(path).unwrap(), changed);
@@ -1397,8 +1429,7 @@ fn legacy_native_import_still_registers_and_resumes() {
     let bytes = native::encode(&rollout.records);
     resource["files"] = json!([{"path":"session.jsonl","hash":db::blob(&bytes).unwrap(),"size":bytes.len(),"executable":false}]);
     fs::remove_dir_all(native::codex_home().unwrap()).unwrap();
-    sync::materialize(&f.db, &f.project, &resource).unwrap();
-    let binding = indexer::binding(&f.db, resource["resourceId"].as_str().unwrap()).unwrap();
+    let binding = f.install_native_session(&f.project, &resource).unwrap();
     let mut rpc = native::Rpc::connect().unwrap();
     let listed = rpc
         .call(

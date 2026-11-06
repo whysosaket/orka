@@ -22,7 +22,7 @@ Do not label the build release-ready until these checks have evidence from two p
 - [ ] A complete skill package propagates to both native locations on both Macs; run its scripts and inspect binary assets/modes.
 - [ ] Independent additions/deletions merge; overlapping lines follow server acceptance order with deliberately incorrect device clocks.
 - [ ] Work offline, restart the app and daemon, reconnect, and verify no duplicate uploads or replayed obsolete events.
-- [ ] Sessions appear and disappear in Orka, native CLI history, and **both native desktop sidebars**. Record exact Desktop/CLI versions. Claude's automatic sidebar insertion/removal is currently unresolved.
+- [ ] Synced Codex sessions appear in Orka without adding conversations to native CLI history or the Codex desktop sidebar. Explicit Open creates one local copy; reopening reuses it, including when newer forks arrive from another Mac. Incoming revisions preserve existing native history. Record exact Desktop/CLI versions. Verify Claude's native history separately; its automatic sidebar insertion/removal is currently unresolved.
 - [ ] Resume a native conversation on the second Mac. Cross-tool continuation opens a new conversation referencing the export.
 - [ ] Leave a session open between turns. Incoming updates and deletions never touch its native files/history until it closes.
 - [ ] Both users see conflicts; Keep, Override, and Create copy behave correctly. Simultaneous resolution attempts force a refresh for the losing request.

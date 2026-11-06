@@ -47,6 +47,194 @@ for line in sys.stdin:
 }
 
 #[test]
+fn synced_codex_sessions_stay_cached_through_updates_scans_and_deletion() {
+    for paginated in [false, true] {
+        for teammate in [false, true] {
+            let f = Fixture::new();
+            let (mut resource, _) = paginated_chain(&f);
+            let original = History::resource(&resource).unwrap();
+            let transcript = native::transcript(&original.records());
+            if !paginated {
+                let legacy = original
+                    .independent_legacy(&uuid::Uuid::new_v4().to_string(), &f.root)
+                    .unwrap();
+                let bytes = native::encode(&legacy.records);
+                resource["files"] = json!([{"path":"session.jsonl","hash":db::blob(&bytes).unwrap(),"size":bytes.len()}]);
+            }
+            if teammate {
+                resource["owner"] = json!(uuid::Uuid::new_v4().to_string());
+            }
+            let home = native::codex_home().unwrap();
+            fs::remove_dir_all(&home).unwrap();
+            let bin = f._home.path().join(".local/bin");
+            fs::create_dir_all(&bin).unwrap();
+            fs::write(bin.join("codex"), "#!/bin/sh\nexit 91\n").unwrap();
+            fs::set_permissions(bin.join("codex"), fs::Permissions::from_mode(0o755)).unwrap();
+            let id = resource["resourceId"].as_str().unwrap().to_owned();
+            for revision in [1, 2] {
+                resource["revision"] = json!(revision);
+                if revision == 2 {
+                    let id = uuid::Uuid::new_v4().to_string();
+                    let mut rollout = if paginated {
+                        original.independent_paginated(&id, &f.root)
+                    } else {
+                        original.independent_legacy(&id, &f.root)
+                    }
+                    .unwrap();
+                    let mut turn = json!({"type":"event_msg","payload":{"type":"user_message","message":"New synced turn"}});
+                    if paginated {
+                        turn["ordinal"] = json!(rollout.records.len());
+                    }
+                    rollout.records.push(turn);
+                    let bytes = native::encode(&rollout.records);
+                    resource["files"] = json!([{"path":"session.jsonl","hash":db::blob(&bytes).unwrap(),"size":bytes.len()}]);
+                }
+                db::upsert(
+                    &f.db,
+                    "resources",
+                    &id,
+                    f.project["id"].as_str().unwrap(),
+                    &resource,
+                )
+                .unwrap();
+                sync::materialize(&f.db, &f.project, &resource).unwrap();
+                sync::materialize(&f.db, &f.project, &resource).unwrap();
+                let binding = indexer::binding(&f.db, &id).unwrap();
+                assert!(binding["nativeId"].is_null());
+                assert_eq!(binding["paths"], json!([]));
+                assert_eq!(binding["base"], resource);
+                let cached = native::transcript(&History::resource(&resource).unwrap().records());
+                assert!(cached.starts_with(&transcript));
+                assert_eq!(cached.contains("New synced turn"), revision == 2);
+                let inspected =
+                    crate::commands::inspect_resource(id.clone(), "session.jsonl".into(), None)
+                        .unwrap();
+                assert_eq!(
+                    inspected["content"]
+                        .as_str()
+                        .unwrap()
+                        .contains("New synced turn"),
+                    revision == 2
+                );
+            }
+            assert!(!home.exists(), "Sync must not initialize Codex's home");
+            fs::create_dir_all(home.join("sessions")).unwrap();
+            fs::create_dir_all(native::claude_home().unwrap().join("projects")).unwrap();
+            indexer::scan(&f.db, &f.project).unwrap();
+            crate::repair::workspace(&f.db).unwrap();
+            assert!(
+                f.outbox().is_empty(),
+                "Cached sessions must not become local deletions"
+            );
+            assert!(db::rows(
+                &f.db,
+                "SELECT value FROM meta WHERE key LIKE 'codexImport:%'",
+                &[]
+            )
+            .unwrap()
+            .is_empty());
+            resource["revision"] = json!(3);
+            resource["deleted"] = json!(true);
+            resource["files"] = json!([]);
+            sync::materialize(&f.db, &f.project, &resource).unwrap();
+            assert_eq!(indexer::binding(&f.db, &id).unwrap()["base"], resource);
+            assert_eq!(fs::read_dir(home.join("sessions")).unwrap().count(), 0);
+            assert!(!home.join("archived_sessions").exists());
+        }
+    }
+}
+
+#[test]
+fn incoming_codex_updates_preserve_existing_native_history_and_binding() {
+    let f = Fixture::new();
+    let (resource, paths) = paginated_chain(&f);
+    let native_id = History::resource(&resource)
+        .unwrap()
+        .rollouts
+        .last()
+        .unwrap()
+        .id
+        .clone();
+    let id = resource["resourceId"].as_str().unwrap();
+    let binding = json!({"nativeId":native_id,"paths":[paths.last().unwrap()],"base":resource,"writeGuard":"preserve-guard","lastSeenHash":"preserve-hash"});
+    db::upsert(
+        &f.db,
+        "bindings",
+        id,
+        f.project["id"].as_str().unwrap(),
+        &binding,
+    )
+    .unwrap();
+    let originals: Vec<_> = paths.iter().map(|path| fs::read(path).unwrap()).collect();
+    let mut incoming = resource.clone();
+    incoming["revision"] = json!(2);
+    f.db.execute(
+        "INSERT INTO active VALUES(?,?)",
+        rusqlite::params![native_id, json!({"pid":std::process::id()}).to_string()],
+    )
+    .unwrap();
+    sync::materialize(&f.db, &f.project, &incoming).unwrap();
+    let mut expected = binding.clone();
+    expected["availableRevision"] = json!(2);
+    assert_eq!(indexer::binding(&f.db, id).unwrap(), expected);
+    for (path, bytes) in paths.iter().zip(originals) {
+        assert_eq!(fs::read(path).unwrap(), bytes);
+    }
+    assert!(db::rows(
+        &f.db,
+        "SELECT value FROM meta WHERE key LIKE 'codexImport:%'",
+        &[]
+    )
+    .unwrap()
+    .is_empty());
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
+fn explicit_codex_open_imports_cached_history_without_importing_the_synced_source() {
+    let f = Fixture::new();
+    let (resource, _) = paginated_chain(&f);
+    let original = History::resource(&resource).unwrap().records();
+    let home = native::codex_home().unwrap();
+    fs::remove_dir_all(&home).unwrap();
+    mock_codex(&f);
+    sync::materialize(&f.db, &f.project, &resource).unwrap();
+    assert!(!home.exists());
+    let binding = native::fork_session(&f.db, &f.project, &resource).unwrap();
+    let child = crate::session_forks::record(&f.db, &resource, &binding, "desktop").unwrap();
+    assert_eq!(
+        crate::session_forks::binding(&f.db, &child).unwrap()["nativeId"],
+        binding["nativeId"]
+    );
+    assert!(
+        indexer::binding(&f.db, resource["resourceId"].as_str().unwrap()).unwrap()["nativeId"]
+            .is_null()
+    );
+    let copy = History::local(
+        Path::new(binding["paths"][0].as_str().unwrap()),
+        Some(&f.root),
+    )
+    .unwrap();
+    assert_eq!(
+        native::transcript(&copy.records()),
+        native::transcript(&original)
+    );
+    assert_eq!(History::resource(&resource).unwrap().records(), original);
+    let requests =
+        native::complete_records(&fs::read(home.join("requests.jsonl")).unwrap()).unwrap();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|r| r["method"] == "thread/fork")
+            .count(),
+        1
+    );
+    assert!(requests
+        .iter()
+        .all(|r| !matches!(r["method"].as_str(), Some("turn/start" | "thread/resume"))));
+}
+
+#[test]
 fn older_codex_receiver_translates_paginated_lineage_and_retries_without_duplicates() {
     let f = Fixture::new();
     let (resource, paths) = paginated_chain(&f);
@@ -443,7 +631,7 @@ fn completed_import_rebinds_to_archived_history_without_forking_or_unarchiving()
     resource["owner"] = json!(uuid::Uuid::new_v4().to_string());
     fs::remove_dir_all(native::codex_home().unwrap()).unwrap();
     mock_codex(&f);
-    sync::materialize(&f.db, &f.project, &resource).unwrap();
+    f.install_native_session(&f.project, &resource).unwrap();
     let id = resource["resourceId"].as_str().unwrap().to_string();
     let binding = indexer::binding(&f.db, &id).unwrap();
     let home = native::codex_home().unwrap();
@@ -534,7 +722,7 @@ fn relocated_import_with_changed_bytes_keeps_edits_and_guard() {
     let (resource, _) = paginated_chain(&f);
     fs::remove_dir_all(native::codex_home().unwrap()).unwrap();
     mock_codex(&f);
-    sync::materialize(&f.db, &f.project, &resource).unwrap();
+    f.install_native_session(&f.project, &resource).unwrap();
     let id = resource["resourceId"].as_str().unwrap();
     let binding = indexer::binding(&f.db, id).unwrap();
     let path = PathBuf::from(binding["paths"][0].as_str().unwrap());
@@ -547,7 +735,8 @@ fn relocated_import_with_changed_bytes_keeps_edits_and_guard() {
     fs::write(&archived, &bytes).unwrap();
     f.db.execute("DELETE FROM bindings WHERE id=?", [&id])
         .unwrap();
-    assert!(sync::materialize(&f.db, &f.project, &resource)
+    assert!(f
+        .install_native_session(&f.project, &resource)
         .unwrap_err()
         .contains("changed"));
     assert_eq!(fs::read(&archived).unwrap(), bytes);
