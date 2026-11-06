@@ -13,6 +13,18 @@ The implementation follows four boundaries:
 
 ## Native import strategies
 
+Incoming Codex session snapshots are stored in Orka's cache without creating native
+rollouts, registering projects or threads, or starting Codex's app server. Synced
+sessions remain readable and exportable in Orka. An explicit Open or Fork and open
+action creates a local native copy from the cached history; later opens reuse that
+copy. Forks received from another Mac remain cached until opened locally.
+
+Existing native sessions are preserved. Incoming revisions remain available in
+Orka without replacing those sessions or creating additional native conversations.
+This change does not remove copies imported by earlier versions. Claude's native
+sync behavior is unchanged. No backend, protocol, or database migration is needed
+in either hosting mode.
+
 | Source          | Receiver                                      | Translation                                                                                                                                                  |
 | --------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Claude JSONL    | Claude CLI                                    | New session identity in the native project directory; message graph and content retained.                                                                    |
