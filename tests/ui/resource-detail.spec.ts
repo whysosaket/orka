@@ -409,6 +409,110 @@ async function detailFixture(page: Page, options: Options = {}) {
 }
 
 const heading = (page: Page) => page.locator(".workspace-header h1");
+test("resource skeletons keep the reader header and navigation usable", async ({
+  page,
+}) => {
+  await detailFixture(page);
+  await page.evaluate(() => {
+    const w = window as any;
+    const original = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = async (name: string, args: any) => {
+      if (name === "inspect_resource" && args.id === "memory-a")
+        await new Promise<void>((resolve) => {
+          w.finishContentLoad = resolve;
+        });
+      return original(name, args);
+    };
+  });
+  await page
+    .getByRole("region", { name: "Recent Updates" })
+    .getByRole("button", { name: /Design decisions/ })
+    .click();
+  const view = page.getByRole("region", { name: "Memory details" });
+  const title = view.getByRole("heading", {
+    name: "Design decisions",
+    exact: true,
+  });
+  await expect(title).toBeVisible();
+  const before = await title.boundingBox();
+  await expect(view.locator(".loading-region")).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  await expect(
+    view.getByRole("heading", { name: "Project notes", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Back to Memories", exact: true }),
+  ).toBeEnabled();
+  await page.screenshot({ path: "artifacts/resource-loading.png" });
+  await page.evaluate(() => (window as any).finishContentLoad());
+  await expect(
+    view.getByRole("heading", { name: "Preview", exact: true }),
+  ).toBeVisible();
+  await expect(view.locator(".loading-region")).not.toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  expect(await title.boundingBox()).toEqual(before);
+});
+
+test("conversation skeletons give way to virtualized turns and paging preserves existing messages", async ({
+  page,
+}) => {
+  // Exercise paging without a reveal animation changing the scroll range.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await detailFixture(page);
+  await page.evaluate(() => {
+    const w = window as any;
+    const original = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = async (name: string, args: any) => {
+      if (name !== "session_messages") return original(name, args);
+      await new Promise<void>((resolve) => {
+        w.finishMessageLoad = resolve;
+      });
+      return {
+        messages: Array.from({ length: 40 }, (_, index) => ({
+          index: index + args.offset,
+          role: index % 2 ? "assistant" : "user",
+          text: `Message ${index + args.offset}`,
+        })),
+        offset: args.offset,
+        total: 80,
+      };
+    };
+  });
+  await page.getByRole("button", { name: /^Sessions/ }).click();
+  await page
+    .getByRole("button", { name: "Polish navigation", exact: true })
+    .click();
+  const view = page.getByRole("region", { name: "Session details" });
+  await expect(view.locator(".loading-region")).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  await expect(view.getByRole("article")).toHaveCount(0);
+  await page.screenshot({ path: "artifacts/conversation-loading.png" });
+  await page.evaluate(() => (window as any).finishMessageLoad());
+  await expect(page.getByText("Message 0", { exact: true })).toBeVisible();
+  await view.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(
+    view.getByText("Loading messages…", { exact: true }),
+  ).toBeVisible();
+  await expect(view.locator(".loading-region")).not.toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  await expect(view.getByText("Message 39", { exact: true })).toBeVisible();
+  await page.evaluate(() => (window as any).finishMessageLoad());
+  await view.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(page.getByText("Message 79", { exact: true })).toBeVisible();
+});
+
 const more = (page: Page) =>
   page.getByRole("button", { name: "More resource actions", exact: true });
 const menu = (page: Page) =>
@@ -641,14 +745,14 @@ test("Plans supports both providers, source filters, Markdown, editor actions, a
   await page
     .getByRole("button", { name: "Show Markdown", exact: true })
     .click();
-  await expect(detail.locator("pre.content")).toContainText("- [x] Design");
+  await expect(detail.locator("pre.content")).toHaveText([/- \[x\] Design/]);
   await detail
     .getByRole("button", { name: "More resource actions", exact: true })
     .click();
   await page
     .getByRole("button", { name: "Compare with previous revision" })
     .click();
-  await expect(detail.getByLabel("File changes")).toContainText("Old content");
+  await expect(detail.getByLabel("File changes")).toHaveText([/Old content/]);
   await detail
     .getByRole("button", { name: "Back to Plans", exact: true })
     .click();
@@ -1995,14 +2099,14 @@ for (const width of [1160, 900])
       .getByRole("button", { name: "Show Markdown", exact: true })
       .click();
     await expect(diagram).toHaveCount(0);
-    await expect(page.locator("pre.content")).toHaveText(source);
+    await expect(page.locator("pre.content")).toHaveText([source]);
     await page
       .getByRole("button", { name: "More resource actions", exact: true })
       .click();
     await page
       .getByRole("button", { name: "Compare with previous revision" })
       .click();
-    await expect(page.getByLabel("File changes")).toContainText("flowchart LR");
+    await expect(page.getByLabel("File changes")).toHaveText([/flowchart LR/]);
     await expect(diagram).toHaveCount(0);
   });
 
@@ -2027,9 +2131,9 @@ test("session conversations render Mermaid while transcripts stay literal and la
     ),
   ).toEqual([]);
   await page.getByRole("button", { name: "Transcript", exact: true }).click();
-  await expect(page.locator(".session-view pre.content")).toContainText(
-    "Some content",
-  );
+  await expect(page.locator(".session-view pre.content")).toHaveText([
+    /Some content/,
+  ]);
   await expect(page.locator(".mermaid-diagram")).toHaveCount(0);
 });
 
@@ -2128,12 +2232,18 @@ test("a new revision refreshes the open resource instead of serving the cached v
     };
   });
   await openMemory(page);
-  await expect(page.locator(".markdown-content")).toHaveText("Version 1");
+  // A reveal can briefly contain both panes. Check the settled document list
+  // atomically so the assertion retries until one current document remains.
+  await expect(
+    page.getByRole("article", { name: "Rendered Markdown" }),
+  ).toHaveText(["Version 1"]);
   await page.evaluate(() => {
     (window as any).readerRevision = 2;
   });
   await page.clock.runFor(3100);
-  await expect(page.locator(".markdown-content")).toHaveText("Version 2");
+  await expect(
+    page.getByRole("article", { name: "Rendered Markdown" }),
+  ).toHaveText(["Version 2"]);
 });
 
 for (const dimension of ["profile", "user", "service"])
@@ -2167,17 +2277,23 @@ for (const dimension of ["profile", "user", "service"])
       };
     }, dimension);
     await openMemory(page);
-    await expect(page.locator(".markdown-content")).toHaveText("Scoped read 1");
+    await expect(
+      page.getByRole("article", { name: "Rendered Markdown" }),
+    ).toHaveText(["Scoped read 1"]);
     await page.evaluate(() => {
       (window as any).changedScope = true;
     });
     await page.clock.runFor(3100);
-    await expect(page.locator(".markdown-content")).toHaveText("Scoped read 2");
+    await expect(
+      page.getByRole("article", { name: "Rendered Markdown" }),
+    ).toHaveText(["Scoped read 2"]);
     await page.evaluate(() => {
       (window as any).changedScope = false;
     });
     await page.clock.runFor(3100);
-    await expect(page.locator(".markdown-content")).toHaveText("Scoped read 3");
+    await expect(
+      page.getByRole("article", { name: "Rendered Markdown" }),
+    ).toHaveText(["Scoped read 3"]);
   });
 
 test("reduced motion keeps navigation aligned and Settings keyboard focus intact", async ({

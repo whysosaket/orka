@@ -6,6 +6,14 @@ import type { Inspection } from "../types.js";
 import { readSkillMarkdown } from "./skill-markdown.js";
 import { Button } from "./button.js";
 import { MermaidDiagram } from "./mermaid-diagram.js";
+import { LoadingRegion } from "./loading-region.js";
+
+const sampleInspection: Inspection = {
+  content:
+    "# Project notes\n\nKeep the project context available across your tools.\n\n## Working notes\n\nReview the current approach and the decisions behind it.\n\n- Inspect the existing behavior\n- Keep useful context together\n- Verify the result",
+  previous: "Earlier project notes",
+  paths: [],
+};
 
 /** Shared Markdown element overrides for synced content and session turns. */
 export const markdownComponents: Components = {
@@ -62,15 +70,7 @@ export const markdownComponents: Components = {
   ),
 };
 
-export function ResourceContent({
-  inspection,
-  changes,
-  markdown,
-  conversation,
-  skillDocument = false,
-  error,
-  onRetry,
-}: {
+type ResourceContentProps = {
   inspection: Inspection | null;
   changes: boolean;
   markdown: boolean;
@@ -78,24 +78,42 @@ export function ResourceContent({
   skillDocument?: boolean;
   error?: string;
   onRetry?: () => void;
-}) {
-  if (error)
-    return (
-      <div className="content-message" role="alert">
-        <p>{error}</p>
-        {onRetry && (
-          <Button size="sm" variant="tertiary" onClick={onRetry}>
-            Retry
-          </Button>
-        )}
-      </div>
-    );
-  if (!inspection)
-    return (
-      <p className="content-message" role="status">
-        Loading…
-      </p>
-    );
+};
+
+export function ResourceContent(props: ResourceContentProps) {
+  return (
+    <LoadingRegion
+      id="resource-content"
+      label="Loading content…"
+      data={props.inspection}
+      sample={sampleInspection}
+      error={
+        props.error ? (
+          <div className="content-message" role="alert">
+            <p>{props.error}</p>
+            {props.onRetry && (
+              <Button size="sm" variant="tertiary" onClick={props.onRetry}>
+                Retry
+              </Button>
+            )}
+          </div>
+        ) : undefined
+      }
+    >
+      {(inspection) => (
+        <LoadedResourceContent {...props} inspection={inspection} />
+      )}
+    </LoadingRegion>
+  );
+}
+
+function LoadedResourceContent({
+  inspection,
+  changes,
+  markdown,
+  conversation,
+  skillDocument = false,
+}: ResourceContentProps & { inspection: Inspection }) {
   if (inspection.content === null)
     return (
       <p className="content-message">Binary file. Open it in your editor.</p>

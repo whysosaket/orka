@@ -523,6 +523,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [semver](https://www.npmjs.com/package/semver/v/7.8.5) | 7.8.5 | ISC |
 | [shebang-command](https://www.npmjs.com/package/shebang-command/v/2.0.0) | 2.0.0 | MIT |
 | [shebang-regex](https://www.npmjs.com/package/shebang-regex/v/3.0.0) | 3.0.0 | MIT |
+| [skullet](https://www.npmjs.com/package/skullet/v/0.0.3) | 0.0.3 | MIT |
 | [source-map-js](https://www.npmjs.com/package/source-map-js/v/1.2.2) | 1.2.2 | BSD-3-Clause |
 | [space-separated-tokens](https://www.npmjs.com/package/space-separated-tokens/v/2.0.2) | 2.0.2 | MIT |
 | [stringify-entities](https://www.npmjs.com/package/stringify-entities/v/4.0.4) | 4.0.4 | MIT |

@@ -19,6 +19,7 @@ import { projectLabel } from "./project-navigation.js";
 import { SkillUsageCount, type SkillUsage } from "./skill-usage.js";
 import { SortMenu } from "./sort-menu.js";
 import { repositoryLabel } from "./project-sources.js";
+import { LoadingRegion } from "./loading-region.js";
 
 interface GlobalSkill {
   id: string;
@@ -34,6 +35,22 @@ interface Scan {
   skills: GlobalSkill[];
   errors: string[];
 }
+const sampleSkills = [
+  "Project review",
+  "Writing guide",
+  "Frontend patterns",
+].map((name, index) => ({
+  id: `sample-${index}`,
+  folder: "project-guidance",
+  name,
+  description: "Reusable project guidance, supporting scripts, and references.",
+  path: ".codex/skills/project-guidance",
+  sources: ["codex" as const],
+  markdown: "",
+  fileCount: 3,
+  exists: false,
+  error: null,
+}));
 interface ImportResult {
   skillId: string;
   result?: { status: "draft" | "queued" | "local" };
@@ -454,97 +471,118 @@ function GlobalSkillsDialog({
         </label>
         <span>{selectedSkills.length} selected</span>
       </div>
-      <div className="global-skills-list" aria-busy={loading}>
-        {loading ? (
-          <p role="status">Scanning Codex and Claude global skills…</p>
-        ) : !scan ? null : !skills.length ? (
-          <p role="status">No global skills found in Codex or Claude.</p>
-        ) : !visible.length ? (
-          <p role="status">No skills match your search.</p>
-        ) : (
-          <ul aria-label="Global skills">
-            {visible.map((skill) => (
-              <li key={skill.id} className="global-skill-row">
-                <input
-                  className="global-skill-checkbox"
-                  type="checkbox"
-                  aria-label={`Select skill: ${skill.name}`}
-                  checked={selected.has(skill.id)}
-                  disabled={
-                    loading ||
-                    busy ||
-                    Boolean(pending) ||
-                    !connected ||
-                    skill.exists ||
-                    Boolean(skill.error)
-                  }
-                  onChange={(event) =>
-                    setSelected((current) => {
-                      const next = new Set(current);
-                      if (event.target.checked) next.add(skill.id);
-                      else next.delete(skill.id);
-                      return next;
-                    })
-                  }
-                />
-                <div className="global-skill-info">
-                  <h3>{skill.name}</h3>
-                  {skill.description && (
-                    <p
-                      className="global-skill-description"
-                      title={skill.description}
-                    >
-                      {skill.description}
-                    </p>
-                  )}
-                  <div className="global-skill-meta">
-                    {skill.sources.map((source) => (
-                      <SourceLabel key={source} source={source} />
-                    ))}
-                    {skill.fileCount > 1 && (
-                      <span>{skill.fileCount} files</span>
-                    )}
-                    <SkillUsageCount count={usage?.counts[skill.id]} />
-                  </div>
-                  <small className="global-skill-path" title={skill.path}>
-                    {skill.path}
-                  </small>
-                  {skill.error && <p>{skill.error}</p>}
-                </div>
-                <Button
-                  size="sm"
-                  disabled={
-                    loading ||
-                    busy ||
-                    Boolean(pending) ||
-                    !(project.sources
-                      ? project.sources.some(
-                          (source) => source.id === sourceId && source.path,
-                        )
-                      : project.path) ||
-                    skill.exists ||
-                    Boolean(skill.error)
-                  }
-                  aria-label={`${added.has(skill.id) ? "Added" : skill.exists ? "Already in project" : "Add to project"}: ${skill.name}`}
-                  onClick={() => void add([skill])}
-                >
-                  {added.has(skill.id) ? (
-                    <>
-                      <Icon icon={CheckIcon} size="sm" />
-                      Added
-                    </>
-                  ) : skill.exists ? (
-                    "Already in project"
-                  ) : pending === skill.id ? (
-                    "Adding…"
-                  ) : (
-                    "Add to project"
-                  )}
-                </Button>
-              </li>
-            ))}
-          </ul>
+      <div
+        className="global-skills-list"
+        role="region"
+        aria-label="Global skill results"
+        tabIndex={0}
+        aria-busy={loading}
+      >
+        {loading && scan && (
+          <span className="sr-only" role="status">
+            Scanning Codex and Claude global skills…
+          </span>
         )}
+        <LoadingRegion
+          key={sourceId}
+          id={`global-skills:${project.id}:${sourceId}`}
+          label="Scanning Codex and Claude global skills…"
+          data={scan ? visible : error ? [] : null}
+          sample={sampleSkills}
+        >
+          {(items) =>
+            !scan && error ? null : !items.length ? (
+              skills.length ? (
+                <p role="status">No skills match your search.</p>
+              ) : (
+                <p role="status">No global skills found in Codex or Claude.</p>
+              )
+            ) : (
+              <ul aria-label="Global skills">
+                {items.map((skill) => (
+                  <li key={skill.id} className="global-skill-row">
+                    <input
+                      className="global-skill-checkbox"
+                      type="checkbox"
+                      aria-label={`Select skill: ${skill.name}`}
+                      checked={selected.has(skill.id)}
+                      disabled={
+                        loading ||
+                        busy ||
+                        Boolean(pending) ||
+                        !connected ||
+                        skill.exists ||
+                        Boolean(skill.error)
+                      }
+                      onChange={(event) =>
+                        setSelected((current) => {
+                          const next = new Set(current);
+                          if (event.target.checked) next.add(skill.id);
+                          else next.delete(skill.id);
+                          return next;
+                        })
+                      }
+                    />
+                    <div className="global-skill-info">
+                      <h3>{skill.name}</h3>
+                      {skill.description && (
+                        <p
+                          className="global-skill-description"
+                          title={skill.description}
+                        >
+                          {skill.description}
+                        </p>
+                      )}
+                      <div className="global-skill-meta">
+                        {skill.sources.map((source) => (
+                          <SourceLabel key={source} source={source} />
+                        ))}
+                        {skill.fileCount > 1 && (
+                          <span>{skill.fileCount} files</span>
+                        )}
+                        <SkillUsageCount count={usage?.counts[skill.id]} />
+                      </div>
+                      <small className="global-skill-path" title={skill.path}>
+                        {skill.path}
+                      </small>
+                      {skill.error && <p>{skill.error}</p>}
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled={
+                        loading ||
+                        busy ||
+                        Boolean(pending) ||
+                        !(project.sources
+                          ? project.sources.some(
+                              (source) => source.id === sourceId && source.path,
+                            )
+                          : project.path) ||
+                        skill.exists ||
+                        Boolean(skill.error)
+                      }
+                      aria-label={`${added.has(skill.id) ? "Added" : skill.exists ? "Already in project" : "Add to project"}: ${skill.name}`}
+                      onClick={() => void add([skill])}
+                    >
+                      {added.has(skill.id) ? (
+                        <>
+                          <Icon icon={CheckIcon} size="sm" />
+                          Added
+                        </>
+                      ) : skill.exists ? (
+                        "Already in project"
+                      ) : pending === skill.id ? (
+                        "Adding…"
+                      ) : (
+                        "Add to project"
+                      )}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+        </LoadingRegion>
       </div>
       <div className="global-skills-footer">
         <p role="status">{message}</p>

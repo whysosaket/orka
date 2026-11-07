@@ -7,6 +7,10 @@
 @tailwind components;
 @tailwind utilities;
 
+.loading-region {
+  min-width: 0;
+}
+
 .source-folder-selection {
   display: grid;
   gap: 12px;

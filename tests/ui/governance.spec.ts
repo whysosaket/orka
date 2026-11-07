@@ -228,6 +228,10 @@ async function fixture(
                     next: envData && !args.input?.before ? "next-page" : null,
                   };
                 case "catalog":
+                  if (mode === "held-catalog")
+                    await new Promise<void>((resolve) => {
+                      ((window as any).finishMemberLoads ??= []).push(resolve);
+                    });
                   return catalog;
                 case "policy": {
                   const input = args.input!;
@@ -328,6 +332,37 @@ async function fixture(
 
 const management = (page: Page) =>
   page.getByRole("region", { name: "Manage", exact: true });
+
+test("member loading preserves management navigation and hides sample controls", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await fixture(page, true, false, "held-catalog");
+  const screen = management(page);
+  const loading = screen.locator(".loading-region");
+  await expect(loading).toHaveAttribute("aria-busy", "true");
+  await expect(
+    screen.getByRole("button", { name: "Members", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    screen.getByRole("button", { name: "Requests", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    screen.getByRole("heading", { name: "Project members", exact: true }),
+  ).toHaveCount(0);
+  await page.screenshot({ path: "artifacts/member-loading.png" });
+  expect(
+    (await new AxeBuilder({ page }).include(".members-page").analyze())
+      .violations,
+  ).toEqual([]);
+  await page.evaluate(() =>
+    (window as any).finishMemberLoads.forEach((finish: () => void) => finish()),
+  );
+  await expect(
+    screen.getByRole("region", { name: "Project members" }),
+  ).toBeVisible();
+  await expect(loading).not.toHaveAttribute("aria-busy", "true");
+});
 
 for (const mode of ["owner", "member"]) {
   test(`disabled ENVs stay hidden with saved sharing, requests, logs and links for ${mode}`, async ({

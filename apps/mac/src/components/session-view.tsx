@@ -16,6 +16,25 @@ import { SourceLabel } from "./source-label.js";
 import { markdownComponents } from "./resource-content.js";
 import { useSessionMessages } from "./use-session-messages.js";
 import type { SessionMessage } from "../types.js";
+import { LoadingRegion } from "./loading-region.js";
+
+const sampleMessages: SessionMessage[] = [
+  {
+    index: 0,
+    role: "user",
+    text: "Review the current project and suggest the next steps.",
+  },
+  {
+    index: 1,
+    role: "assistant",
+    text: "I’ll check the existing approach and the decisions behind it.\n\nThen I’ll work through the relevant changes and verify the result.",
+  },
+  {
+    index: 2,
+    role: "user",
+    text: "Keep the existing behavior and project context in mind.",
+  },
+];
 
 export type SessionViewMode = "conversation" | "transcript";
 
@@ -99,6 +118,7 @@ export function SessionView({
   const [scrollMargin, setScrollMargin] = useState(0);
   const { messages, total, loading, error, removed, hasMore, loadMore, retry } =
     useSessionMessages(id, revision, conflictId);
+  const initialLoading = loading && total === null && !error;
   const conversation = mode === "conversation";
   // The header scrolls with the turns, so the virtualizer needs the list's
   // offset inside the scroll container, refreshed whenever the header resizes.
@@ -113,18 +133,26 @@ export function SessionView({
           scroller.scrollTop,
       );
     measure();
-    const observer = new ResizeObserver(measure);
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    });
     observer.observe(scroller);
     for (const child of Array.from(scroller.children))
       if (!child.contains(list)) observer.observe(child);
-    return () => observer.disconnect();
-  }, [conversation]);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [conversation, initialLoading]);
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 160,
     overscan: 6,
     scrollMargin,
+    useAnimationFrameWithResizeObserver: true,
     getItemKey: (index) => messages[index].index,
   });
   const items = virtualizer.getVirtualItems();
@@ -167,30 +195,49 @@ export function SessionView({
               and tool records.
             </p>
           )}
-          <div
-            ref={listRef}
-            className="session-turns"
-            style={{ height: virtualizer.getTotalSize() }}
+          <LoadingRegion
+            id={`session:${id}:${revision}:${conflictId}`}
+            label="Loading messages…"
+            loading={initialLoading}
           >
-            {items.map((item) => (
-              <div
-                key={item.key}
-                data-index={item.index}
-                ref={virtualizer.measureElement}
-                className="session-turn-slot"
-                style={{
-                  transform: `translateY(${item.start - scrollMargin}px)`,
-                }}
-              >
-                <SessionTurn
-                  message={messages[item.index]}
-                  raw={raw}
-                  source={source}
-                />
+            {initialLoading ? (
+              <div>
+                {sampleMessages.map((message) => (
+                  <SessionTurn
+                    key={message.index}
+                    message={message}
+                    raw={raw}
+                    source={source}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
-          {!error && (hasMore || (loading && total === null)) && (
+            ) : (
+              <div
+                ref={listRef}
+                className="session-turns"
+                style={{ height: virtualizer.getTotalSize() }}
+              >
+                {items.map((item) => (
+                  <div
+                    key={item.key}
+                    data-index={item.index}
+                    ref={virtualizer.measureElement}
+                    className="session-turn-slot"
+                    style={{
+                      transform: `translateY(${item.start - scrollMargin}px)`,
+                    }}
+                  >
+                    <SessionTurn
+                      message={messages[item.index]}
+                      raw={raw}
+                      source={source}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </LoadingRegion>
+          {!error && hasMore && (
             <div className="session-load-more">
               {loading ? (
                 <span role="status">Loading messages…</span>
