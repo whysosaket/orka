@@ -745,14 +745,14 @@ test("Plans supports both providers, source filters, Markdown, editor actions, a
   await page
     .getByRole("button", { name: "Show Markdown", exact: true })
     .click();
-  await expect(detail.locator("pre.content")).toContainText("- [x] Design");
+  await expect(detail.locator("pre.content")).toHaveText([/- \[x\] Design/]);
   await detail
     .getByRole("button", { name: "More resource actions", exact: true })
     .click();
   await page
     .getByRole("button", { name: "Compare with previous revision" })
     .click();
-  await expect(detail.getByLabel("File changes")).toContainText("Old content");
+  await expect(detail.getByLabel("File changes")).toHaveText([/Old content/]);
   await detail
     .getByRole("button", { name: "Back to Plans", exact: true })
     .click();
@@ -2099,14 +2099,14 @@ for (const width of [1160, 900])
       .getByRole("button", { name: "Show Markdown", exact: true })
       .click();
     await expect(diagram).toHaveCount(0);
-    await expect(page.locator("pre.content")).toHaveText(source);
+    await expect(page.locator("pre.content")).toHaveText([source]);
     await page
       .getByRole("button", { name: "More resource actions", exact: true })
       .click();
     await page
       .getByRole("button", { name: "Compare with previous revision" })
       .click();
-    await expect(page.getByLabel("File changes")).toContainText("flowchart LR");
+    await expect(page.getByLabel("File changes")).toHaveText([/flowchart LR/]);
     await expect(diagram).toHaveCount(0);
   });
 
@@ -2131,9 +2131,9 @@ test("session conversations render Mermaid while transcripts stay literal and la
     ),
   ).toEqual([]);
   await page.getByRole("button", { name: "Transcript", exact: true }).click();
-  await expect(page.locator(".session-view pre.content")).toContainText(
-    "Some content",
-  );
+  await expect(page.locator(".session-view pre.content")).toHaveText([
+    /Some content/,
+  ]);
   await expect(page.locator(".mermaid-diagram")).toHaveCount(0);
 });
 
@@ -2209,8 +2209,6 @@ test("resource reads work offline and reuse the current revision on return", asy
 test("a new revision refreshes the open resource instead of serving the cached version", async ({
   page,
 }) => {
-  // Keep the polling clock independent of presentation animations.
-  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.clock.install();
   await detailFixture(page);
   await page.evaluate(() => {
@@ -2234,23 +2232,24 @@ test("a new revision refreshes the open resource instead of serving the cached v
     };
   });
   await openMemory(page);
+  // A reveal can briefly contain both panes. Check the settled document list
+  // atomically so the assertion retries until one current document remains.
   await expect(
     page.getByRole("article", { name: "Rendered Markdown" }),
-  ).toHaveText("Version 1");
+  ).toHaveText(["Version 1"]);
   await page.evaluate(() => {
     (window as any).readerRevision = 2;
   });
   await page.clock.runFor(3100);
   await expect(
     page.getByRole("article", { name: "Rendered Markdown" }),
-  ).toHaveText("Version 2");
+  ).toHaveText(["Version 2"]);
 });
 
 for (const dimension of ["profile", "user", "service"])
   test(`resource caches are cleared across ${dimension} changes`, async ({
     page,
   }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.clock.install();
     await detailFixture(page);
     await page.evaluate((dimension) => {
@@ -2280,21 +2279,21 @@ for (const dimension of ["profile", "user", "service"])
     await openMemory(page);
     await expect(
       page.getByRole("article", { name: "Rendered Markdown" }),
-    ).toHaveText("Scoped read 1");
+    ).toHaveText(["Scoped read 1"]);
     await page.evaluate(() => {
       (window as any).changedScope = true;
     });
     await page.clock.runFor(3100);
     await expect(
       page.getByRole("article", { name: "Rendered Markdown" }),
-    ).toHaveText("Scoped read 2");
+    ).toHaveText(["Scoped read 2"]);
     await page.evaluate(() => {
       (window as any).changedScope = false;
     });
     await page.clock.runFor(3100);
     await expect(
       page.getByRole("article", { name: "Rendered Markdown" }),
-    ).toHaveText("Scoped read 3");
+    ).toHaveText(["Scoped read 3"]);
   });
 
 test("reduced motion keeps navigation aligned and Settings keyboard focus intact", async ({

@@ -265,9 +265,9 @@ test("session deep links reset memory diff mode and keep the segmented modes", a
   await expect(
     modes.getByRole("button", { name: "Transcript", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator(".session-view pre.content")).toContainText(
-    "Some content",
-  );
+  await expect(page.locator(".session-view pre.content")).toHaveText([
+    /Some content/,
+  ]);
   await modes
     .getByRole("button", { name: "Conversation", exact: true })
     .click();
