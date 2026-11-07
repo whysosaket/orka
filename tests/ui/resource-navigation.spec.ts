@@ -427,6 +427,7 @@ test("skills use one file selector at every width", async ({ page }) => {
 test("a failed file read clears old content and retries only on request", async ({
   page,
 }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.clock.install();
   await resourceFixture(page);
   await page.getByRole("button", { name: /^Skills/ }).click();
@@ -457,13 +458,23 @@ test("a failed file read clears old content and retries only on request", async 
     .getByLabel("Files", { exact: true })
     .getByRole("button", { name: "references/tokens.md", exact: true })
     .click();
-  await expect(view.getByRole("status")).toHaveText("Loading…");
-  await expect(view).not.toContainText("Some content");
+  await expect(view.getByRole("status")).toHaveText("Loading content…");
+  await expect(view.locator(".loading-region")).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  // Skullet keeps an inert, aria-hidden copy to measure the previous layout.
+  // It must not expose that copy as the current document.
+  await expect(
+    view.getByRole("article", { name: "Rendered Markdown" }),
+  ).toHaveCount(0);
   await page.evaluate(() => (window as any).rejectFileRead());
   await expect(view.getByRole("alert")).toContainText(
     "File temporarily unavailable",
   );
-  await expect(view).not.toContainText("Some content");
+  await expect(
+    view.getByRole("article", { name: "Rendered Markdown" }),
+  ).toHaveCount(0);
   await page.clock.runFor(3100);
   expect(await page.evaluate(() => (window as any).fileReads)).toBe(1);
   await view.getByRole("button", { name: "Retry", exact: true }).click();
@@ -476,6 +487,7 @@ for (const outcome of ["success", "failure"] as const)
   test(`a late file ${outcome} cannot replace the current selection`, async ({
     page,
   }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await resourceFixture(page);
     await page.getByRole("button", { name: /^Skills/ }).click();
     await page.getByRole("button", { name: /Review checklist/ }).click();
@@ -508,7 +520,11 @@ for (const outcome of ["success", "failure"] as const)
       .getByLabel("Files", { exact: true })
       .getByRole("button", { name: "references/tokens.md", exact: true })
       .click();
-    await expect(view.getByRole("status")).toHaveText("Loading…");
+    await expect(view.getByRole("status")).toHaveText("Loading content…");
+    await expect(view.locator(".loading-region")).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
     await page.getByRole("button", { name: "2 files", exact: true }).click();
     await page
       .getByLabel("Files", { exact: true })
