@@ -11,6 +11,8 @@ Orka's own source is offered under the [MIT license](LICENSE). Third-party depen
 
 ## Dependencies
 
+- **Skullet:** measured skeleton loading states are MIT licensed. Its notice is preserved in [licenses/Skullet-MIT.txt](licenses/Skullet-MIT.txt).
+
 JavaScript dependencies are locked in `package-lock.json`; Rust dependencies are locked in `apps/mac/src-tauri/Cargo.lock`. Third-party dependencies are not vendored into the source repository. The first-party client protocol package is included under MIT with its provenance and checksums in `vendor/manifest.json`. The [dependency license inventory](docs/dependency-licenses.md) records declared licenses and upstream locations for the locked packages. Metadata is an inventory, not a substitute for a dependency's actual license terms.
 
 The dependency graph includes permissive licenses, the SIL Open Font License, Unicode and data licenses, and MPL-2.0 components. Preserve upstream notices and review applicable source-distribution obligations when distributing compiled binaries or modified dependency code. Service deployments are maintained separately and are outside this desktop source release.
