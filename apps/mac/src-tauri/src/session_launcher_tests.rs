@@ -911,6 +911,52 @@ fn missing_cli_support_disables_only_destinations_that_require_it() {
 }
 
 #[test]
+fn cached_codex_forks_from_another_mac_do_not_replace_the_local_resume_target() {
+    let f = Fixture::new();
+    let source = session(&f, "codex", false);
+    let id = source["resourceId"].as_str().unwrap();
+    f.db.execute("DELETE FROM bindings WHERE id=?", [id])
+        .unwrap();
+    sync::materialize(&f.db, &f.project, &source).unwrap();
+    let mut remote_fork = source.clone();
+    let remote_id = uuid::Uuid::new_v4().to_string();
+    remote_fork["resourceId"] = json!(remote_id);
+    remote_fork["logicalPath"] =
+        json!(format!("codex/forks/{id}/desktop/{}", uuid::Uuid::new_v4()));
+    remote_fork["updatedAt"] = json!("2099-01-01T00:00:00Z");
+    db::upsert(
+        &f.db,
+        "resources",
+        &remote_id,
+        f.project["id"].as_str().unwrap(),
+        &remote_fork,
+    )
+    .unwrap();
+    sync::materialize(&f.db, &f.project, &remote_fork).unwrap();
+    assert!(crate::session_forks::resumable(&f.db, &source)
+        .unwrap()
+        .is_none());
+    assert!(crate::session_forks::resumable(&f.db, &remote_fork)
+        .unwrap()
+        .is_none());
+    let host = FakeHost::default();
+    let first =
+        session_launcher::resume_with(id, Tool::Codex, Destination::Desktop, &host).unwrap();
+    let reopened =
+        session_launcher::resume_with(id, Tool::Codex, Destination::Desktop, &host).unwrap();
+    assert_eq!(first["nativeId"], reopened["nativeId"]);
+    assert_eq!(host.forks.borrow().len(), 1);
+    assert_eq!(host.forks.borrow()[0], source);
+    let remote_open =
+        session_launcher::resume_with(&remote_id, Tool::Codex, Destination::Desktop, &host)
+            .unwrap();
+    assert_ne!(remote_open["nativeId"], first["nativeId"]);
+    assert_eq!(host.forks.borrow().len(), 2);
+    assert!(indexer::binding(&f.db, id).unwrap()["nativeId"].is_null());
+    assert!(indexer::binding(&f.db, &remote_id).unwrap()["nativeId"].is_null());
+}
+
+#[test]
 fn missing_or_invalid_source_bindings_do_not_require_sync_before_forking() {
     let f = Fixture::new();
     let resource = session(&f, "codex", true);

@@ -444,8 +444,21 @@ pub fn materialize(db: &rusqlite::Connection, project: &Value, resource: &Value)
     if crate::repair::deletion_complete(resource, &b)? {
         return crate::repair::settle_deletion(db, project, resource, b);
     }
-    if kind == "session" && resource["source"] == "codex" && crate::repair::archived(&b)? {
-        b["availableRevision"] = resource["revision"].clone();
+    if kind == "session" && resource["source"] == "codex" && resource["deleted"] != true {
+        // Sync keeps snapshots in Orka. Only an explicit launch creates native history.
+        if b["nativeId"].is_string() {
+            b["availableRevision"] = resource["revision"].clone();
+        } else {
+            crate::history::History::resource(resource)?;
+            b["previous"] = b["base"].clone();
+            b["base"] = resource.clone();
+            b["paths"] = json!([]);
+            b["guards"] = json!([]);
+            b["managed"] = json!(true);
+            b["installationState"] = json!("current");
+            b["lastSeenHash"] = json!(indexer::manifest_hash(&resource["files"]));
+            b["writeGuard"] = b["lastSeenHash"].clone();
+        }
         return db::upsert(db, "bindings", id, project_id, &b);
     }
     if kind == "session" {
