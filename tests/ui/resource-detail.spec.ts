@@ -2209,6 +2209,8 @@ test("resource reads work offline and reuse the current revision on return", asy
 test("a new revision refreshes the open resource instead of serving the cached version", async ({
   page,
 }) => {
+  // Keep the polling clock independent of presentation animations.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.clock.install();
   await detailFixture(page);
   await page.evaluate(() => {
@@ -2232,18 +2234,23 @@ test("a new revision refreshes the open resource instead of serving the cached v
     };
   });
   await openMemory(page);
-  await expect(page.locator(".markdown-content")).toHaveText("Version 1");
+  await expect(
+    page.getByRole("article", { name: "Rendered Markdown" }),
+  ).toHaveText("Version 1");
   await page.evaluate(() => {
     (window as any).readerRevision = 2;
   });
   await page.clock.runFor(3100);
-  await expect(page.locator(".markdown-content")).toHaveText("Version 2");
+  await expect(
+    page.getByRole("article", { name: "Rendered Markdown" }),
+  ).toHaveText("Version 2");
 });
 
 for (const dimension of ["profile", "user", "service"])
   test(`resource caches are cleared across ${dimension} changes`, async ({
     page,
   }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.clock.install();
     await detailFixture(page);
     await page.evaluate((dimension) => {
@@ -2271,17 +2278,23 @@ for (const dimension of ["profile", "user", "service"])
       };
     }, dimension);
     await openMemory(page);
-    await expect(page.locator(".markdown-content")).toHaveText("Scoped read 1");
+    await expect(
+      page.getByRole("article", { name: "Rendered Markdown" }),
+    ).toHaveText("Scoped read 1");
     await page.evaluate(() => {
       (window as any).changedScope = true;
     });
     await page.clock.runFor(3100);
-    await expect(page.locator(".markdown-content")).toHaveText("Scoped read 2");
+    await expect(
+      page.getByRole("article", { name: "Rendered Markdown" }),
+    ).toHaveText("Scoped read 2");
     await page.evaluate(() => {
       (window as any).changedScope = false;
     });
     await page.clock.runFor(3100);
-    await expect(page.locator(".markdown-content")).toHaveText("Scoped read 3");
+    await expect(
+      page.getByRole("article", { name: "Rendered Markdown" }),
+    ).toHaveText("Scoped read 3");
   });
 
 test("reduced motion keeps navigation aligned and Settings keyboard focus intact", async ({
