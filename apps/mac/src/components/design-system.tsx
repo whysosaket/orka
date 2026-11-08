@@ -72,7 +72,10 @@ export default function DesignSystem({ onClose }: { onClose: () => void }) {
         {section === "Foundations" && (
           <section>
             <h2>Corner radii</h2>
-            <p>Controls share the same 9px corners at every size.</p>
+            <p>
+              Buttons use 10/9/8px corners at LG/MD/SM. Fields retain the shared
+              control radius.
+            </p>
             <div className="ds-radii">
               {[
                 ["none", "0px"],
@@ -116,26 +119,26 @@ export default function DesignSystem({ onClose }: { onClose: () => void }) {
               <div className="ds-button-row" key={buttonSize}>
                 <span>
                   {buttonSize} /{" "}
-                  {buttonSize === "lg" ? 48 : buttonSize === "md" ? 40 : 32}px
+                  {buttonSize === "lg" ? 40 : buttonSize === "md" ? 36 : 32}px
                 </span>
-                {(["primary", "secondary", "tertiary"] as const).map(
-                  (variant) => (
-                    <React.Fragment key={variant}>
-                      <Button variant={variant} size={buttonSize}>
-                        {variant === "tertiary" ? null : (
-                          <Icon icon={FileDirectoryIcon} />
-                        )}
-                        {variant}
-                      </Button>
-                      <IconButton
-                        variant={variant}
-                        size={buttonSize}
-                        icon={PlusIcon}
-                        aria-label={`${variant} ${buttonSize} add`}
-                      />
-                    </React.Fragment>
-                  ),
-                )}
+                {(
+                  ["primary", "primary-brand", "secondary", "tertiary"] as const
+                ).map((variant) => (
+                  <React.Fragment key={variant}>
+                    <Button variant={variant} size={buttonSize}>
+                      {variant === "tertiary" ? null : (
+                        <Icon icon={FileDirectoryIcon} />
+                      )}
+                      {variant}
+                    </Button>
+                    <IconButton
+                      variant={variant}
+                      size={buttonSize}
+                      icon={PlusIcon}
+                      aria-label={`${variant} ${buttonSize} add`}
+                    />
+                  </React.Fragment>
+                ))}
               </div>
             ))}
           </section>
@@ -325,9 +328,9 @@ export default function DesignSystem({ onClose }: { onClose: () => void }) {
             </section>
             <p className="ds-footnote">
               {size === "lg"
-                ? "48px height · 16px text · 24px icon container · 20px glyph · 12px gap"
+                ? "40px height · 14px text · 20px icon container · 16px glyph · 12px gap"
                 : size === "md"
-                  ? "40px height · 14px text · 20px icon container · 16px glyph · 12px gap"
+                  ? "36px height · 14px text · 20px icon container · 16px glyph · 12px gap"
                   : "32px height · 12px text · 18px icon container · 14px glyph · 8px gap"}{" "}
               · 9px corners
             </p>

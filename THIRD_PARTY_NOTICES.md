@@ -11,6 +11,7 @@ Orka's own source is offered under the [MIT license](LICENSE). Third-party depen
 
 ## Dependencies
 
+- **Agentation:** development and explicit internal annotation builds use `agentation` under PolyForm Shield 1.0.0. Its upstream terms are linked from the [package](https://www.npmjs.com/package/agentation/v/3.1.2). Ordinary production builds omit it.
 - **Skullet:** measured skeleton loading states are MIT licensed. Its notice is preserved in [licenses/Skullet-MIT.txt](licenses/Skullet-MIT.txt).
 
 JavaScript dependencies are locked in `package-lock.json`; Rust dependencies are locked in `apps/mac/src-tauri/Cargo.lock`. Third-party dependencies are not vendored into the source repository. The first-party client protocol package is included under MIT with its provenance and checksums in `vendor/manifest.json`. The [dependency license inventory](docs/dependency-licenses.md) records declared licenses and upstream locations for the locked packages. Metadata is an inventory, not a substitute for a dependency's actual license terms.

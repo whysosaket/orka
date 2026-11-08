@@ -43,68 +43,6 @@ export function projectLabel(project: Project): string {
 
 type RegisterItem = ReturnType<typeof useFluidHover>["registerItem"];
 
-/** Adapt existing shared action buttons without replacing their behavior. */
-function ProjectActions({
-  children,
-  onActivate,
-}: {
-  children: React.ReactNode;
-  onActivate: () => void;
-}) {
-  const ref = React.useRef<HTMLDivElement>(null);
-  const hover = useFluidHover(ref, {
-    axis: "y",
-    isItemDisabled: (element) => element.matches(":disabled"),
-  });
-  const register = hover.registerItem;
-  React.useLayoutEffect(() => {
-    const root = ref.current;
-    if (!root) return;
-    let registered: HTMLButtonElement[] = [];
-    const sync = () => {
-      const buttons = Array.from(
-        root.querySelectorAll<HTMLButtonElement>("button"),
-      );
-      if (
-        buttons.length === registered.length &&
-        buttons.every((button, index) => button === registered[index])
-      )
-        return;
-      registered.forEach((_, index) => register(index, null));
-      registered = buttons;
-      registered.forEach((button, index) => register(index, button));
-    };
-    sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(root, { childList: true, subtree: true });
-    return () => {
-      observer.disconnect();
-      registered.forEach((_, index) => register(index, null));
-    };
-  }, [register]);
-  return (
-    <div
-      ref={ref}
-      className="project-menu-actions"
-      role="group"
-      aria-label="Project actions"
-      {...hover.handlers}
-      onClick={(event) => {
-        const button = (event.target as HTMLElement).closest("button");
-        if (
-          button &&
-          !button.disabled &&
-          !button.classList.contains("copy-link-button")
-        )
-          onActivate();
-      }}
-    >
-      <FluidHoverHighlight hover={hover} className="project-menu-hover" />
-      {children}
-    </div>
-  );
-}
-
 function ProjectOption({
   project,
   selected,
@@ -141,13 +79,11 @@ function ProjectPicker({
   projects,
   projectId,
   collapsed,
-  actions,
   onProjectChange,
 }: {
   projects: Project[];
   projectId: string;
   collapsed: boolean;
-  actions?: React.ReactNode;
   onProjectChange: (id: string) => void;
 }) {
   const selected = projects.find((p) => p.id === projectId);
@@ -155,8 +91,6 @@ function ProjectPicker({
   const [open, setOpen] = React.useState(false);
   const [keyboard, setKeyboard] = React.useState(false);
   const reduced = useReducedMotion();
-  const triggerRef = React.useRef<HTMLButtonElement>(null);
-  const actionActivated = React.useRef(false);
   const listRef = React.useRef<HTMLDivElement>(null);
   const focusEdge = React.useRef<"first" | "last" | null>(null);
   const typeahead = React.useRef({ text: "", time: 0 });
@@ -209,7 +143,6 @@ function ProjectPicker({
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button
-          ref={triggerRef}
           type="button"
           role="combobox"
           aria-controls={open ? listId : undefined}
@@ -217,7 +150,7 @@ function ProjectPicker({
           aria-expanded={open}
           className="project-selector"
           data-selected={Boolean(selected)}
-          disabled={!projects.length && !actions}
+          disabled={!projects.length}
           aria-label={collapsed ? "Select project: " + label : "Select project"}
           title={label}
           onPointerDown={() => setKeyboard(false)}
@@ -264,14 +197,6 @@ function ProjectPicker({
               aria-label="Project menu"
               onKeyDownCapture={() => setKeyboard(true)}
               onPointerDownCapture={() => setKeyboard(false)}
-              onCloseAutoFocus={(event) => {
-                if (actionActivated.current) {
-                  // The action already restored its stable trigger before opening
-                  // another surface. An exiting menu must not steal that focus.
-                  event.preventDefault();
-                  actionActivated.current = false;
-                }
-              }}
               onOpenAutoFocus={(event) => {
                 event.preventDefault();
                 const items = options();
@@ -318,17 +243,6 @@ function ProjectPicker({
                     />
                   ))}
                 </div>
-                {actions && (
-                  <ProjectActions
-                    onActivate={() => {
-                      actionActivated.current = true;
-                      triggerRef.current?.focus();
-                      setOpen(false);
-                    }}
-                  >
-                    {actions}
-                  </ProjectActions>
-                )}
               </motion.div>
             </Popover.Content>
           )}
@@ -391,16 +305,14 @@ export function ProjectNavigation({
   onProjectChange,
   onNavigate,
   collapsed,
-  actions,
 }: {
   projects: Project[];
   projectId: string;
-  activeKind: ProjectPage;
+  activeKind: ProjectPage | null;
   resources: Resource[];
   onProjectChange: (id: string) => void;
   onNavigate: (kind: ProjectPage) => void;
   collapsed: boolean;
-  actions?: React.ReactNode;
 }) {
   const reduced = useReducedMotion(),
     selected = projects.find((project) => project.id === projectId);
@@ -430,7 +342,6 @@ export function ProjectNavigation({
           projects={projects}
           projectId={projectId}
           collapsed={collapsed}
-          actions={actions}
           onProjectChange={onProjectChange}
         />
       </div>

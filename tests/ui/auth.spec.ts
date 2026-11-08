@@ -60,6 +60,12 @@ async function fixture(
               };
             if (command === "plugin:deep-link|get_current")
               return options.deepLink ? [options.deepLink] : [];
+            if (command === "onboarding_command")
+              return {
+                displayName: "Test User",
+                jobRole: "",
+                email: "person@example.test",
+              };
             if (command.startsWith("plugin:")) return null;
             calls.push({ command, args });
             if (command === "auth_capabilities") {
@@ -710,12 +716,10 @@ test("switching to self-hosted requires a reachable service and signs out", asyn
 }) => {
   await fixture(page, true);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  const settings = page.getByRole("dialog", { name: "Settings" });
+  const settings = page.getByRole("region", { name: "Settings", exact: true });
+  await settings.getByRole("button", { name: "Profile", exact: true }).click();
   await settings
-    .getByRole("button", { name: "Account & service", exact: true })
-    .click();
-  await settings
-    .getByRole("button", { name: "Change service", exact: true })
+    .getByRole("button", { name: "Move to self-hosted", exact: true })
     .click();
   await settings
     .getByRole("button", { name: "Self-hosted", exact: true })

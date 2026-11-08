@@ -25,12 +25,14 @@ export type OnboardingStep =
   | "codex";
 export interface AccountProfile {
   displayName: string;
+  email?: string;
   jobRole?: string | null;
   avatarUrl?: string | null;
   avatarData?: string | null;
   avatarPreview?: string | null;
   supported?: boolean;
   detailsSupported?: boolean;
+  revision?: string;
   pending?: boolean;
   offline?: boolean;
 }

@@ -184,7 +184,7 @@ for (const size of [
       .click();
     await expect(
       page.getByRole("button", { name: "Invite member", exact: true }),
-    ).toBeVisible();
+    ).toHaveCount(0);
   });
 }
 
@@ -272,7 +272,7 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
     .getByRole("combobox", { name: "Select project: Orka", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Manage", exact: true }),
+    page.getByRole("option", { name: "Studio", exact: true }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   const expand = page.getByRole("button", {
@@ -284,7 +284,7 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
   await expect(page.locator(".sidebar")).toHaveCSS("width", "240px");
 });
 
-test("project menu keeps actions, native payloads, ownership and focus intact", async ({
+test("project menu keeps project selection, keyboard navigation and focus intact", async ({
   page,
 }) => {
   const project = page.getByRole("combobox", {
@@ -315,44 +315,22 @@ test("project menu keeps actions, native payloads, ownership and focus intact", 
     .include(".project-menu")
     .analyze();
   expect(accessibility.violations).toEqual([]);
-  await page
-    .getByRole("button", { name: "Copy project link", exact: true })
-    .click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "Link copied" }),
-  ).toBeVisible();
-  await expect(project).toHaveAttribute("aria-expanded", "true");
-  await expect
-    .poll(() => page.evaluate(() => (window as any).copied))
-    .toContain("orka://project/one");
-  await page
-    .getByRole("button", { name: "Manage source folders", exact: true })
-    .click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await page
-    .getByRole("button", { name: "Close settings", exact: true })
-    .click();
-  await project.click();
-  await page
-    .getByRole("button", { name: "Invite member", exact: true })
-    .click();
-  await expect
-    .poll(() => page.evaluate(() => (window as any).copied))
-    .toContain("orka://join/test-invite");
-  await expect(
-    page.getByRole("status").filter({ hasText: "Invite copied" }),
-  ).toBeVisible();
-  await project.click();
-  await page.getByRole("button", { name: "Manage", exact: true }).click();
-  await expect(page.locator(".workspace-header h1")).toHaveText("Manage");
+  for (const name of [
+    "Manage source folders",
+    "Copy project link",
+    "Manage",
+    "Invite member",
+  ]) {
+    await expect(page.getByRole("button", { name, exact: true })).toHaveCount(
+      0,
+    );
+  }
+  await page.keyboard.press("Escape");
+  await expect(project).toBeFocused();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(
-    page.getByRole("dialog", { name: "Settings", exact: true }),
+    page.getByRole("region", { name: "Settings", exact: true }),
   ).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(
-    page.getByRole("button", { name: "Settings", exact: true }),
-  ).toBeFocused();
   const sync = page.locator(".workspace-header .sync-status");
   await expect(sync).toContainText("Up to date");
   await sync.click();
@@ -390,7 +368,7 @@ test("reduced motion keeps shell controls and project selection usable", async (
   expect(accessibility.violations).toEqual([]);
 });
 
-test("a long project menu scrolls its list while retaining all project actions", async ({
+test("a long project menu scrolls and keeps keyboard focus within the viewport", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 900, height: 640 });
@@ -426,12 +404,6 @@ test("a long project menu scrolls its list while retaining all project actions",
   await expect(page.getByRole("option")).toHaveCount(32);
   const menu = page.locator(".project-menu");
   const bounds = (await menu.boundingBox())!;
-  const invite = (await page
-    .getByRole("button", { name: "Invite member", exact: true })
-    .boundingBox())!;
-  expect(invite.y + invite.height).toBeLessThanOrEqual(
-    bounds.y + bounds.height,
-  );
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(640 - 12);
   const list = page.getByRole("listbox", { name: "Projects", exact: true });
   expect(

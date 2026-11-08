@@ -23,7 +23,7 @@ const roleValue = (value?: string | null) =>
   value ??
   "";
 
-async function photoData(file: File): Promise<string> {
+export async function photoData(file: File): Promise<string> {
   if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
     throw new Error("Choose a PNG, JPEG, or WebP photo.");
   if (file.size > 10 * 1024 * 1024)
@@ -235,6 +235,7 @@ export function ProfileStep({
         )}
         <OnboardingError>{photoError || error}</OnboardingError>
         <Button
+          size="lg"
           type="submit"
           variant="primary"
           className="onboarding-entry__submit"

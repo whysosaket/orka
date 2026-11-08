@@ -1,5 +1,9 @@
 import type { Resource, SessionConflict, Activity } from "@portable/protocol";
-import type { ReviewRequest, EffectiveAccess } from "@portable/protocol";
+import type {
+  ReviewRequest,
+  EffectiveAccess,
+  RolePolicies,
+} from "@portable/protocol";
 export type ProjectResource = Resource & {
   repositoryName?: string;
   local?: true;
@@ -19,16 +23,27 @@ export interface ProjectMember {
   id: string;
   role: string;
   name?: string;
+  displayName?: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
+  avatarData?: string | null;
 }
 export interface Project {
   id: string;
   name: string;
   localName?: string | null;
   path?: string | null;
-  sources?: { id: string; name: string; path?: string | null }[];
-  role: "owner" | "member";
+  sources?: {
+    id: string;
+    name: string;
+    path?: string | null;
+    folderState?: "connected" | "reconnect" | "locate";
+  }[];
+  folderState?: "connected" | "reconnect" | "locate";
+  role: "owner" | "admin" | "member";
   sharing?: ProjectSharing | null;
   governed?: boolean;
+  rolePolicies?: RolePolicies | null;
   policyRevision?: number;
   lifecycleRevision?: number;
 }
@@ -73,8 +88,16 @@ export interface Snapshot {
   errors: { source: string; error: string }[];
   sync: { online: boolean; lastSync?: string; error?: string } | null;
   daemon: { running: boolean; heartbeat?: string; error?: string } | null;
-  devices: { id: string; name: string; seen_at: string }[] | null;
+  devices:
+    | {
+        id: string;
+        name: string;
+        seen_at: string;
+        hardwareFamily?: string | null;
+      }[]
+    | null;
   deviceId: string;
+  localHardwareFamily?: string | null;
   background: boolean | null;
 }
 export interface LocalDraft {

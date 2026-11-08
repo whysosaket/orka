@@ -43,6 +43,27 @@ GitHub and magic links include a validated profile name in the callback. A callb
 
 ## Tests
 
+### Annotate the test app
+
+[Agentation](https://www.agentation.com/install) is available in development through `pnpm dev:profile`. Click **Start feedback mode** in the bottom-right corner, click the UI element, write a note, and choose **Add**. Use **Copy feedback**, then paste the result into this chat. Choose **Exit** to use the app normally again. Global Agentation shortcuts are disabled so Orka keeps its keyboard behavior.
+
+Annotations stay in this WebView's local storage. No MCP endpoint or webhook is configured; feedback is delivered by copy/paste. Orka currently uses one page URL, so include the Settings section and scenario in each note. The tool shares active confirmation dialogs' focus boundary.
+
+For an explicitly local annotation bundle, build the frontend with `pnpm build -- --mode annotations` before bundling with a test Tauri config whose `beforeBuildCommand` is empty. The normal `pnpm build` and release builds exclude the annotation component and dependency. Annotation bundles are for internal testing only.
+
+### Run checks
+
+Settings recovery coverage lives in `tests/ui/settings-recovery.spec.ts`, alongside
+the existing Settings suite. The state audit in `docs/settings-state-audit.md`
+records the eight recovery fixes and four approved behavior decisions. Close and
+quit requests use the same Save/Discard/Stay guard as in-app navigation; ordinary
+drafts remain in memory rather than being stored across restarts. Browser reload
+uses the platform's unsaved-changes warning.
+
+Settings profile editing requires the API's `profile.conditionalSave: 1`
+capability. The client reviews shared changes and saves against the confirmed
+revision. Older services stay readable and require an update for editing.
+
 Follow [CONTRIBUTING.md](../CONTRIBUTING.md). Unit and browser tests use synthetic fixtures. Native tests and `npm run test:profiles` exercise local desktop behavior without private backend packages. Live authentication and sync need a compatible running service; backend integration suites are maintained privately.
 
 ## Updating the shared protocol

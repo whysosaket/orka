@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeftIcon,
   ChevronRightIcon,
-  HistoryIcon,
   KebabHorizontalIcon,
   PeopleIcon,
 } from "@primer/octicons-react";
@@ -13,7 +12,6 @@ import { ActionPopover } from "./resource-actions.js";
 import { IconButton } from "./icon-button.js";
 import { ProjectLogs } from "./project-logs.js";
 import { Button } from "./button.js";
-import { SegmentedControl } from "./segmented-control.js";
 import { MemberPermissions } from "./member-permissions.js";
 import { ProjectRequests } from "./project-requests.js";
 import {
@@ -139,8 +137,12 @@ export function MembersPage({
       <div className="management-content">
         <div className="management-heading">
           <div>
-            <h2>{projectLabel(project)}</h2>
-            <p>Manage people, shared content, and access requests.</p>
+            <h2>
+              {section === "requests"
+                ? "Pending reviews"
+                : projectLabel(project)}
+            </h2>
+            <p>Review shared content and existing requests.</p>
           </div>
           <Button
             size="sm"
@@ -152,21 +154,10 @@ export function MembersPage({
           </Button>
         </div>
         <div className="management-toolbar">
-          {section !== "logs" && (
-            <SegmentedControl
-              label="Project management"
-              value={section}
-              options={[
-                { value: "members", label: "Members" },
-                { value: "requests", label: "Requests" },
-              ]}
-              disabled={busy}
-              onChange={(value) => {
-                onSection(value);
-                setError("");
-                setMessage("");
-              }}
-            />
+          {section === "requests" && (
+            <Button size="sm" onClick={() => onSection("members")}>
+              Back to Members
+            </Button>
           )}
           {(section === "logs" ||
             (section === "members" && member !== null)) && (
@@ -183,7 +174,7 @@ export function MembersPage({
               }}
             >
               <ArrowLeftIcon size={16} aria-hidden="true" />
-              {section === "logs" ? "Back to Manage" : "Back to members"}
+              Back to Members
             </Button>
           )}
         </div>
@@ -466,16 +457,6 @@ export function MembersPage({
           )}
         </LoadingRegion>
       </div>
-      {catalog && section !== "logs" && (
-        <Button
-          className="management-log-button"
-          variant="secondary"
-          size="sm"
-          onClick={() => onSection("logs")}
-        >
-          <HistoryIcon size={16} aria-hidden="true" /> View logs
-        </Button>
-      )}
     </section>
   );
 }

@@ -243,6 +243,7 @@ async function detailFixture(page: Page, options: Options = {}) {
                 (window as any).finishMemberCatalog = resolve;
               });
             return {
+              requests: [],
               members:
                 projectId === "one"
                   ? members
@@ -409,6 +410,52 @@ async function detailFixture(page: Page, options: Options = {}) {
 }
 
 const heading = (page: Page) => page.locator(".workspace-header h1");
+
+for (const [action, title] of [
+  ["Review conflict", "Polish navigation"],
+  ["View copy", "Shared planning"],
+])
+  test(`header ${action} guards Settings drafts and opens the session`, async ({
+    page,
+  }) => {
+    await detailFixture(page, { memberCatalog: "cached" });
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("region", {
+      name: "Settings",
+      exact: true,
+    });
+    const name = settings.getByRole("textbox", {
+      name: "Project name",
+      exact: true,
+    });
+    await name.fill("Unsaved project name");
+    const openSession = async () => {
+      await page
+        .getByRole("button", {
+          name: "Needs attention, 2 notifications",
+          exact: true,
+        })
+        .click();
+      await page.getByRole("button", { name: action, exact: true }).click();
+    };
+    const dialog = page.getByRole("dialog", {
+      name: "Save your changes?",
+      exact: true,
+    });
+    await openSession();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Stay", exact: true }).click();
+    await expect(name).toHaveValue("Unsaved project name");
+    await openSession();
+    await dialog.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(settings).toHaveCount(0);
+    await expect(
+      page
+        .locator(".session-view")
+        .getByRole("heading", { name: title, exact: true }),
+    ).toBeVisible();
+  });
+
 test("resource skeletons keep the reader header and navigation usable", async ({
   page,
 }) => {
@@ -627,15 +674,15 @@ for (const [width, height, memberCatalog] of [
       }),
     ).toContainText("Mira Shah continued your session as a copy.");
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Account & service", exact: true })
-      .click();
-    await expect(
-      page.getByRole("dialog", { name: "Settings", exact: true }),
-    ).toContainText("Saket Rao (you)");
     if (memberCatalog === "cached")
       expect(await calls(page, "governance_command")).toEqual([]);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("button", { name: "Members", exact: true }).click();
+    await expect(
+      page
+        .getByRole("region", { name: "Settings", exact: true })
+        .getByRole("list"),
+    ).toContainText("Saket Rao");
   });
 
 test("author sorting follows displayed member names", async ({ page }) => {
@@ -2365,7 +2412,7 @@ test("reduced motion keeps navigation aligned and Settings keyboard focus intact
   const settings = page.getByRole("button", { name: "Settings", exact: true });
   await settings.focus();
   await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+  const dialog = page.getByRole("region", { name: "Settings", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveCSS("opacity", "1");
   expect(

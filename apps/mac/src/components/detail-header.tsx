@@ -181,7 +181,11 @@ export function DetailHeader({
                 >
                   Create copy
                 </Button>
-                {resource.owner === user && (
+                {(project.rolePolicies
+                  ? project.role === "owner" ||
+                    (project.role === "admin" &&
+                      resource.access?.mode === "publish")
+                  : resource.owner === user) && (
                   <Button
                     disabled={busy}
                     onClick={() => void actions.sessionAction("delete")}

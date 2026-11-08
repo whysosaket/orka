@@ -30,7 +30,7 @@ const font = readFileSync(
 ).toString("base64");
 const h = React.createElement;
 const sizes: ControlSize[] = ["lg", "md", "sm"];
-const variants = ["primary", "secondary", "tertiary"] as const;
+const variants = ["primary", "primary-brand", "secondary", "tertiary"] as const;
 const states = ["Default", "Hover", "Pressed", "Focus", "Disabled"] as const;
 // Pin real production pseudo-states for side-by-side comparison. These
 // aliases exist only in the gallery, not in the component API or app CSS.
@@ -98,8 +98,8 @@ const content = h(
         h(
           "select",
           { id: "state-size", defaultValue: "md" },
-          h("option", { value: "lg" }, "lg · 48px"),
-          h("option", { value: "md" }, "md · 40px"),
+          h("option", { value: "lg" }, "lg · 40px"),
+          h("option", { value: "md" }, "md · 36px"),
           h("option", { value: "sm" }, "sm · 32px"),
         ),
       ),
@@ -222,7 +222,7 @@ const content = h(
       h(
         "div",
         { className: "component-row standalone-icons" },
-        ...variants.map((variant) =>
+        ...(["primary", "secondary", "tertiary"] as const).map((variant) =>
           h(Icon, {
             key: variant,
             icon: ArrowRightIcon,

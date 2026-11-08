@@ -1,41 +1,26 @@
 @layer components {
-  .modal.settings-modal {
-    @apply grid overflow-hidden p-0;
-    grid-template-columns: 192px minmax(0, 1fr);
-    width: 920px;
-    height: 620px;
-    max-height: calc(100vh - 64px);
-    border-radius: var(--radius-overlay);
+  .sidebar .navigation-action[aria-current="page"] {
+    background: var(--surface-tertiary);
+    color: var(--text-primary);
+  }
+  .settings-workspace {
+    @apply grid min-h-0 flex-1;
+    grid-template-columns: 239px minmax(0, 1fr);
   }
   .settings-navigation {
-    @apply min-h-0 overflow-y-auto border-r border-line p-3;
-  }
-  .settings-project-selector {
-    @apply flex h-10 w-full items-center gap-2 border border-line px-3 text-label-sm text-foreground;
-    border-radius: var(--radius-control);
-  }
-  .settings-project-selector:hover:not(:disabled) {
-    @apply bg-raised;
-  }
-  .settings-project-selector > span {
-    @apply min-w-0 flex-1 truncate text-left;
-  }
-  .settings-project-selector > svg {
-    @apply shrink-0 text-secondary;
-  }
-  .settings-project-menu {
-    @apply z-50;
-    max-width: min(360px, calc(100vw - 48px));
+    @apply min-h-0 overflow-y-auto p-5;
   }
   .settings-nav-group {
-    @apply mt-6;
+    @apply mb-5 flex flex-col gap-2.5;
+  }
+  .settings-nav-label {
+    @apply m-0 text-label-caption uppercase text-muted;
   }
   .settings-nav-group button {
-    @apply flex min-h-9 w-full items-center gap-2 px-2 text-left text-label-sm text-secondary;
-    border-radius: var(--radius-control);
+    @apply flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-label-sm text-muted;
   }
   .settings-nav-group button + button {
-    @apply mt-1;
+    @apply mt-0;
   }
   .settings-nav-group button:hover:not(:disabled),
   .settings-nav-group button[aria-current="page"] {
@@ -45,135 +30,518 @@
     @apply shrink-0;
   }
   .settings-nav-group button:disabled {
-    @apply opacity-50;
+    color: var(--text-disabled);
+  }
+  .settings-nav-group button:focus-visible {
+    outline: 1px solid var(--focus-ring);
+    outline-offset: 2px;
   }
   .settings-panel {
-    @apply flex min-h-0 min-w-0 flex-col;
+    @apply flex min-h-0 min-w-0 flex-col gap-7 overflow-y-scroll pb-7 pl-9 pt-7;
+    --settings-content-right: 24px;
+    --settings-heading-gap: 32px;
+    --settings-scrollbar-width: 8px;
+    --switch-track-on: var(--status-info);
+    --switch-thumb-on: var(--text-primary);
+    padding-right: calc(
+      var(--settings-content-right) - var(--settings-scrollbar-width, 0px)
+    );
+    scrollbar-gutter: stable;
   }
-  .settings-close {
-    @apply absolute right-6 top-3;
+  .settings-panel > *,
+  .settings-content > * {
+    flex-shrink: 0;
   }
-  .settings-header {
-    @apply flex min-h-14 shrink-0 items-center pl-6 pr-16 py-3;
+  .settings-panel[data-section="account"],
+  .settings-panel[data-section="devices"] {
+    --settings-heading-gap: 36px;
   }
-  .settings-modal .settings-header h2 {
-    @apply m-0 text-heading-xs;
+  .settings-panel[data-section="permissions"] {
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-gutter: auto;
+    padding-right: var(--settings-content-right);
   }
-  .settings-content {
-    @apply min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4;
+  .settings-heading {
+    @apply flex items-center justify-between gap-5;
+    min-height: var(--button-md-height);
+    margin-bottom: calc(var(--settings-heading-gap) - 28px);
   }
-  .settings-modal .settings-content p {
-    @apply m-0 text-body-xs text-secondary;
+  .settings-heading > div {
+    @apply min-w-0 flex-1;
   }
-  .settings-content h3 {
-    @apply mb-1 mt-0 text-label-sm;
+  .settings-panel .settings-heading h2 {
+    @apply m-0 text-heading-settings;
   }
-  .settings-content .settings-detail {
-    @apply space-y-1;
+  .settings-heading h2:focus {
+    outline: none;
   }
-  .settings-modal .settings-path {
-    @apply break-all text-body-xs text-muted;
+  .settings-panel p {
+    @apply m-0 text-body-sm text-muted;
+    overflow-wrap: anywhere;
   }
-  .settings-modal .settings-folder-path {
-    @apply break-all rounded-lg bg-raised p-4 text-body-sm text-foreground;
+  .settings-heading p {
+    @apply mt-1;
+  }
+  .settings-panel h3 {
+    @apply mb-3 mt-0 text-label-sm;
+  }
+  .settings-panel .ui-field__label {
+    @apply mb-3 text-label-sm text-muted;
+  }
+  .settings-panel .ui-field--lg {
+    --field-font: var(--body-md-font-size);
+    --field-line: 20px;
+    --field-padding-x: 12px;
+    --field-padding-y: 10px;
+    --field-radius: 10px;
+    --field-gap: 8px;
+  }
+  .settings-panel .ui-field__input {
+    @apply min-w-0;
+  }
+  .settings-group {
+    @apply m-0 list-none border border-line p-0;
+    border-radius: var(--radius-list);
+  }
+  .settings-project-name {
+    @apply flex min-w-0 items-start gap-2.5;
+  }
+  .settings-project-name > .ui-field {
+    @apply min-w-0 flex-1;
+  }
+  .settings-project-name > .ui-button {
+    @apply mt-8;
+  }
+  .settings-panel .ui-field__control > .ui-icon {
+    --icon-container: 16px;
+    --icon-size: 16px;
   }
   .settings-row {
-    @apply flex items-center justify-between gap-4 border-t border-line py-4;
+    @apply flex min-h-[76px] items-center justify-between gap-5 py-4;
   }
-  .settings-row > div {
+  .settings-row + .settings-row {
+    @apply border-t border-line;
+  }
+  .settings-row > div:first-child {
     @apply min-w-0 flex-1;
   }
-  .settings-row > button {
-    @apply shrink-0;
+  .settings-row h3 {
+    @apply mb-1;
   }
-  .settings-content .project-sharing {
-    @apply mt-0;
+  .settings-row .actions {
+    @apply flex-none flex-wrap justify-end;
   }
-  .settings-content .project-sharing-choices {
-    @apply flex flex-col gap-2 overflow-visible rounded-none bg-transparent;
+  .settings-path {
+    @apply break-all;
   }
-  .settings-content .project-sharing-choice--switch,
-  .settings-content .project-sharing-choice--switch:hover {
-    @apply flex-row items-center gap-3 rounded-lg bg-surface-tertiary p-3;
+  #settings-folder > h3 {
+    @apply text-label-sm text-muted;
   }
-  .project-sharing-choice--switch .project-sharing-copy {
-    @apply flex-1 gap-1;
+  .settings-source-list {
+    border-radius: var(--radius-list);
+    --button-tertiary-bg: transparent;
   }
-  .project-sharing-icon {
-    @apply self-start text-secondary;
+  .settings-folder-row {
+    @apply flex h-[60px] min-w-0 items-center gap-3 px-4;
   }
-  .project-sharing-choice--switch[data-sharing-kind="memory"]
-    .project-sharing-icon {
-    color: var(--resource-icon-memory);
+  .settings-folder-row + .settings-folder-row {
+    @apply border-t border-line;
   }
-  .project-sharing-choice--switch[data-sharing-kind="session"]
-    .project-sharing-icon {
-    color: var(--resource-icon-session);
+  .settings-folder-identity {
+    @apply flex min-w-0 flex-1 items-center gap-3 text-label-item;
   }
-  .project-sharing-choice--switch[data-sharing-kind="plan"]
-    .project-sharing-icon {
-    color: var(--resource-icon-plan);
+  .settings-folder-actions {
+    @apply flex shrink-0 items-center gap-2;
   }
-  .project-sharing-choice--switch[data-sharing-kind="skill"]
-    .project-sharing-icon {
-    color: var(--resource-icon-skill);
+  .settings-folder-reconnect {
+    --button-secondary-bg: var(--interaction-hover);
   }
-  .project-sharing-choice--switch .ui-switch-control {
-    @apply order-1;
+  .settings-folder-name {
+    @apply min-w-0 truncate;
   }
-  .settings-check {
-    @apply flex items-start gap-3;
+  .settings-folder-icon {
+    --icon-container: 16px;
+    --icon-size: 16px;
+    color: var(--text-disabled);
   }
-  .settings-check input {
-    @apply mt-1 h-4 w-4 shrink-0;
+  .settings-folder-empty {
+    @apply p-4;
   }
-  .settings-check > span {
-    @apply flex flex-col gap-1;
-  }
-  .settings-check strong {
-    @apply text-label-sm;
-  }
-  .settings-check span span {
-    @apply text-body-xs text-secondary;
-  }
-  .settings-device-label {
-    @apply ml-2 rounded bg-raised px-2 py-1 text-label-2xs text-secondary;
-  }
-  .settings-devices .settings-row:first-child {
-    @apply border-t-0 pt-0;
-  }
-  .settings-footer {
-    @apply flex min-h-14 shrink-0 items-center gap-3 border-t border-line px-6 py-3;
-  }
-  .settings-feedback {
-    @apply min-w-0 flex-1;
-  }
-  .settings-modal .settings-feedback p {
-    @apply m-0 text-body-xs text-secondary;
-  }
-  .settings-modal p[role="alert"],
-  .settings-confirm p[role="alert"] {
-    @apply text-foreground;
+  .settings-folder-notice {
+    @apply mt-3;
   }
   .settings-notice {
-    @apply space-y-3 rounded-lg bg-raised p-4;
-  }
-  .settings-service-setup {
-    @apply space-y-4 border-t border-line pt-5;
-  }
-  .settings-service-setup .service-connection {
-    @apply space-y-3;
-  }
-  .settings-inline-actions {
-    @apply flex flex-wrap gap-3;
+    @apply space-y-3 rounded-lg border border-line p-4;
   }
   .settings-confirm {
     @apply z-40 w-[480px];
   }
-  .settings-confirm h2 {
-    @apply text-heading-xs;
+  .settings-confirm h2,
+  .settings-migration h2 {
+    @apply m-0 text-heading-xs;
+  }
+  .settings-confirm p,
+  .settings-migration p {
+    @apply text-body-sm text-secondary;
   }
   .settings-confirm-actions {
     @apply flex flex-wrap justify-end gap-2;
   }
+  .settings-check {
+    @apply flex items-start gap-3 text-body-sm;
+  }
+  .settings-check input {
+    @apply mt-1 h-4 w-4 shrink-0;
+  }
+  .settings-sync-group > .settings-row {
+    @apply px-4 py-3.5;
+    height: 76px;
+  }
+  .settings-sync-group {
+    padding: 1px;
+  }
+  .settings-sync-group > .settings-row:has(> div:first-child > p + p) {
+    height: auto;
+  }
+  .settings-sync-group .segmented-control {
+    @apply gap-1 p-1;
+    border-radius: 12px;
+  }
+  .settings-sync-group .segmented-control .ui-button {
+    --control-height: 32px;
+    --control-padding-x: 12px;
+    --control-padding-y: 7px;
+    border-radius: 8px;
+    color: var(--text-primary);
+  }
+  .settings-field-pair {
+    @apply grid grid-cols-2 gap-5;
+  }
+  .settings-profile-fields {
+    @apply space-y-7;
+  }
+  .settings-profile-inputs {
+    @apply space-y-5;
+  }
+  .settings-avatar {
+    @apply relative flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-full border border-line bg-selected text-heading-settings text-secondary;
+  }
+  .settings-avatar > img {
+    @apply h-[72px] w-[72px] rounded-full object-cover;
+  }
+  .settings-avatar-edit {
+    @apply absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full border border-line bg-raised;
+  }
+  .settings-copy-value {
+    @apply flex h-10 min-w-0 items-center gap-2.5 rounded-lg bg-raised pl-3 pr-1 text-body-sm text-secondary;
+    overflow-wrap: anywhere;
+  }
+  .settings-account-rows > h3 {
+    @apply text-muted;
+  }
+  .settings-account-rows > .settings-row {
+    @apply border-0 border-b border-line p-0;
+    min-height: 76px;
+  }
+  .settings-account-rows > .settings-row:last-child {
+    @apply border-b-0;
+  }
+  .settings-account-rows .settings-row > div:first-child {
+    @apply flex flex-col gap-0.5;
+  }
+  .settings-account-rows .settings-row h3 {
+    @apply m-0;
+  }
+  .settings-account-rows .settings-row p {
+    @apply text-body-caption;
+  }
+  .settings-service-action {
+    --button-secondary-bg: var(--surface-tertiary);
+    --control-icon-container: 16px;
+  }
+  .settings-sign-out {
+    --button-secondary-text: var(--status-error);
+    --button-secondary-bg: var(--status-error-bg);
+    --button-secondary-bg-hover: var(--status-error-bg);
+    --button-secondary-bg-pressed: var(--status-error-bg);
+  }
+  .settings-service-setup {
+    @apply w-full space-y-4;
+  }
+  .settings-inline-actions {
+    @apply flex flex-wrap gap-3;
+  }
+  .settings-account-rows > .settings-row:has(.settings-service-setup) {
+    @apply flex-wrap;
+  }
+  .settings-account-rows
+    > .settings-row:has(.settings-service-setup)
+    > div:first-child {
+    @apply basis-full;
+  }
+  .settings-device-row {
+    @apply flex min-h-[76px] items-center gap-3 px-3 py-3.5;
+  }
+  .settings-device-row + .settings-device-row,
+  .settings-member-row + .settings-member-row {
+    @apply border-t border-line;
+  }
+  .settings-device-row > img {
+    @apply h-12 w-12 shrink-0 object-contain;
+  }
+  .settings-device-row > div {
+    @apply min-w-0 flex-1 space-y-1;
+  }
+  .settings-identity-name {
+    @apply flex min-w-0 items-center gap-[9px];
+  }
+  .settings-identity-name strong {
+    @apply min-w-0 truncate text-label-item;
+  }
+  .settings-device-row p,
+  .settings-member-row p {
+    @apply text-body-caption text-muted;
+  }
+  .settings-device-label {
+    @apply shrink-0 rounded-md px-[9px] text-label-badge;
+    color: var(--status-info);
+    background: var(--status-info-bg);
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .settings-member-row {
+    @apply relative flex min-h-[72px] items-center gap-3 px-4 py-3.5;
+  }
+  .settings-member-list {
+    width: 100%;
+    max-width: 875px;
+  }
+  .settings-member-avatar {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[7px] bg-raised text-label-item text-secondary;
+  }
+  .settings-member-avatar img {
+    @apply h-10 w-10 object-cover;
+  }
+  .settings-member-identity {
+    @apply min-w-0 flex-1 space-y-1 pr-10;
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .settings-member-identity .settings-identity-name {
+    flex-wrap: nowrap;
+  }
+  .settings-member-identity p {
+    @apply truncate;
+  }
+  .settings-member-identity strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .settings-member-role {
+    @apply inline-flex h-8 items-center rounded-lg border border-line px-3 text-label-xs text-foreground;
+  }
+  .settings-member-controls {
+    @apply relative shrink-0;
+  }
+  .settings-member-menu {
+    @apply absolute right-full top-0 mr-2;
+    opacity: 0;
+  }
+  .settings-member-row:hover .settings-member-menu,
+  .settings-member-row:focus-within .settings-member-menu,
+  .settings-member-menu[data-state="open"] {
+    opacity: 1;
+  }
+  .settings-panel .settings-member-controls .permission-select-trigger {
+    background: var(--surface-secondary);
+    border: 1px solid var(--border-subtle);
+  }
+  .settings-add-member {
+    --button-secondary-bg: #252525;
+    --button-secondary-bg-hover: var(--interaction-hover);
+  }
+  .settings-content > .settings-role-tables {
+    @apply flex min-h-0 flex-col gap-6 overflow-y-scroll pb-4;
+    flex: 1 1 auto;
+    width: calc(100% + 8px);
+  }
+  .settings-role-tables > section {
+    flex-shrink: 0;
+  }
+  .settings-policy-table {
+    @apply w-full border-separate;
+    border-spacing: 0;
+    table-layout: fixed;
+  }
+  .settings-policy-table tr + tr > * {
+    @apply border-t border-line;
+  }
+  .settings-policy-table th,
+  .settings-policy-table td {
+    @apply h-[52px] px-4 py-2;
+  }
+  .settings-policy-table th {
+    @apply text-left text-label-sm;
+  }
+  .settings-policy-table th svg {
+    @apply mr-2.5 inline-block text-muted;
+    vertical-align: -3px;
+  }
+  .settings-policy-table td {
+    @apply text-right text-body-xs;
+  }
+  .settings-fixed-access {
+    @apply inline-flex items-center gap-2 text-body-caption text-muted;
+  }
+  .settings-readonly-access {
+    @apply inline-flex min-h-8 items-center;
+  }
+  .settings-panel .permission-select-trigger {
+    @apply bg-raised;
+    display: inline-flex;
+    width: auto;
+    min-height: 32px;
+    padding: 6px 12px;
+    font-size: var(--label-xs-font-size);
+    line-height: 18px;
+    flex-shrink: 0;
+  }
+  .settings-panel .ui-field[data-readonly] .ui-field__control {
+    background: var(--surface-tertiary);
+    color: var(--text-tertiary);
+  }
+  .settings-panel .ui-field[data-readonly] {
+    --field-text: var(--text-tertiary);
+  }
+  .settings-panel .project-sharing {
+    @apply m-0;
+  }
+  .settings-panel .project-sharing-choices {
+    @apply flex flex-col gap-0 overflow-visible border border-line bg-transparent p-0;
+    border-radius: var(--radius-list);
+  }
+  .settings-panel .project-sharing-choice--switch,
+  .settings-panel .project-sharing-choice--switch:hover {
+    @apply flex min-h-12 flex-row items-center gap-3 rounded-none bg-transparent px-4 py-3;
+  }
+  .settings-panel
+    .project-sharing-choice--switch
+    + .project-sharing-choice--switch {
+    @apply border-t border-line;
+  }
+  .settings-panel .project-sharing-copy {
+    @apply flex-1;
+  }
+  .settings-panel .project-sharing-icon {
+    @apply text-muted;
+    --icon-container: 16px;
+    --icon-size: 16px;
+  }
+  #settings-sharing > h3 {
+    @apply text-muted;
+  }
+  .settings-panel .project-sharing-choice--switch .ui-switch-control {
+    @apply order-1;
+  }
+  .settings-migration {
+    @apply flex max-h-[85vh] w-[850px] flex-col gap-5 overflow-y-auto;
+  }
+  .settings-migration table {
+    @apply w-full border-collapse text-body-xs;
+  }
+  .settings-migration th,
+  .settings-migration td {
+    @apply border-b border-line px-2 py-3 text-left;
+  }
+  .settings-migration .permission-select-trigger {
+    @apply max-w-full;
+  }
+  .settings-invite {
+    @apply w-full resize-none rounded-lg bg-raised p-3 text-body-sm;
+  }
+  .settings-panel p[role="alert"] {
+    @apply text-foreground;
+  }
+  @media (max-width: 1160px) {
+    .settings-workspace {
+      grid-template-columns: 192px minmax(0, 1fr);
+    }
+    .settings-panel {
+      @apply pl-6;
+    }
+    .settings-sync-group > .settings-row {
+      @apply flex-wrap;
+      height: auto;
+    }
+  }
+  @media (max-width: 950px) {
+    .settings-workspace {
+      grid-template-columns: 156px minmax(0, 1fr);
+    }
+    .settings-navigation {
+      @apply px-3;
+    }
+    .settings-panel {
+      @apply pl-5;
+      --settings-content-right: 20px;
+    }
+    .settings-field-pair {
+      @apply grid-cols-1;
+    }
+    .settings-heading {
+      @apply flex-wrap;
+    }
+    .settings-copy-value {
+      @apply flex-wrap;
+    }
+    .settings-account-rows > .settings-row {
+      @apply flex-wrap gap-3 py-4;
+    }
+    .settings-account-rows > .settings-row > div:first-child {
+      flex-basis: 100%;
+    }
+    .settings-policy-table th,
+    .settings-policy-table td {
+      @apply px-3;
+    }
+  }
+}
+
+@layer components {
+  .settings-source-list > .settings-add-folder-row {
+    @apply flex h-[60px] items-center px-2;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .settings-source-list .settings-add-folder {
+    @apply m-0 justify-start gap-3 px-3 py-0 text-label-item text-muted;
+    --control-height: 40px;
+    --control-icon-container: 16px;
+    --control-icon-size: 16px;
+    --button-tertiary-bg-hover: transparent;
+    --button-tertiary-bg-pressed: transparent;
+  }
+  .settings-add-folder .ui-icon {
+    color: var(--text-tertiary);
+  }
+  .settings-add-folder:hover:not(:disabled) .settings-add-folder-label,
+  .settings-add-folder:focus-visible .settings-add-folder-label {
+    color: var(--text-primary);
+  }
+  .settings-source-list > .settings-add-folder-row:first-child {
+    @apply border-t-0;
+  }
+}
+.settings-content {
+  display: contents;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
 }

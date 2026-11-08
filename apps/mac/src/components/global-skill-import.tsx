@@ -74,7 +74,7 @@ export function GlobalSkillImport({
     <>
       <Button
         className="global-skills-trigger"
-        size="md"
+        size="lg"
         variant="primary"
         aria-label="Add global skills"
         title="Add global skills"
@@ -363,6 +363,7 @@ function GlobalSkillsDialog({
           </select>
         )}
         <SearchField
+          size="lg"
           aria-label="Search global skills"
           placeholder="Search global skills"
           value={query}
@@ -370,6 +371,7 @@ function GlobalSkillsDialog({
         />
         <IconButton
           icon={SyncIcon}
+          size="lg"
           variant="secondary"
           aria-label="Scan again"
           title="Scan again"
@@ -381,7 +383,7 @@ function GlobalSkillsDialog({
         />
         <SortMenu
           label="Sort global skills"
-          size="md"
+          size="lg"
           variant="secondary"
           className="global-skills-sort"
           value={sort}

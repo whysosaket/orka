@@ -76,13 +76,19 @@ export function SelfHostedConnection({
           />
           <div className="onboarding-entry__providers">
             <Button
+              size="lg"
               className="onboarding-entry__flat-button"
               type="submit"
               disabled={busy || !account.url.trim()}
             >
               {busy ? "Connecting…" : "Connect server"}
             </Button>
-            <Button variant="tertiary" disabled={busy} onClick={onBack}>
+            <Button
+              size="lg"
+              variant="tertiary"
+              disabled={busy}
+              onClick={onBack}
+            >
               Back
             </Button>
           </div>

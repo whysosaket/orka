@@ -792,6 +792,10 @@ pub async fn onboarding_command(
                 let _lock = crate::projects::lock()?;
                 runtime.block_on(crate::account_profile::save(input))
             }
+            "save-settings-profile" => {
+                let _lock = crate::projects::lock()?;
+                runtime.block_on(crate::account_profile::save_confirmed(input))
+            }
             "profile" => {
                 let _lock = crate::projects::lock()?;
                 runtime.block_on(crate::account_profile::load())

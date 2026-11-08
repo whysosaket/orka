@@ -102,6 +102,23 @@ pub fn run() {
                         .into(),
                     input["input"].clone(),
                 )),
+                "settings" => runtime.block_on(crate::settings::settings_command(
+                    super::field(&input, "operation")?.into(),
+                    input["context"].clone(),
+                )),
+                "onboarding" => runtime.block_on(crate::onboarding::onboarding_command(
+                    super::field(&input, "operation")?.into(),
+                    input["input"].clone(),
+                    input.get("context").cloned(),
+                )),
+                "disconnect-source" => crate::sources::disconnect_project_source(
+                    super::field(&input, "projectId")?.into(),
+                    super::field(&input, "sourceId")?.into(),
+                )
+                .map(|_| json!({})),
+                "switch-service" => {
+                    crate::commands::switch_service(input["config"].clone()).map(|_| json!({}))
+                }
                 "setup" => {
                     crate::auth::sign_out()?;
                     crate::commands::configure(json!({"apiUrl":input["url"],"syncMinutes":15}))?;

@@ -95,7 +95,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [@nodelib/fs.walk](https://www.npmjs.com/package/@nodelib/fs.walk/v/1.2.8) | 1.2.8 | MIT |
 | [@oxc-project/types](https://www.npmjs.com/package/@oxc-project/types/v/0.153.0) | 0.153.0 | MIT |
 | [@playwright/test](https://www.npmjs.com/package/@playwright/test/v/1.64.1) | 1.64.1 | Apache-2.0 |
-| [@portable/protocol](https://www.npmjs.com/package/@portable/protocol/v/0.5.1) | 0.5.1 | MIT |
+| [@portable/protocol](https://www.npmjs.com/package/@portable/protocol/v/0.5.3) | 0.5.3 | MIT |
 | [@primer/octicons-react](https://www.npmjs.com/package/@primer/octicons-react/v/19.40.0) | 19.40.0 | MIT |
 | [@radix-ui/number](https://www.npmjs.com/package/@radix-ui/number/v/1.1.3) | 1.1.3 | MIT |
 | [@radix-ui/primitive](https://www.npmjs.com/package/@radix-ui/primitive/v/1.2.0) | 1.2.0 | MIT |
@@ -219,6 +219,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [@upsetjs/venn.js](https://www.npmjs.com/package/@upsetjs/venn.js/v/2.0.0) | 2.0.0 | MIT |
 | [acorn](https://www.npmjs.com/package/acorn/v/8.19.0) | 8.19.0 | MIT |
 | [acorn-jsx](https://www.npmjs.com/package/acorn-jsx/v/5.3.2) | 5.3.2 | MIT |
+| [agentation](https://www.npmjs.com/package/agentation/v/3.1.2) | 3.1.2 | PolyForm-Shield-1.0.0 |
 | [ajv](https://www.npmjs.com/package/ajv/v/6.15.0) | 6.15.0 | MIT |
 | [any-promise](https://www.npmjs.com/package/any-promise/v/1.3.0) | 1.3.0 | MIT |
 | [anymatch](https://www.npmjs.com/package/anymatch/v/3.1.3) | 3.1.3 | ISC |

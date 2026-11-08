@@ -123,6 +123,7 @@ export function EnvDetail({
                   )}
                   {set &&
                     c.project.governed &&
+                    !c.project.rolePolicies &&
                     !canPublish &&
                     !set.disabled && (
                       <Button

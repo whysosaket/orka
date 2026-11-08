@@ -96,6 +96,17 @@ pub fn validate(project: &Value) -> Result<()> {
     Ok(())
 }
 
+/// Presentation-only local state; paths and identity checks remain native.
+pub fn folder_state(source: &Value) -> &'static str {
+    if !source["path"].is_string() {
+        "locate"
+    } else if validate(source).is_ok() {
+        "connected"
+    } else {
+        "reconnect"
+    }
+}
+
 pub fn upgrade_identity(source: &mut Value) {
     let (Some(path), Some(expected)) = (source["path"].as_str(), source["folderIdentity"].as_str())
     else {
@@ -324,4 +335,23 @@ pub fn disconnect_project_source(id: String, source_id: String) -> Result<()> {
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod folder_state_tests {
+    use super::*;
+
+    #[test]
+    fn folder_states_follow_native_path_and_identity_validation() {
+        let root = std::env::temp_dir().join(format!("orka-folder-state-{}", Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let source = json!({"path":root,"folderIdentity":indexer::folder_identity(&root).unwrap()});
+        assert_eq!(folder_state(&json!({"path":null})), "locate");
+        assert_eq!(folder_state(&source), "connected");
+        let mut replaced = source.clone();
+        replaced["folderIdentity"] = json!("unrecognized-folder-identity");
+        assert_eq!(folder_state(&replaced), "reconnect");
+        fs::remove_dir(&root).unwrap();
+        assert_eq!(folder_state(&source), "reconnect");
+    }
 }

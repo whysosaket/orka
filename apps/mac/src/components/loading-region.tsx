@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect } from "react";
 import { forgetShapes } from "skullet";
 import { Skeleton, SkulletProvider, type SkeletonProps } from "skullet/react";
 
+import { clearPermissionDrafts } from "./settings/settings-permission-model.js";
+
 const LoadingScope = createContext("");
 const theme = {
   light: {
@@ -24,6 +26,7 @@ export function LoadingProvider({
 }) {
   useEffect(() => {
     forgetShapes();
+    clearPermissionDrafts();
     return () => forgetShapes();
   }, [scope]);
   return (

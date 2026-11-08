@@ -81,6 +81,7 @@ export function PendingSignIn({
           </div>
           <OnboardingError>{error}</OnboardingError>
           <Button
+            size="lg"
             className="onboarding-entry__flat-button"
             disabled={busy}
             onClick={onRetry}
@@ -88,7 +89,12 @@ export function PendingSignIn({
             {email ? (busy ? "Sending…" : "Resend email") : "Try again"}
           </Button>
           {!email && (
-            <Button variant="tertiary" disabled={busy} onClick={onBack}>
+            <Button
+              size="lg"
+              variant="tertiary"
+              disabled={busy}
+              onClick={onBack}
+            >
               Cancel sign-in
             </Button>
           )}

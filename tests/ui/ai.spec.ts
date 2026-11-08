@@ -53,6 +53,13 @@ async function fixture(page: Page, noProject: boolean) {
             };
           if (command === "sync_progress")
             return { user: "user", progress: null };
+          if (command === "settings_command") return [];
+          if (command === "onboarding_command")
+            return {
+              displayName: "Test User",
+              jobRole: "",
+              email: "test@example.com",
+            };
           if (command === "auth_capabilities")
             return {
               auth: { password: true, github: false, magicLink: false },
@@ -111,7 +118,7 @@ for (const noProject of [false, true]) {
         }
       }
       await page.getByRole("button", { name: "Settings", exact: true }).click();
-      const dialog = page.getByRole("dialog", {
+      const dialog = page.getByRole("region", {
         name: "Settings",
         exact: true,
       });
@@ -119,18 +126,14 @@ for (const noProject of [false, true]) {
         name: "Settings sections",
       });
       await expect(sections.getByRole("button")).toHaveText([
+        "Profile",
+        "Devices",
+        "Sync & startup",
         "General",
-        "Source folders",
-        "Sharing",
-        "Sync & startup",
-        "Connected Macs",
-        "Account & service",
+        "Members",
+        "Permissions",
       ]);
-      for (const name of [
-        "Connected Macs",
-        "Sync & startup",
-        "Account & service",
-      ]) {
+      for (const name of ["Devices", "Sync & startup", "Profile"]) {
         await sections.getByRole("button", { name, exact: true }).click();
         await expect(
           dialog.getByRole("heading", { name, exact: true }),
@@ -151,7 +154,7 @@ for (const noProject of [false, true]) {
       await page.screenshot({
         path: testInfo.outputPath("settings-without-ai.png"),
       });
-      await dialog.getByRole("button", { name: "Close settings" }).click();
+      await page.keyboard.press("Escape");
       await page.screenshot({
         path: testInfo.outputPath("dashboard-without-ai.png"),
       });

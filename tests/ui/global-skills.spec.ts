@@ -360,7 +360,11 @@ for (const viewport of [
       dialog.getByRole("heading", { name: "Code review" }),
     ).toBeVisible();
     await expect(dialog).toHaveCSS("opacity", "1");
-    await expect(dialog.getByText("3 files")).toBeVisible();
+    await expect(
+      dialog
+        .getByRole("list", { name: "Global skills", exact: true })
+        .getByText("3 files", { exact: true }),
+    ).toBeVisible();
     await expect(
       dialog.getByRole("button", { name: "Already in project: existing" }),
     ).toBeDisabled();
@@ -827,8 +831,8 @@ test("review is available only when permissions require approval", async ({
     .getByRole("button", { name: "Review changes", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Requests", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+    page.getByRole("heading", { name: "Pending reviews", exact: true }),
+  ).toBeVisible();
 });
 
 for (const mode of ["paused", "blocked"]) {

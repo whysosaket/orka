@@ -8,8 +8,14 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     viewport: { width: 1160, height: 800 },
-    channel: process.platform === "darwin" ? "chrome" : undefined,
+    browserName:
+      process.env.ORKA_UI_BROWSER === "webkit" ? "webkit" : "chromium",
+    channel:
+      process.env.ORKA_UI_BROWSER !== "webkit" && process.platform === "darwin"
+        ? "chrome"
+        : undefined,
     trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   outputDir: "artifacts/ui-results",
   webServer: {

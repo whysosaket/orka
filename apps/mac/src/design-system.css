@@ -2,6 +2,10 @@
 @layer base {
   :root {
     --status-connected: #4ade80;
+    --status-error: #f87171;
+    --status-error-bg: rgb(248 113 113 / 12%);
+    --status-info: #60a5fa;
+    --status-info-bg: rgb(96 165 250 / 12%);
     /* Resource category colors from Orka Figma, Sync resource grid 211:836. */
     --resource-icon-memory: #4ade80;
     --resource-icon-session: #60a5fa;
@@ -24,6 +28,7 @@
     --radius-control: 9px;
     --radius-surface: 12px;
     --radius-overlay: 16px;
+    --radius-list: 15px;
     --radius-full: 9999px;
     color-scheme: dark;
     --surface-primary: #0a0a0a;
@@ -68,21 +73,21 @@
     --font-weight-medium: 500;
     --font-weight-semibold: 600;
     --button-font-weight: var(--font-weight-medium);
-    --button-lg-font-size: 16px;
-    --button-lg-line-height: 24px;
+    --button-lg-font-size: 14px;
+    --button-lg-line-height: 20px;
     --button-lg-letter-spacing: -0.005em;
-    --button-lg-padding-y: 12px;
-    --button-lg-padding-x: 20px;
-    --button-lg-height: 48px;
-    --button-lg-icon-container: 24px;
-    --button-lg-icon-size: 20px;
+    --button-lg-padding-y: 10px;
+    --button-lg-padding-x: 16px;
+    --button-lg-height: 40px;
+    --button-lg-icon-container: 20px;
+    --button-lg-icon-size: 16px;
     --button-lg-gap: 8px;
     --button-md-font-size: 14px;
     --button-md-line-height: 20px;
     --button-md-letter-spacing: -0.005em;
-    --button-md-padding-y: 10px;
-    --button-md-padding-x: 16px;
-    --button-md-height: 40px;
+    --button-md-padding-y: 8px;
+    --button-md-padding-x: 14px;
+    --button-md-height: 36px;
     --button-md-icon-container: 20px;
     --button-md-icon-size: 16px;
     --button-md-gap: 8px;
@@ -97,29 +102,21 @@
     --button-sm-gap: 6px;
     --icon-xs-container: 16px;
     --icon-xs-size: 12px;
-    --button-primary-bg: linear-gradient(
-      180deg,
-      #ffffff 0%,
-      #f4f4f4 46%,
-      #dcdcdc 100%
-    );
-    --button-primary-bg-hover: linear-gradient(
-      180deg,
-      #ffffff 0%,
-      #fafafa 46%,
-      #e8e8e8 100%
-    );
-    --button-primary-bg-pressed: linear-gradient(
-      180deg,
-      #d6d6d6 0%,
-      #e8e8e8 100%
-    );
+    --orka-neutral-100: #f2eeeb;
+    --orka-neutral-200: #dddbd9;
+    --orka-neutral-400: #a5a5a5;
+    --orka-copper-500: #aa6c42;
+    --orka-copper-400: #c4865a;
+    --orka-copper-800: #472b1e;
+    --button-primary-bg: var(--orka-neutral-100);
+    --button-primary-bg-hover: var(--orka-neutral-200);
+    --button-primary-bg-pressed: var(--orka-neutral-400);
     --button-primary-text: var(--text-inverse);
-    --button-secondary-bg: linear-gradient(180deg, #2e2e2e, #252525);
-    --button-secondary-bg-hover: linear-gradient(180deg, #363636, #2e2e2e);
-    --button-secondary-bg-pressed: #252525;
+    --button-secondary-bg: var(--surface-secondary);
+    --button-secondary-bg-hover: var(--surface-tertiary);
+    --button-secondary-bg-pressed: var(--interaction-selected);
     --button-secondary-text: var(--text-primary);
-    --button-tertiary-bg: transparent;
+    --button-tertiary-bg: var(--surface-tertiary);
     --button-tertiary-bg-hover: var(--interaction-hover);
     --button-tertiary-bg-pressed: var(--interaction-selected);
     --button-tertiary-text: var(--text-primary);
@@ -168,10 +165,30 @@
     --heading-xs-line-height: var(--body-xl-line-height);
     --heading-xs-font-weight: var(--font-weight-semibold);
     --heading-xs-letter-spacing: var(--body-xl-letter-spacing);
+    --heading-settings-font-size: 20px;
+    --heading-settings-line-height: 30px;
+    --heading-settings-font-weight: var(--font-weight-semibold);
+    --heading-settings-letter-spacing: -0.01em;
+    --body-caption-font-size: 12px;
+    --body-caption-line-height: 20px;
+    --body-caption-font-weight: var(--font-weight-regular);
+    --body-caption-letter-spacing: 0em;
+    --label-caption-font-size: 12px;
+    --label-caption-line-height: 20px;
+    --label-caption-font-weight: var(--font-weight-medium);
+    --label-caption-letter-spacing: 0em;
+    --label-badge-font-size: 10px;
+    --label-badge-line-height: 12px;
+    --label-badge-font-weight: var(--font-weight-medium);
+    --label-badge-letter-spacing: 0em;
     --label-md-font-size: var(--body-md-font-size);
     --label-md-line-height: var(--body-md-line-height);
     --label-md-font-weight: var(--font-weight-medium);
     --label-md-letter-spacing: var(--body-md-letter-spacing);
+    --label-item-font-size: var(--body-md-font-size);
+    --label-item-line-height: 20px;
+    --label-item-font-weight: var(--font-weight-medium);
+    --label-item-letter-spacing: var(--body-md-letter-spacing);
     --label-sm-font-size: var(--body-sm-font-size);
     --label-sm-line-height: var(--body-sm-line-height);
     --label-sm-font-weight: var(--font-weight-medium);
@@ -301,23 +318,26 @@
   .ui-button--primary {
     color: var(--button-primary-text);
     background: var(--button-primary-bg);
-    box-shadow:
-      inset 0 2px 0 #fff,
-      inset 0 -2px 1px #00000014,
-      0 1px 2px #00000066,
-      0 5px 12px #00000040;
+    box-shadow: none;
   }
   .ui-button--primary:hover:not(:disabled) {
     background: var(--button-primary-bg-hover);
-    box-shadow:
-      inset 0 2px 0 #fff,
-      inset 0 -2px 1px #0000000d,
-      0 1px 2px #00000066,
-      0 6px 16px #0000004d;
   }
   .ui-button--primary:active:not(:disabled) {
     background: var(--button-primary-bg-pressed);
-    box-shadow: inset 0 2px 3px #0000001a;
+  }
+  .ui-button--primary-brand {
+    color: var(--text-primary);
+    background: var(--orka-copper-500);
+  }
+  .ui-button--primary-brand:hover:not(:disabled) {
+    background: var(--orka-copper-400);
+  }
+  .ui-button--primary-brand:active:not(:disabled) {
+    background: var(--orka-copper-800);
+  }
+  .ui-button[aria-pressed="true"] {
+    box-shadow: inset 0 0 0 1px var(--interaction-selected);
   }
   .ui-button--secondary {
     color: var(--button-secondary-text);
@@ -418,6 +438,7 @@
     flex: 0 0 var(--control-height);
   }
   .ui-button--lg {
+    border-radius: 10px;
     --control-font-size: var(--button-lg-font-size);
     --control-line-height: var(--button-lg-line-height);
     --control-tracking: var(--button-lg-letter-spacing);
@@ -433,6 +454,7 @@
     --icon-size: var(--button-lg-icon-size);
   }
   .ui-button--sm {
+    border-radius: 8px;
     --control-font-size: var(--button-sm-font-size);
     --control-line-height: var(--button-sm-line-height);
     --control-tracking: var(--button-sm-letter-spacing);
@@ -605,6 +627,29 @@
   @media (prefers-reduced-motion: reduce) {
     .ui-field__control {
       transition: none;
+    }
+  }
+}
+
+@layer components {
+  .activity-indicator {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    background: currentColor;
+    mask: url("/icons/loading.svg") center / 16px 16px no-repeat;
+    -webkit-mask: url("/icons/loading.svg") center / 16px 16px no-repeat;
+    animation: orka-activity 1s steps(8) infinite;
+  }
+  @keyframes orka-activity {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .activity-indicator {
+      animation: none;
     }
   }
 }

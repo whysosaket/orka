@@ -113,6 +113,7 @@ export function SignInEntry({
               />
             )}
             <Button
+              size="lg"
               className="onboarding-entry__submit"
               variant="primary"
               type="submit"
@@ -144,12 +145,18 @@ export function SignInEntry({
 
         <div className="onboarding-entry__providers">
           {signIn && methods?.password && methods.magicLink && (
-            <Button variant="tertiary" disabled={busy} onClick={onPassword}>
+            <Button
+              size="lg"
+              variant="tertiary"
+              disabled={busy}
+              onClick={onPassword}
+            >
               {password ? "Use an email link" : "Use a password"}
             </Button>
           )}
           {showGitHub && (
             <Button
+              size="lg"
               variant="secondary"
               disabled={busy || !ready}
               onClick={() => {
@@ -163,7 +170,12 @@ export function SignInEntry({
                 : "Continue with GitHub"}
             </Button>
           )}
-          <Button variant="tertiary" disabled={busy} onClick={onSelfHosted}>
+          <Button
+            size="lg"
+            variant="tertiary"
+            disabled={busy}
+            onClick={onSelfHosted}
+          >
             <Icon icon={ServerIcon} />
             {account.mode === "self-hosted"
               ? "Change server"

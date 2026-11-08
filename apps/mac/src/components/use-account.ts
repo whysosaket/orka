@@ -49,6 +49,14 @@ export function useAccount(config: Snapshot["config"]) {
     setCapabilities(null);
     setConnectionError("");
     if (!url) return;
+    try {
+      normalizeServiceUrl(url.trim());
+    } catch {
+      setConnectionError(
+        "Enter a valid server address, such as https://orka.your-team.com.",
+      );
+      return;
+    }
     const timer = window.setTimeout(() => {
       void invoke<AuthCapabilities>("auth_capabilities", { apiUrl: url.trim() })
         .then((result) => {
@@ -195,6 +203,17 @@ export function useAccount(config: Snapshot["config"]) {
     capabilities,
     connectionError,
     retryConnection: () => setConnectionAttempt((attempt) => attempt + 1),
+    resetConnection: () => {
+      const nextMode = savedMode ?? "cloud";
+      setMode(nextMode);
+      setCloudUrl(
+        savedCloud || (nextMode === "cloud" ? apiUrl! : buildCloudUrl),
+      );
+      setSelfHostedUrl(
+        savedSelfHosted || (nextMode === "self-hosted" ? apiUrl! : ""),
+      );
+      setConnectionError("");
+    },
     switchService,
   };
 }

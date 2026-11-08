@@ -74,11 +74,16 @@ export function AuthRecovery({
         )}
         <OnboardingError>{error}</OnboardingError>
         <div className="onboarding-auth-recovery__actions">
-          <Button type="submit" variant="primary" disabled={busy}>
+          <Button size="lg" type="submit" variant="primary" disabled={busy}>
             {location ? "Check location" : "Try again"}
           </Button>
           {!location && (
-            <Button variant="tertiary" disabled={busy} onClick={onBack}>
+            <Button
+              size="lg"
+              variant="tertiary"
+              disabled={busy}
+              onClick={onBack}
+            >
               {serverError ? "Edit server address" : "Back to sign-in"}
             </Button>
           )}
