@@ -443,7 +443,11 @@ for (const mode of ["owner", "member"]) {
     await settings
       .getByRole("button", { name: "Sharing", exact: true })
       .click();
-    await expect(settings.getByRole("switch")).toHaveCount(4);
+    await expect(
+      settings.getByRole("combobox", {
+        name: /^(Memories|Sessions|Plans|Skills) sharing$/,
+      }),
+    ).toHaveCount(4);
     await expect(settings).not.toContainText("ENV");
     await settings
       .getByRole("button", { name: "Close settings", exact: true })
@@ -455,7 +459,11 @@ for (const mode of ["owner", "member"]) {
       name: "Create project",
       exact: true,
     });
-    await expect(setup.getByRole("checkbox")).toHaveCount(4);
+    await expect(
+      setup.getByRole("combobox", {
+        name: /^(Memories|Sessions|Plans|Skills) sharing$/,
+      }),
+    ).toHaveCount(4);
     await expect(setup).not.toContainText("ENV");
     expect(
       await page.evaluate(() =>

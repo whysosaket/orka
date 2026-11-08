@@ -454,8 +454,16 @@ for (const width of [1160, 900]) {
     await expect(
       dialog.getByRole("button", { name: "Join project", exact: true }),
     ).toBeEnabled();
-    for (const checkbox of await dialog.getByRole("checkbox").all())
-      await expect(checkbox).not.toBeChecked();
+    await expect(
+      dialog.getByRole("combobox", { name: /sharing$/ }),
+    ).toHaveCount(4);
+    for (const category of ["Memories", "Plans", "Skills"])
+      await expect(
+        dialog.getByRole("combobox", { name: `${category} sharing` }),
+      ).toContainText("Share automatically");
+    await expect(
+      dialog.getByRole("combobox", { name: "Sessions sharing" }),
+    ).toContainText("Only when asked");
     expect(
       (await calls(page)).some((call) => call.command === "cloud_action"),
     ).toBe(false);
