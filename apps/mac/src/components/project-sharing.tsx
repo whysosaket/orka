@@ -1,4 +1,4 @@
-import { useId, type ChangeEvent } from "react";
+import { useId } from "react";
 import {
   BookIcon,
   CommentDiscussionIcon,
@@ -10,6 +10,7 @@ import {
 import type { ProjectSharing } from "../types.js";
 import { Icon } from "./icon.js";
 import { Switch } from "./switch.js";
+import { PermissionSelect } from "./permission-select.js";
 import { ENV_ENABLED } from "../lib/features.js";
 
 export const privateSharing: ProjectSharing = {
@@ -19,6 +20,39 @@ export const privateSharing: ProjectSharing = {
   plan: false,
   env: false,
 };
+
+export const defaultSharing: ProjectSharing = {
+  memory: true,
+  skill: true,
+  session: false,
+  plan: true,
+  env: false,
+};
+
+export function SharingModeSelect({
+  label,
+  enabled,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  enabled: boolean;
+  disabled: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  return (
+    <PermissionSelect
+      label={`${label} sharing`}
+      value={enabled ? "automatic" : "selected"}
+      disabled={disabled}
+      options={[
+        { value: "automatic", label: "Share automatically" },
+        { value: "selected", label: "Only when asked" },
+      ]}
+      onChange={(value) => onChange(value === "automatic")}
+    />
+  );
+}
 
 export const legacySharing: ProjectSharing = {
   memory: true,
@@ -72,7 +106,8 @@ export function ProjectSharingChoices({
       {context === "setup" && <legend>Share from this Mac</legend>}
       {context === "setup" && (
         <p id={`${id}-help`} className="project-sharing-help">
-          Choose what to share with project members.
+          Choose what to share automatically. Ask the Orka plugin to share
+          individual items at any time.
         </p>
       )}
       <div className="project-sharing-choices">
@@ -80,28 +115,18 @@ export function ProjectSharingChoices({
           ({ key, label, description: settingsDescription, icon }) => {
             const description =
               context === "settings" ? settingsDescription : undefined;
-            const inputProps = {
-              checked: value[key],
-              "aria-label": label,
-              "aria-describedby": description ? `${id}-${key}` : undefined,
-              onChange: (event: ChangeEvent<HTMLInputElement>) =>
-                onChange({
-                  ...value,
-                  env: ENV_ENABLED && value.env,
-                  [key]: event.target.checked,
-                }),
-            };
+            const change = (enabled: boolean) =>
+              onChange({
+                ...value,
+                env: ENV_ENABLED && value.env,
+                [key]: enabled,
+              });
             return (
-              <label
+              <div
                 className={`project-sharing-choice${context === "settings" ? " project-sharing-choice--switch" : ""}`}
                 data-sharing-kind={key}
                 key={key}
               >
-                {context === "settings" ? (
-                  <Switch {...inputProps} />
-                ) : (
-                  <input type="checkbox" {...inputProps} />
-                )}
                 {context === "settings" && (
                   <Icon icon={icon} className="project-sharing-icon" />
                 )}
@@ -116,7 +141,22 @@ export function ProjectSharingChoices({
                     </span>
                   )}
                 </span>
-              </label>
+                {key === "env" ? (
+                  <Switch
+                    checked={value.env}
+                    aria-label={label}
+                    disabled={disabled}
+                    onChange={(event) => change(event.target.checked)}
+                  />
+                ) : (
+                  <SharingModeSelect
+                    label={label}
+                    enabled={value[key]}
+                    disabled={disabled}
+                    onChange={change}
+                  />
+                )}
+              </div>
             );
           },
         )}
@@ -130,7 +170,7 @@ export function ProjectSharingChoices({
           >
             {ENV_ENABLED && value.env
               ? "Review keys and recipients before publishing ENVs manually. ENV files never upload automatically."
-              : "Nothing selected. Local content stays private."}
+              : "Automatic sharing is off. Only items you explicitly share through the plugin will be sent."}
           </p>
         )}
     </fieldset>

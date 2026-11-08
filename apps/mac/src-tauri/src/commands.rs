@@ -205,7 +205,7 @@ pub async fn cloud_action(action: String, input: Value) -> Result<Value> {
             serde_json::from_value::<projects::Sharing>(input["sharing"].clone())
                 .map_err(|_| "Invalid project sharing choices")?
         } else {
-            projects::Sharing::default()
+            projects::Sharing::new_project()
         })
     } else {
         None

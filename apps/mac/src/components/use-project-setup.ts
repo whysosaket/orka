@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ProjectSharing } from "../types.js";
 import type { ProjectSetupMode } from "./project-setup.js";
-import { privateSharing } from "./project-sharing.js";
+import { defaultSharing } from "./project-sharing.js";
 import { parseProjectInvite, sameServiceUrl } from "./project-invite.js";
 import { useSourceFolders } from "./source-folders.js";
 
@@ -31,7 +31,7 @@ export function useProjectSetup(
   const [dialog, setDialog] = useState<ProjectSetupMode | null>(null);
   const [input, setInput] = useState("");
   const selection = useSourceFolders();
-  const [sharing, setSharing] = useState<ProjectSharing>(privateSharing);
+  const [sharing, setSharing] = useState<ProjectSharing>(defaultSharing);
   let inviteService: string | undefined;
   if (dialog === "join") {
     try {
@@ -48,7 +48,7 @@ export function useProjectSetup(
     onError("");
     setInput(value);
     selection.clear();
-    setSharing(privateSharing);
+    setSharing(defaultSharing);
     setDialog(mode);
   };
   const submit = async () => {

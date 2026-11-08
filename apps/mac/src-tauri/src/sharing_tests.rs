@@ -10,7 +10,7 @@ fn set_sharing(f: &mut Fixture, kinds: &[&str]) {
     db::upsert(&f.db, "projects", id, id, &f.project).unwrap();
 }
 
-fn seed(f: &Fixture) {
+pub(super) fn seed(f: &Fixture) {
     fs::write(f.root.join("AGENTS.md"), "Private instructions").unwrap();
     fs::create_dir_all(f.root.join(".agents/skills/example")).unwrap();
     fs::write(

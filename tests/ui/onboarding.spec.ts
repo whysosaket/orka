@@ -1,3 +1,4 @@
+import { setSharingMode } from "./fixtures/sharing-mode.js";
 import { test, expect, type Page } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
 
@@ -547,12 +548,21 @@ test("sharing toggles do not flash buttons and unsaved choices cannot start sync
 }) => {
   await fixture(page, { step: "review", pauseCheckpoints: true });
   await watchButtonDisabling(page);
-  await page.getByRole("switch", { name: "Sessions", exact: true }).uncheck();
-  await page.getByRole("switch", { name: "Memories", exact: true }).uncheck();
-  await page.getByRole("switch", { name: "Sessions", exact: true }).check();
+  await setSharingMode(
+    page.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+    false,
+  );
+  await setSharingMode(
+    page.getByRole("combobox", { name: "Memories sharing", exact: true }),
+    false,
+  );
+  await setSharingMode(
+    page.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+    true,
+  );
   await expect(
-    page.getByRole("switch", { name: "Memories", exact: true }),
-  ).not.toBeChecked();
+    page.getByRole("combobox", { name: "Memories sharing", exact: true }),
+  ).toContainText("Only when asked");
   expect(await page.evaluate(() => (window as any).disabledButtons)).toEqual(
     [],
   );
@@ -889,7 +899,9 @@ for (const width of [1440, 900])
     await expect(
       page.getByRole("heading", { name: "Sync Project", exact: true }),
     ).toBeVisible();
-    expect(await page.getByRole("switch").count()).toBe(4);
+    expect(await page.getByRole("combobox", { name: /sharing$/ }).count()).toBe(
+      4,
+    );
     await expect(
       page.getByRole("button", { name: "Start Syncing", exact: true }),
     ).toBeEnabled();
@@ -906,7 +918,10 @@ for (const width of [1440, 900])
       animations: "disabled",
       path: info.outputPath("sharing.png"),
     });
-    await page.getByRole("switch", { name: "Sessions", exact: true }).uncheck();
+    await setSharingMode(
+      page.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+      false,
+    );
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await expect(
       page.getByText("1 of 7 selected", { exact: true }),
@@ -964,7 +979,10 @@ test("profile, projects, sync, background choice, and fresh one-use invites reac
   await page.setViewportSize({ width: 1440, height: 900 });
   await fixture(page, { step: "select", unconnectedProject: true });
   await page.getByRole("button", { name: "Proceed", exact: true }).click();
-  await page.getByRole("switch", { name: "Sessions", exact: true }).uncheck();
+  await setSharingMode(
+    page.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+    false,
+  );
   await page
     .getByRole("button", { name: "Start Syncing", exact: true })
     .click();
@@ -1276,7 +1294,10 @@ test("ambiguous cloud matches require a project choice before sync", async ({
   await expect(
     page.getByRole("button", { name: "Start Syncing", exact: true }),
   ).toBeEnabled();
-  await page.getByRole("switch", { name: "Sessions", exact: true }).uncheck();
+  await setSharingMode(
+    page.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+    false,
+  );
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.getByRole("button", { name: "Proceed", exact: true }).click();
   await expect(
@@ -1286,8 +1307,8 @@ test("ambiguous cloud matches require a project choice before sync", async ({
     }),
   ).toContainText("Team Orka · Member");
   await expect(
-    page.getByRole("switch", { name: "Sessions", exact: true }),
-  ).not.toBeChecked();
+    page.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+  ).toContainText("Only when asked");
   await expect(
     page.getByRole("button", { name: "Start Syncing", exact: true }),
   ).toBeEnabled();
