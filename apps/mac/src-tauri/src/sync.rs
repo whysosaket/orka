@@ -892,13 +892,17 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             !blocked_projects.contains(q["project"].as_str().unwrap_or(""))
                 && local.iter().any(|p| {
                     p["id"] == q["project"]
-                        && crate::projects::sharing_allowed(
-                            p,
-                            crate::projects::queued_kind(
-                                q["path"].as_str().unwrap_or(""),
-                                &q["value"],
-                            ),
-                        )
+                        && (if q["path"] == crate::selective_sharing::QUEUE_PATH {
+                            crate::selective_sharing::authorized(db, q).unwrap_or(false)
+                        } else {
+                            crate::projects::sharing_allowed(
+                                p,
+                                crate::projects::queued_kind(
+                                    q["path"].as_str().unwrap_or(""),
+                                    &q["value"],
+                                ),
+                            )
+                        })
                 })
         })
         .collect();
@@ -929,6 +933,9 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         )?;
         let input = &q["value"];
         let result = async {
+            if q["path"] == crate::selective_sharing::QUEUE_PATH {
+                return crate::selective_sharing::send(db, owner, q).await;
+            }
             if input["resource"]["files"].is_array() {
                 crate::repair::upload(
                     owner,
@@ -952,7 +959,9 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         match result {
             Ok(receipt) => {
                 let tx = db.transaction().map_err(|e| e.to_string())?;
-                if q["path"] == crate::global_skills::IMPORT_PATH {
+                if q["path"] == crate::selective_sharing::QUEUE_PATH {
+                    crate::selective_sharing::complete(&tx, q, &receipt)?;
+                } else if q["path"] == crate::global_skills::IMPORT_PATH {
                     crate::global_skills::complete_share(&tx, q, &receipt)?;
                 } else {
                     apply_event(&tx, &receipt["event"])?;

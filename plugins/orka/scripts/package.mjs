@@ -14,10 +14,16 @@ import { spawnSync } from "node:child_process";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const endpoint = process.argv[2];
-const output = resolve(process.argv[3] ?? "artifacts/orka-plugin-0.1.0.zip");
+const output = resolve(process.argv[3] ?? "artifacts/orka-plugin-0.2.0.zip");
+const desktopOutput = output.replace(/\.zip$/i, "") + "-desktop.zip";
+const appBinary =
+  process.argv[4] ??
+  "/Applications/Orka.app/Contents/MacOS/portable-workspace-mac";
+if (!appBinary.startsWith("/") || /[\r\n\0]/.test(appBinary))
+  throw new Error("Use an absolute path to the installed Orka executable");
 if (!endpoint)
   throw new Error(
-    "Usage: node plugins/orka/scripts/package.mjs <verified-mcp-url> [output.zip]",
+    "Usage: node plugins/orka/scripts/package.mjs <verified-mcp-url> [output.zip] [orka-executable]",
   );
 const url = new URL(endpoint);
 if (
@@ -112,7 +118,7 @@ const directory = await mkdtemp(join(tmpdir(), "orka-plugin-package-"));
 try {
   const staged = join(directory, "orka");
   await mkdir(staged);
-  for (const name of ["plugin.json", "skills", "assets"])
+  for (const name of ["plugin.json", "README.md", "skills", "assets"])
     await cp(join(root, name), join(staged, name), {
       recursive: true,
       dereference: false,
@@ -140,6 +146,27 @@ try {
     join(staged, "mcp.json"),
     JSON.stringify(connection, null, 2) + "\n",
   );
+  const hostManifest = {
+    name: manifest.name,
+    version: manifest.version,
+    description: manifest.description,
+    author: manifest.author,
+    license: manifest.license,
+    keywords: manifest.keywords,
+  };
+  await mkdir(join(staged, ".claude-plugin"));
+  await writeFile(
+    join(staged, ".claude-plugin", "plugin.json"),
+    JSON.stringify(hostManifest, null, 2) + "\n",
+  );
+  await writeFile(
+    join(staged, ".mcp.json"),
+    JSON.stringify(
+      { mcpServers: { orka: { type: "http", url: url.href } } },
+      null,
+      2,
+    ) + "\n",
+  );
   for (const skill of await readdir(join(staged, "skills"))) {
     const text = await readFile(
       join(staged, "skills", skill, "SKILL.md"),
@@ -152,31 +179,68 @@ try {
       throw new Error(`Invalid skill: ${skill}`);
   }
   await mkdir(dirname(output), { recursive: true });
-  const archive = join(directory, "orka.zip");
-  const packed = spawnSync("zip", ["-q", "-r", archive, "orka"], {
-    cwd: directory,
-    encoding: "utf8",
-  });
-  if (packed.status !== 0)
-    throw new Error(packed.stderr || "ZIP creation failed");
-  const inventory = spawnSync("unzip", ["-Z1", archive], { encoding: "utf8" });
-  if (
-    inventory.status !== 0 ||
-    inventory.stdout
-      .split("\n")
-      .some(
-        (p) =>
-          p.includes("..") ||
-          p.includes("node_modules") ||
-          p.includes(".app.json") ||
-          p.includes(".env") ||
-          p.includes(".DS_Store"),
-      )
-  )
-    throw new Error("Archive inventory validation failed");
+  const pack = (name) => {
+    const archive = join(directory, name);
+    const packed = spawnSync("zip", ["-q", "-r", archive, "orka"], {
+      cwd: directory,
+      encoding: "utf8",
+    });
+    if (packed.status !== 0)
+      throw new Error(packed.stderr || "ZIP creation failed");
+    const inventory = spawnSync("unzip", ["-Z1", archive], {
+      encoding: "utf8",
+    });
+    if (
+      inventory.status !== 0 ||
+      inventory.stdout
+        .split("\n")
+        .some(
+          (p) =>
+            p.includes("..") ||
+            p.includes("node_modules") ||
+            p.includes(".app.json") ||
+            p.includes(".env") ||
+            p.includes(".DS_Store"),
+        )
+    )
+      throw new Error("Archive inventory validation failed");
+    return archive;
+  };
+  const archive = pack("orka.zip");
   await cp(archive, output);
   await writeFile(
-    output + ".verification.json",
+    join(staged, ".mcp.json"),
+    JSON.stringify(
+      {
+        mcpServers: {
+          orka: { type: "http", url: url.href },
+          orka_local: { command: appBinary, args: ["--orka-plugin"] },
+        },
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  await mkdir(join(staged, ".codex-plugin"));
+  await writeFile(
+    join(staged, ".codex-plugin", "plugin.json"),
+    JSON.stringify(
+      {
+        ...hostManifest,
+        skills: "./skills/",
+        mcpServers: "./.mcp.json",
+        interface: manifest.extensions["com.openai"].interface,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  // Codex CLI 0.159.2 otherwise prefers the portable manifest
+  // but do not load its MCP configuration.
+  await rm(join(staged, "plugin.json"));
+  await rm(join(staged, "mcp.json"));
+  await cp(pack("orka-desktop.zip"), desktopOutput);
+  const verification =
     JSON.stringify(
       {
         endpoint: url.href,
@@ -188,10 +252,11 @@ try {
       },
       null,
       2,
-    ) + "\n",
-  );
+    ) + "\n";
+  await writeFile(output + ".verification.json", verification);
+  await writeFile(desktopOutput + ".verification.json", verification);
   console.log(
-    `Created ${output}. Endpoint discovery verified; authenticated host acceptance is a separate check.`,
+    `Created ${output} and ${desktopOutput}. Endpoint discovery verified; authenticated host acceptance is a separate check.`,
   );
 } finally {
   await rm(directory, { recursive: true, force: true });

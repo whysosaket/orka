@@ -23,7 +23,7 @@ Share project memories, skills, and plans with teammates and their AI tools, and
 - Run background sync with an adjustable interval.
 - Open sessions in their native app or download a session archive.
 
-Sharing starts disabled for new projects. Conversations can contain sensitive content; review the [data and security model](docs/security-model.md) before sharing real projects. ENV sharing is currently disabled in the desktop UI.
+New projects default to automatic context sharing, with sessions shared only on explicit request. Existing sharing choices are preserved. The plugins can share one selected snapshot without enabling its category; see [selected sharing](docs/selective-sharing.md). Review the [data and security model](docs/security-model.md) before sharing real projects. ENV sharing is currently disabled in the desktop UI.
 
 ## Develop
 

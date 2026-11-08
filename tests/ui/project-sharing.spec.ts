@@ -1,3 +1,4 @@
+import { setSharingMode } from "./fixtures/sharing-mode.js";
 import { ENV_ENABLED } from "../../apps/mac/src/lib/features.js";
 import { test, expect, type Page } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
@@ -10,6 +11,7 @@ const off: ProjectSharing = {
   skill: false,
   env: false,
 };
+const automaticDefault = { ...off, memory: true, plan: true, skill: true };
 const inviteToken = "ab".repeat(24);
 
 async function fixture(page: Page, failCreate = false, browserInvites = true) {
@@ -143,7 +145,7 @@ for (const size of [
   { width: 1160, height: 800 },
   { width: 900, height: 640 },
 ]) {
-  test(`add project defaults to private and supports keyboard selection at ${size.width}`, async ({
+  test(`add project defaults to automatic context and selective sessions with keyboard selection at ${size.width}`, async ({
     page,
   }, testInfo) => {
     await page.setViewportSize(size);
@@ -152,29 +154,39 @@ for (const size of [
       .getByRole("button", { name: "Add project", exact: true })
       .click();
     const dialog = page.getByRole("dialog", { name: "Create project" });
-    await expect(dialog.getByRole("checkbox")).toHaveCount(ENV_ENABLED ? 5 : 4);
-    for (const label of [
-      "Memories",
-      "Sessions",
-      "Plans",
-      "Skills",
-      ...(ENV_ENABLED ? ["ENVs"] : []),
-    ]) {
+    await expect(
+      dialog.getByRole("combobox", { name: /sharing$/ }),
+    ).toHaveCount(4);
+    for (const label of ["Memories", "Sessions", "Plans", "Skills"]) {
       await expect(
-        dialog.getByRole("checkbox", { name: label, exact: true }),
-      ).not.toBeChecked();
+        dialog.getByRole("combobox", { name: label + " sharing", exact: true }),
+      ).toContainText(
+        label === "Sessions" ? "Only when asked" : "Share automatically",
+      );
     }
     await dialog
       .getByRole("textbox", { name: "Project name" })
       .fill("My workspace");
-    const memory = dialog.getByRole("checkbox", {
-      name: "Memories",
+    const memory = dialog.getByRole("combobox", {
+      name: "Memories sharing",
       exact: true,
     });
     await memory.focus();
-    await page.keyboard.press("Space");
-    await expect(memory).toBeChecked();
-    await dialog.getByRole("checkbox", { name: "Plans", exact: true }).check();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("option", { name: "Share automatically", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(
+      page.getByRole("option", { name: "Only when asked", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(memory).toContainText("Only when asked");
+    await setSharingMode(memory, true);
+    await setSharingMode(
+      dialog.getByRole("combobox", { name: "Plans sharing", exact: true }),
+      true,
+    );
     await page.screenshot({
       path: testInfo.outputPath(`sharing-${size.width}.png`),
     });
@@ -192,7 +204,7 @@ for (const size of [
       action: "create",
       input: {
         name: "My workspace",
-        sharing: { ...off, memory: true, plan: true },
+        sharing: automaticDefault,
       },
     });
     expect((await calls(page)).some((c) => c.command === "env_command")).toBe(
@@ -207,15 +219,18 @@ test("cancel creates nothing and reopening resets choices", async ({
   await fixture(page);
   await page.getByRole("button", { name: "Add project", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("checkbox", { name: "Skills", exact: true }).check();
+  await setSharingMode(
+    dialog.getByRole("combobox", { name: "Skills sharing", exact: true }),
+    false,
+  );
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   expect((await calls(page)).some((c) => c.command === "cloud_action")).toBe(
     false,
   );
   await page.getByRole("button", { name: "Add project", exact: true }).click();
   await expect(
-    dialog.getByRole("checkbox", { name: "Skills", exact: true }),
-  ).not.toBeChecked();
+    dialog.getByRole("combobox", { name: "Skills sharing", exact: true }),
+  ).toContainText("Share automatically");
 });
 
 test("saving no categories and connecting a folder carries private defaults", async ({
@@ -245,7 +260,7 @@ test("saving no categories and connecting a folder carries private defaults", as
       command: "cloud_action",
       args: {
         action: "create",
-        input: { name: "Private project", sharing: off },
+        input: { name: "Private project", sharing: automaticDefault },
       },
     },
     {
@@ -262,14 +277,17 @@ test("failed creation retains selections for retry", async ({ page }) => {
   await dialog
     .getByRole("textbox", { name: "Project name" })
     .fill("Retry project");
-  await dialog.getByRole("checkbox", { name: "Skills", exact: true }).check();
+  await setSharingMode(
+    dialog.getByRole("combobox", { name: "Skills sharing", exact: true }),
+    true,
+  );
   await dialog
     .getByRole("button", { name: "Create project", exact: true })
     .click();
   await expect(dialog.getByRole("alert")).toContainText("Cloud unavailable");
   await expect(
-    dialog.getByRole("checkbox", { name: "Skills", exact: true }),
-  ).toBeChecked();
+    dialog.getByRole("combobox", { name: "Skills sharing", exact: true }),
+  ).toContainText("Share automatically");
   await dialog
     .getByRole("button", { name: "Create project", exact: true })
     .click();
@@ -286,9 +304,12 @@ test("join carries explicit sharing choices before connecting a folder", async (
     .getByRole("textbox", { name: "Invite link or token" })
     .fill(`orka://join/${inviteToken}`);
   await expect(
-    dialog.getByRole("checkbox", { name: "Sessions", exact: true }),
-  ).not.toBeChecked();
-  await dialog.getByRole("checkbox", { name: "Sessions", exact: true }).check();
+    dialog.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+  ).toContainText("Only when asked");
+  await setSharingMode(
+    dialog.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+    true,
+  );
   await dialog
     .getByRole("button", { name: "Join project", exact: true })
     .click();
@@ -297,7 +318,10 @@ test("join carries explicit sharing choices before connecting a folder", async (
     (await calls(page)).find((c) => c.command === "cloud_action")?.args,
   ).toEqual({
     action: "join",
-    input: { token: inviteToken, sharing: { ...off, session: true } },
+    input: {
+      token: inviteToken,
+      sharing: { ...automaticDefault, session: true },
+    },
   });
 });
 
@@ -321,7 +345,7 @@ test("browser invites are parsed and bound to the selected service", async ({
     input: {
       token: inviteToken,
       serviceUrl: "https://test.orka",
-      sharing: off,
+      sharing: automaticDefault,
     },
   });
 });

@@ -127,6 +127,7 @@ pub fn open_at(root: &Path) -> Result<Connection> {
     db.busy_timeout(std::time::Duration::from_secs(5))
         .map_err(|e| e.to_string())?;
     db.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS resources(id TEXT PRIMARY KEY,project TEXT NOT NULL,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS bindings(id TEXT PRIMARY KEY,project TEXT NOT NULL,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY,project TEXT NOT NULL,path TEXT NOT NULL,value TEXT NOT NULL,error TEXT); CREATE TABLE IF NOT EXISTS cursors(project TEXT PRIMARY KEY,cursor INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS conflicts(id TEXT PRIMARY KEY,project TEXT NOT NULL,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS activity(id TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS active(native_id TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS errors(source TEXT PRIMARY KEY,error TEXT NOT NULL); CREATE TABLE IF NOT EXISTS drafts(id TEXT PRIMARY KEY,project TEXT NOT NULL,value TEXT NOT NULL);").map_err(|e|e.to_string())?;
+    db.execute_batch("CREATE TABLE IF NOT EXISTS local_resources(id TEXT PRIMARY KEY,project TEXT NOT NULL,value TEXT NOT NULL);").map_err(|e|e.to_string())?;
     Ok(db)
 }
 fn global_setting(key: &str) -> Result<Value> {
@@ -171,7 +172,16 @@ pub fn rows(db: &Connection, sql: &str, values: &[&dyn rusqlite::ToSql]) -> Resu
         .collect()
 }
 pub fn upsert(db: &Connection, table: &str, id: &str, project: &str, value: &Value) -> Result<()> {
-    if !["projects", "resources", "bindings", "conflicts", "drafts"].contains(&table) {
+    if ![
+        "projects",
+        "resources",
+        "bindings",
+        "conflicts",
+        "drafts",
+        "local_resources",
+    ]
+    .contains(&table)
+    {
         return Err("Invalid table".into());
     }
     let sql = if table == "projects" {

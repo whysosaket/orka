@@ -107,7 +107,7 @@ test("one General save retains failed sharing and acknowledges successful name c
   await settings
     .getByRole("textbox", { name: "Project name", exact: true })
     .fill("Orka renamed");
-  await settings.getByRole("switch", { name: "Sessions", exact: true }).check();
+  await choose(settings, "Sessions sharing", "Share automatically");
   await button(settings, "Save changes").click();
   await expect(settings.getByRole("alert")).toContainText(
     "Project name saved.",
@@ -116,8 +116,8 @@ test("one General save retains failed sharing and acknowledges successful name c
     settings.getByRole("textbox", { name: "Project name", exact: true }),
   ).toHaveValue("Orka renamed");
   await expect(
-    settings.getByRole("switch", { name: "Sessions", exact: true }),
-  ).toBeChecked();
+    settings.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+  ).toContainText("Share automatically");
   await button(settings, "Save changes").click();
   await expect(button(settings, "Save changes")).toBeDisabled();
   expect(

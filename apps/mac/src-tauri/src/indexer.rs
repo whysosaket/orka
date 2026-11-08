@@ -182,6 +182,18 @@ fn collect(
     }
     seen.insert(id.clone());
     let mut b = binding(db, &id)?;
+    if project["catalogOnly"] == true {
+        let mut resource = json!({"resourceId":id,"kind":kind,"source":source,"logicalPath":logical,"title":title,"files":files,"deleted":false});
+        crate::sources::scope(project, &mut resource);
+        resource["contextSources"] = scanned_sources(db, project, logical, native_id)?;
+        return db::upsert(
+            db,
+            "local_resources",
+            &id,
+            project_id,
+            &json!({"resource":resource,"paths":paths,"nativeId":native_id,"discoveredAt":db::now()}),
+        );
+    }
     if kind == "session" {
         let fork = crate::session_forks::info(db, &id)?;
         if let (Some(parent), Some(destination), Some(native_id)) = (
@@ -395,6 +407,22 @@ fn collect_embedded_plan(
     let project_id = project["id"].as_str().ok_or("Missing project")?;
     let id = scoped_resource_id(db, project, "plan", logical)?;
     seen.insert(id.clone());
+    if project["catalogOnly"] == true {
+        return collect(
+            db,
+            project,
+            Scanned {
+                kind: "plan",
+                source,
+                logical,
+                title: &plans::title(text, "Plan"),
+                files: vec![plans::content(text.as_bytes())?],
+                paths: vec![],
+                native_id: None,
+            },
+            seen,
+        );
+    }
     let b = binding(db, &id)?;
     let origin = db::digest(text.as_bytes());
     let root = Path::new(project["path"].as_str().ok_or("Connect a folder")?);
@@ -435,6 +463,25 @@ fn collect_embedded_plan(
     let mut b = binding(db, &id)?;
     b["planOriginHash"] = json!(origin);
     db::upsert(db, "bindings", &id, project_id, &b)
+}
+
+pub fn discover(db: &rusqlite::Connection, project: &Value, kind: &str) -> Result<Vec<Value>> {
+    if !matches!(kind, "memory" | "skill" | "session" | "plan") {
+        return Err("Choose memories, skills, sessions, or plans".into());
+    }
+    let id = project["id"].as_str().ok_or("Missing project")?;
+    let mut local = project.clone();
+    local["catalogOnly"] = json!(true);
+    local["sharing"] =
+        json!({"memory":false,"skill":false,"session":false,"plan":false,"env":false});
+    local["sharing"][kind] = json!(true);
+    db.execute(
+        "DELETE FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=?",
+        params![id, kind],
+    )
+    .map_err(|e| e.to_string())?;
+    scan(db, &local)?;
+    db::rows(db, "SELECT value FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? ORDER BY json_extract(value,'$.resource.title'),id", &[&id,&kind])
 }
 
 pub fn scan(db: &rusqlite::Connection, project: &Value) -> Result<()> {
@@ -493,7 +540,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
     .map_err(|e| e.to_string())?;
     let mut seen = BTreeSet::new();
     // Keep ignored source drafts recoverable without leaving fixture copies in review.
-    for mut draft in db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')='local' AND json_extract(value,'$.resource.kind')='memory'", &[&project_id])? {
+    for mut draft in db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')='local' AND json_extract(value,'$.resource.kind')='memory'", &[&project_id])?.into_iter().filter(|_| project["catalogOnly"] != true) {
         if !crate::sources::matches(project, &draft["resource"]) { continue; }
         if let Some(relative) = draft["resource"]["logicalPath"].as_str().and_then(|p| p.strip_prefix("instructions/")) {
             if !instruction_allowed(&root, Path::new(relative)) {
@@ -738,6 +785,32 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                 if !db::get(db, &format!("installation:{id}"))?.is_null() {
                     return Err(
                         "Skill installation recovery pending; local copies preserved".into(),
+                    );
+                }
+                if project["catalogOnly"] == true {
+                    let copies = paths
+                        .iter()
+                        .map(|p| packages::directory(p).map(|f| (p, json!(f))))
+                        .collect::<Result<Vec<_>>>()?;
+                    if copies.windows(2).any(|pair| pair[0].1 != pair[1].1) {
+                        return Err(
+                            "Local skill copies differ; resolve them before sharing this skill"
+                                .into(),
+                        );
+                    }
+                    return collect(
+                        db,
+                        project,
+                        Scanned {
+                            kind: "skill",
+                            source: "shared",
+                            logical: &name,
+                            title: &name,
+                            files: copies[0].1.as_array().ok_or("Missing skill files")?.clone(),
+                            paths: paths.clone(),
+                            native_id: None,
+                        },
+                        &mut seen,
                     );
                 }
                 let mut b = binding(db, &id)?;
@@ -1018,7 +1091,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                         continue;
                     }
                 };
-                if project["governed"] == true {
+                if project["governed"] == true && project["catalogOnly"] != true {
                     let records =
                         crate::history::resource_records(&json!({"source":tool,"files":files}))?;
                     native::bind_handoff(db, project_id, &id, &records)?;
@@ -1143,6 +1216,9 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                 )?;
             }
         }
+    }
+    if project["catalogOnly"] == true {
+        return Ok(());
     }
     if project["governed"] == true {
         // A plan file can be seen before its transcript references. Reconcile all
