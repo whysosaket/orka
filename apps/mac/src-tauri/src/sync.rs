@@ -837,13 +837,15 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         return Ok(WorkspaceSync::Yielded);
     }
     progress(db, "Connecting to sync service", None, 0, None)?;
-    api_as(
-        owner,
-        "POST",
-        "/v2/devices",
-        Some(&json!({"id":device,"name":std::env::var("HOSTNAME").unwrap_or("Mac".into())})),
-    )
-    .await?;
+    let mut registration =
+        json!({"id":device,"name":std::env::var("HOSTNAME").unwrap_or("Mac".into())});
+    if api_as(owner, "GET", "/v2/projects/capabilities", None)
+        .await
+        .is_ok_and(|caps| caps["deviceHardware"] == 1)
+    {
+        registration["hardwareFamily"] = json!(crate::device_metadata::local_family(db)?);
+    }
+    api_as(owner, "POST", "/v2/devices", Some(&registration)).await?;
     let projects = api_as(owner, "GET", "/v2/projects?includeArchived=true", None).await?;
     crate::projects::merge_catalog(db, &projects)?;
     let local = db::rows(
@@ -1125,11 +1127,8 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
     }
     progress(db, "Finishing sync", None, 0, None)?;
     crate::codex_skills::retry(db)?;
-    db::set(
-        db,
-        "devices",
-        &api_as(owner, "GET", "/v2/devices", None).await?,
-    )?;
+    let devices = api_as(owner, "GET", "/v2/devices", None).await?;
+    crate::device_metadata::update_devices(db, &devices)?;
     let has_errors: bool = db
         .query_row("SELECT EXISTS(SELECT 1 FROM errors)", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;

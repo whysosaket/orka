@@ -6,6 +6,7 @@ mod codex_import;
 mod codex_skills;
 mod commands;
 mod db;
+mod device_metadata;
 mod env;
 mod global_skills;
 mod governance;
@@ -23,6 +24,8 @@ mod session_forks;
 mod session_launcher;
 mod session_presentation;
 mod session_translation;
+mod settings;
+mod settings_lifecycle;
 mod skill_usage;
 mod sources;
 mod sync;
@@ -32,6 +35,7 @@ use serde_json::json;
 #[cfg(debug_assertions)]
 use serde_json::Value;
 use std::io::Read;
+use tauri::Manager;
 fn main() {
     let mut args = std::env::args().collect::<Vec<_>>();
     if let Err(error) = profiles::initialize(&mut args) {
@@ -180,9 +184,12 @@ fn main() {
         }
     }
     tauri::Builder::default()
+        .manage(settings_lifecycle::SettingsCloseGuard::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
-        .setup(|_| {
+        .setup(|_app| {
+            #[cfg(target_os = "macos")]
+            settings_lifecycle::install_quit_menu(_app.handle())?;
             db::open().map_err(std::io::Error::other)?;
             if let Err(e) = commands::ensure_agent() {
                 db::set(
@@ -197,6 +204,8 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            settings_lifecycle::guard_settings_close,
+            settings_lifecycle::finish_settings_close,
             onboarding::onboarding_command,
             commands::open_legal_link,
             env::env_command,
@@ -207,6 +216,7 @@ fn main() {
             profiles::profile_events,
             commands::snapshot,
             projects::project_command,
+            settings::settings_command,
             commands::configure,
             commands::sign_in,
             commands::switch_service,
@@ -242,9 +252,21 @@ fn main() {
             commands::retry_uploads,
             commands::background_agent
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if settings_lifecycle::request(window.app_handle(), "close") {
+                    api.prevent_close();
+                }
+            }
+        })
         .build(context)
         .expect("Unable to start Orka")
-        .run(|_, event| {
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = &event {
+                if settings_lifecycle::request(app, "quit") {
+                    api.prevent_exit();
+                }
+            }
             if matches!(event, tauri::RunEvent::Exit) {
                 env::clear();
             }

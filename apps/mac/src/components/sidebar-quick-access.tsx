@@ -19,6 +19,7 @@ function QuickAction({
   index,
   registerItem,
   collapsed,
+  selected,
 }: {
   icon: Octicon;
   text: string;
@@ -27,6 +28,7 @@ function QuickAction({
   index: number;
   registerItem: ReturnType<typeof useFluidHover>["registerItem"];
   collapsed: boolean;
+  selected?: boolean;
 }) {
   const ref = React.useRef<HTMLButtonElement>(null);
   useRegisterFluidHoverItem(registerItem, index, ref);
@@ -36,6 +38,7 @@ function QuickAction({
       type="button"
       className="navigation-action"
       aria-label={label}
+      aria-current={selected ? "page" : undefined}
       title={collapsed ? label : undefined}
       onClick={(event) => {
         event.currentTarget.focus();
@@ -51,11 +54,13 @@ function QuickAction({
 /** The Figma bottom navigation keeps all three existing destinations. */
 export function SidebarQuickAccess({
   collapsed,
+  settingsActive = false,
   onSettings,
   onCreate,
   onJoin,
 }: {
   collapsed: boolean;
+  settingsActive?: boolean;
   onSettings: () => void;
   onCreate: () => void;
   onJoin: () => void;
@@ -87,6 +92,7 @@ export function SidebarQuickAccess({
           index={index}
           registerItem={hover.registerItem}
           collapsed={collapsed}
+          selected={entry.label === "Settings" && settingsActive}
         />
       ))}
     </div>

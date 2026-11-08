@@ -37,7 +37,23 @@ fn valid_avatar_data(raw: &str) -> bool {
     }
     let width = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
     let height = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
-    width > 0 && height > 0 && width <= 512 && height <= 512
+    if width == 0 || height == 0 || width > 512 || height > 512 {
+        return false;
+    }
+    #[cfg(target_os = "macos")]
+    return objc2::rc::autoreleasepool(|_| {
+        use objc2_app_kit::NSBitmapImageRep;
+        use objc2_foundation::NSData;
+        NSBitmapImageRep::imageRepWithData(&NSData::with_bytes(&bytes)).is_some_and(|image| {
+            image.pixelsWide() == width as isize
+                && image.pixelsHigh() == height as isize
+                && !image.bitmapData().is_null()
+        })
+    });
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
 }
 fn validate(input: &Value) -> Result<Value> {
     let name = input["displayName"].as_str().unwrap_or("").trim();
@@ -146,7 +162,8 @@ pub async fn load() -> Result<Value> {
     match capabilities().await {
         Ok(caps) => {
             profile["supported"] = json!(caps["onboarding"] == 1);
-            profile["detailsSupported"] = json!(caps["profile"]["version"] == 2);
+            profile["detailsSupported"] =
+                json!(caps["profile"]["version"] == 2 && caps["profile"]["conditionalSave"] == 1);
             profile["offline"] = json!(false);
             if profile["supported"] == true && profile["pending"] != true {
                 let input = json!({"displayName":profile["displayName"],"avatarUrl":profile["avatarUrl"],"source":profile["source"],"ifAbsent":true});
@@ -158,6 +175,7 @@ pub async fn load() -> Result<Value> {
                     "avatarUrl",
                     "avatarData",
                     "source",
+                    "revision",
                 ] {
                     profile[key] = saved[key].clone();
                 }
@@ -177,7 +195,13 @@ pub async fn load() -> Result<Value> {
     Ok(profile)
 }
 pub async fn save(input: Value) -> Result<Value> {
-    let data = validate(&input)?;
+    save_with_confirmation(input, false).await
+}
+pub async fn save_confirmed(input: Value) -> Result<Value> {
+    save_with_confirmation(input, true).await
+}
+async fn save_with_confirmation(input: Value, require_confirmation: bool) -> Result<Value> {
+    let mut data = validate(&input)?;
     let db = db::open()?;
     let owner = db::get(&db, "user")?;
     let service = db::get(&db, "config")?["apiUrl"].clone();
@@ -194,8 +218,22 @@ pub async fn save(input: Value) -> Result<Value> {
     };
     let caps = capabilities().await?;
     let supported = caps["onboarding"] == 1 && caps["profile"]["version"] == 2;
+    if require_confirmation && (!supported || caps["profile"]["conditionalSave"] != 1) {
+        return Err(
+            "This service does not support profile edits yet. Your changes have not been saved."
+                .into(),
+        );
+    }
+    if require_confirmation {
+        let revision = input["expectedRevision"]
+            .as_str()
+            .filter(|v| !v.is_empty() && v.len() <= 64)
+            .ok_or("Reload your profile before saving.")?;
+        data["expectedRevision"] = json!(revision);
+    }
     if supported {
-        sync::api("PUT", "/v2/profile", Some(&data)).await?;
+        let saved = sync::api("PUT", "/v2/profile", Some(&data)).await?;
+        profile["revision"] = saved["revision"].clone();
     }
     profile["supported"] = json!(caps["onboarding"] == 1);
     profile["detailsSupported"] = json!(supported);

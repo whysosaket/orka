@@ -69,6 +69,14 @@ async function fixture(page: Page, failCreate = false, browserInvites = true) {
             calls.push({ command, args });
             if (command === "plugin:dialog|open") return "/test/new-project";
             if (command.startsWith("plugin:")) return null;
+            if (command === "governance_command" && args.action === "catalog")
+              return {
+                owner: true,
+                governed: false,
+                policyRevision: 0,
+                members: [{ id: "user", name: "Owner", role: "owner" }],
+                requests: [],
+              };
             if (command === "cloud_action") {
               if (args.action === "invite")
                 return {
@@ -356,11 +364,20 @@ for (const browserInvites of [true, false]) {
     page,
   }) => {
     await fixture(page, false, browserInvites);
-    await page
-      .getByRole("combobox", { name: "Select project", exact: true })
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("region", {
+      name: "Settings",
+      exact: true,
+    });
+    await settings
+      .getByRole("button", { name: "Members", exact: true })
+      .click();
+    await settings
+      .getByRole("button", { name: "Add Member", exact: true })
       .click();
     await page
-      .getByRole("button", { name: "Invite member", exact: true })
+      .getByRole("dialog", { name: "Add Member", exact: true })
+      .getByRole("button", { name: "Copy link", exact: true })
       .click();
     await expect
       .poll(() =>
@@ -389,11 +406,11 @@ test("ENVs require project opt-in even when global setup is available", async ({
     false,
   );
   await page.getByRole("button", { name: "Open sharing settings" }).click();
-  const settings = page.getByRole("dialog", { name: "Settings" });
+  const settings = page.getByRole("region", { name: "Settings", exact: true });
   await settings.getByRole("switch", { name: "ENVs", exact: true }).check();
   await settings.getByRole("button", { name: "Save changes" }).click();
   await expect(
-    settings.getByText("Sharing choices saved", { exact: true }),
+    settings.getByText("Changes saved.", { exact: true }),
   ).toBeVisible();
   expect(
     (await calls(page)).find(
@@ -403,12 +420,12 @@ test("ENVs require project opt-in even when global setup is available", async ({
     action: "sharing",
     input: { projectId: "project", sharing: { ...off, env: true } },
   });
-  await settings.getByRole("button", { name: "Close settings" }).click();
+  await page.keyboard.press("Escape");
   await expect(
     page.getByRole("heading", { name: "Enable ENVs on this Mac" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await settings.getByRole("button", { name: "Sharing", exact: true }).click();
+  await settings.getByRole("button", { name: "General", exact: true }).click();
   await expect(
     settings.getByRole("switch", { name: "ENVs", exact: true }),
   ).toBeChecked();

@@ -8,27 +8,19 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { spring } from "./lib/springs.js";
 import { ENV_ENABLED, visibleRequest } from "./lib/features.js";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  FileDirectoryIcon,
-  PersonAddIcon,
-  PeopleIcon,
-} from "@primer/octicons-react";
 import type { Resource } from "@portable/protocol";
 import type { ProjectPage, ProjectResource } from "./types.js";
-import {
-  MembersPage,
-  type ManagementSection,
-} from "./components/members-page.js";
+import { MembersPage } from "./components/members-page.js";
 import { RequestAccess } from "./components/request-access.js";
 import { GovernanceDialog } from "./components/governance-dialog.js";
 import { Button } from "./components/button.js";
-import { CopyLinkButton } from "./components/copy-link-button.js";
 import { ProjectHome } from "./components/project-home.js";
 import {
   ProjectNavigation,
@@ -48,7 +40,10 @@ import {
   displayText,
   sessionFallbackTitle,
 } from "./components/resource-presentation.js";
-import { SettingsModal } from "./components/settings/settings-modal.js";
+import {
+  SettingsModal,
+  type SettingsNavigationHandle,
+} from "./components/settings/settings-modal.js";
 import type { SettingsSection } from "./components/settings/settings-navigation.js";
 import { SidebarQuickAccess } from "./components/sidebar-quick-access.js";
 import { Onboarding } from "./components/onboarding/onboarding.js";
@@ -168,16 +163,34 @@ function WorkspaceApp({
   const [returnFocus, setReturnFocus] = useState("");
   const clearReturnFocus = useCallback(() => setReturnFocus(""), []);
   const [settings, setSettings] = useState<SettingsSection | null>(null);
+  const settingsNavigation = useRef<SettingsNavigationHandle>(null);
+  const leaveSettings = (action: () => void) => {
+    if (settings && settingsNavigation.current)
+      settingsNavigation.current.requestExit(() => {
+        setSettings(null);
+        action();
+      });
+    else action();
+  };
+  const openSettings = (section: SettingsSection) => {
+    if (settingsNavigation.current)
+      settingsNavigation.current.requestSection(section);
+    else setSettings(section);
+  };
   const [syncOpen, setSyncOpen] = useState(false);
   const [governance, setGovernance] = useState<{
     resource: string;
     env?: { title: string };
   } | null>(null);
-  const [managementSection, setManagementSection] =
-    useState<ManagementSection>("members");
   const openManagement = useCallback(
-    (section: ManagementSection = "members") => {
-      setManagementSection(section);
+    (section: "members" | "requests" = "members") => {
+      if (section === "members") {
+        if (settingsNavigation.current)
+          settingsNavigation.current.requestSection("members");
+        else setSettings("members");
+        return;
+      }
+      setSettings(null);
       setTab("members");
       setResource("");
     },
@@ -187,11 +200,16 @@ function WorkspaceApp({
     useCallback(
       (destination) => {
         if (destination === "env" && !ENV_ENABLED) return;
-        setSettings(null);
-        setGovernance(null);
-        if (destination === "requests") openManagement("requests");
-        else if (destination === "sync") setSyncOpen(true);
-        else setTab("env");
+        const navigate = () => {
+          setSettings(null);
+          setGovernance(null);
+          if (destination === "requests") openManagement("requests");
+          else if (destination === "sync") setSyncOpen(true);
+          else setTab("env");
+        };
+        if (settingsNavigation.current)
+          settingsNavigation.current.requestExit(navigate);
+        else navigate();
       },
       [openManagement],
     ),
@@ -292,36 +310,44 @@ function WorkspaceApp({
       void act(() => account.complete(link.href));
       return;
     }
-    if (link.hostname === "join") {
-      try {
-        parseProjectInvite(link.href);
-        setup.show("join", link.href);
-      } catch (error) {
-        setError(String(error));
+    const navigate = () => {
+      if (link.hostname === "join") {
+        try {
+          parseProjectInvite(link.href);
+          setup.show("join", link.href);
+        } catch (error) {
+          setError(String(error));
+        }
       }
-    }
-    if (link.hostname === "env") {
-      if (!ENV_ENABLED) return;
-      const [id, setId] = link.pathname.split("/").filter(Boolean);
-      if (id) {
+      if (link.hostname === "env") {
+        if (!ENV_ENABLED) return;
+        const [id, setId] = link.pathname.split("/").filter(Boolean);
+        if (id) {
+          index.setRepository("all");
+          setProject(id);
+          setTab("env");
+          setEnvSet(setId ?? "");
+          setResource("");
+        }
+      }
+      if (link.hostname === "project") {
+        const [id, resourceId] = link.pathname.split("/").filter(Boolean);
         index.setRepository("all");
         setProject(id);
-        setTab("env");
-        setEnvSet(setId ?? "");
-        setResource("");
+        if (resourceId) setResource(resourceId);
+        else {
+          // A project-only link must not re-open a detail from the previous project.
+          setResource("");
+          view.setPreview("");
+        }
       }
-    }
-    if (link.hostname === "project") {
-      const [id, resourceId] = link.pathname.split("/").filter(Boolean);
-      index.setRepository("all");
-      setProject(id);
-      if (resourceId) setResource(resourceId);
-      else {
-        // A project-only link must not re-open a detail from the previous project.
-        setResource("");
-        view.setPreview("");
-      }
-    }
+    };
+    if (settingsNavigation.current)
+      settingsNavigation.current.requestExit(() => {
+        setSettings(null);
+        navigate();
+      });
+    else navigate();
   }, !busy);
   const selectedKind = selected?.kind;
   useEffect(() => {
@@ -340,14 +366,6 @@ function WorkspaceApp({
         : { label: "View details", onClick: () => setSyncOpen(true) },
     });
   }, [error, errorFeedback, state.user, setup.dialog, notify, act]);
-  const inviteMember = async () => {
-    const r = await invoke<{ token: string; url?: string }>("cloud_action", {
-      action: "invite",
-      input: { projectId: project },
-    });
-    await navigator.clipboard.writeText(r.url ?? `orka://join/${r.token}`);
-    setNotice("Invite copied");
-  };
   const conflicts = useMemo(
     () =>
       state.conflicts.filter((c) =>
@@ -449,85 +467,48 @@ function WorkspaceApp({
         data-motion={sidebarInstant ? "instant" : undefined}
       >
         <ProjectNavigation
-          actions={
-            <>
-              {selectedProject && (
-                <>
-                  <Button
-                    aria-label="Manage source folders"
-                    disabled={busy}
-                    onClick={() => setSettings("folder")}
-                    variant="tertiary"
-                    size="sm"
-                  >
-                    <FileDirectoryIcon size={16} aria-hidden="true" />
-                    Manage source folders
-                  </Button>
-                  <CopyLinkButton
-                    value={`orka://project/${project}`}
-                    label="Copy project link"
-                    disabled={busy}
-                    onError={setError}
-                  />
-                  <Button
-                    aria-label="Manage"
-                    onClick={() => openManagement()}
-                    variant="tertiary"
-                    size="sm"
-                  >
-                    <PeopleIcon size={16} aria-hidden="true" />
-                    Manage
-                  </Button>
-                </>
-              )}
-              {selectedProject?.role === "owner" && (
-                <Button
-                  aria-label="Invite member"
-                  title="Create a one-use invite that expires in 24 hours"
-                  disabled={busy}
-                  onClick={() =>
-                    void act(inviteMember, {
-                      errorTitle: "Couldn’t copy invite",
-                    })
-                  }
-                  variant="tertiary"
-                  size="sm"
-                >
-                  <PersonAddIcon size={16} aria-hidden="true" />
-                  Invite member
-                </Button>
-              )}
-            </>
-          }
           collapsed={sidebarCollapsed}
           projects={state.projects}
           projectId={project}
-          activeKind={tab}
+          activeKind={settings ? null : tab}
           resources={catalogResources}
           onProjectChange={(id) => {
-            setEnvSet("");
-            setProject(id);
-            setResource("");
-            setGovernance(null);
-            setManagementSection("members");
+            const change = () => {
+              setEnvSet("");
+              setProject(id);
+              setResource("");
+              setGovernance(null);
+            };
+            if (settings && settingsNavigation.current)
+              settingsNavigation.current.requestProject(id, change);
+            else change();
           }}
-          onNavigate={(kind) => {
-            setEnvSet("");
-            setTab(kind);
-            setResource("");
-            if (kind === "members") setManagementSection("members");
-          }}
+          onNavigate={(kind) =>
+            leaveSettings(() => {
+              setEnvSet("");
+              setTab(kind);
+              setResource("");
+              if (kind === "members") openManagement();
+            })
+          }
         />
         <SidebarQuickAccess
+          settingsActive={Boolean(settings)}
           collapsed={sidebarCollapsed}
-          onSettings={() => setSettings("general")}
-          onCreate={() => setup.show("create")}
-          onJoin={() => setup.show("join")}
+          onSettings={() => openSettings("general")}
+          onCreate={() => leaveSettings(() => setup.show("create"))}
+          onJoin={() => leaveSettings(() => setup.show("join"))}
         />
       </motion.aside>
       <main>
         <WorkspaceHeader
-          title={selectedProject ? collectionLabel : "Your projects"}
+          title={
+            settings
+              ? "Settings"
+              : selectedProject
+                ? collectionLabel
+                : "Your projects"
+          }
           instant={sidebarInstant}
           collapsed={sidebarCollapsed}
           onToggle={(instant) => {
@@ -602,7 +583,7 @@ function WorkspaceApp({
                   errorTitle: "Couldn’t retry uploads",
                 })
               }
-              onSettings={() => setSettings("sync")}
+              onSettings={() => openSettings("sync")}
               onConnect={() => void act(() => connectProject(project))}
               onOpen={(id) => {
                 openResource(id);
@@ -611,10 +592,50 @@ function WorkspaceApp({
             />
           }
         />
-        {!selectedProject ? (
+        {settings ? (
+          <SettingsModal
+            ref={settingsNavigation}
+            key={workspaceScope}
+            state={state}
+            initialProjectId={project}
+            initialSection={settings}
+            onSectionChange={setSettings}
+            onManage={(id) => {
+              setProject(id);
+              setSettings(null);
+              openManagement("requests");
+            }}
+            busy={busy}
+            run={run}
+            onSyncActivity={(id) => {
+              setProject(id);
+              setResource("");
+              setEnvSet("");
+              setTab("home");
+              setSettings(null);
+              setSyncOpen(true);
+            }}
+            onSignedOut={() => {
+              setSettings(null);
+              setResource("");
+              setEnvSet("");
+              setTab("home");
+            }}
+            onClose={() => {
+              setSettings(null);
+              requestAnimationFrame(() =>
+                document
+                  .querySelector<HTMLButtonElement>(
+                    '.sidebar-bottom button[aria-label="Settings"]',
+                  )
+                  ?.focus(),
+              );
+            }}
+          />
+        ) : !selectedProject ? (
           <ProjectEmptyState
-            onCreate={() => setup.show("create")}
-            onJoin={() => setup.show("join")}
+            onCreate={() => leaveSettings(() => setup.show("create"))}
+            onJoin={() => leaveSettings(() => setup.show("join"))}
           />
         ) : (
           <>
@@ -637,14 +658,14 @@ function WorkspaceApp({
                   key={project}
                   project={selectedProject}
                   state={state}
-                  section={managementSection}
-                  onSection={setManagementSection}
+                  section="requests"
+                  onSection={() => openManagement()}
                   onRefresh={refresh}
                   onReviewFile={(resource) => setGovernance({ resource })}
                 />
               ) : tab === "env" ? (
                 <EnvPage
-                  onSettings={() => setSettings("sharing")}
+                  onSettings={() => openSettings("sharing")}
                   onGovernance={(resource, title) =>
                     setGovernance({ resource, env: { title } })
                   }
@@ -779,36 +800,6 @@ function WorkspaceApp({
           initialEnv={governance.env}
           onClose={() => setGovernance(null)}
           onRefresh={refresh}
-        />
-      )}
-      {settings && (
-        <SettingsModal
-          key={`${state.user}:${state.config?.apiUrl}`}
-          state={state}
-          initialProjectId={project}
-          initialSection={settings}
-          onManage={(id) => {
-            setProject(id);
-            setSettings(null);
-            openManagement();
-          }}
-          busy={busy}
-          run={run}
-          onSyncActivity={(id) => {
-            setProject(id);
-            setResource("");
-            setEnvSet("");
-            setTab("home");
-            setSettings(null);
-            setSyncOpen(true);
-          }}
-          onSignedOut={() => {
-            setSettings(null);
-            setResource("");
-            setEnvSet("");
-            setTab("home");
-          }}
-          onClose={() => setSettings(null)}
         />
       )}
     </div>

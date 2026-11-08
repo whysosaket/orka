@@ -20,7 +20,7 @@ pub fn snapshot() -> Result<Value> {
     let scoped = |table: &str| {
         db::rows(&db, &format!("SELECT value FROM {table} WHERE project IN ({visible}) ORDER BY json_extract(value,'$.updatedAt') DESC"), &[])
     };
-    let projects = db::rows(
+    let mut projects = db::rows(
         &db,
         &format!(
             "SELECT value FROM projects WHERE {} ORDER BY json_extract(value,'$.name')",
@@ -28,6 +28,15 @@ pub fn snapshot() -> Result<Value> {
         ),
         &[],
     )?;
+    for project in &mut projects {
+        if let Some(sources) = project["sources"].as_array_mut() {
+            for source in sources {
+                source["folderState"] = json!(crate::sources::folder_state(source));
+            }
+        } else {
+            project["folderState"] = json!(crate::sources::folder_state(project));
+        }
+    }
     let mut local_skills = Vec::new();
     for project in &projects {
         for source in crate::sources::views(project) {
@@ -58,7 +67,7 @@ pub fn snapshot() -> Result<Value> {
         "outbox":db::rows(&db,&format!("SELECT json_object('id',id,'project',project,'error',error) FROM outbox WHERE project IN ({visible})"),&[])?,
         "errors":db::rows(&db,&format!("SELECT json_object('source',source,'error',error) FROM errors WHERE source IN ({visible}) OR source NOT IN (SELECT id FROM projects)"),&[])?,
         "sync":db::get(&db,"sync")?, "syncProgress":sync::current_progress(&db,daemon["running"]==true)?,
-        "daemon":daemon, "devices":db::get(&db,"devices")?, "deviceId":db::device(&db)?, "background":background
+        "daemon":daemon, "devices":crate::device_metadata::devices(&db,&db::get(&db,"devices")?)?, "deviceId":db::device(&db)?, "localHardwareFamily":crate::device_metadata::local_family(&db)?, "background":background
     }))
 }
 #[tauri::command]
@@ -232,12 +241,15 @@ pub async fn cloud_action(action: String, input: Value) -> Result<Value> {
             validate_invite_service(&service, &config["apiUrl"])?;
         }
     }
-    if action == "create"
-        && sync::api("GET", "/v2/projects/capabilities", None)
-            .await
-            .is_ok_and(|c| c["governance"] == 1)
-    {
-        request["governance"] = json!(1);
+    if action == "create" {
+        if let Ok(caps) = sync::api("GET", "/v2/projects/capabilities", None).await {
+            if caps["governance"] == 1 {
+                request["governance"] = json!(1);
+            }
+            if caps["rolePolicies"] == 1 {
+                request["rolePolicies"] = json!(1);
+            }
+        }
     }
     let path = match action.as_str() {
         "create" => "/v2/projects",
@@ -563,6 +575,17 @@ pub fn session_action(
         .ok_or("Session not found")?;
     let project = r["projectId"].as_str().ok_or("Missing project")?;
     projects::active(&db, project)?;
+    if action == "delete" {
+        let project_state = crate::governance::project(&db, project)?;
+        if project_state["rolePolicies"].is_object()
+            && project_state["role"] != "owner"
+            && !(project_state["role"] == "admin" && r["access"]["mode"] == "publish")
+        {
+            return Err(
+                "Only the Owner or an Admin with write access can delete shared content".into(),
+            );
+        }
+    }
     let input = if let Some(c) = conflict_id {
         if !["keep", "override", "copy"].contains(&action.as_str()) {
             return Err("Invalid conflict action".into());

@@ -26,6 +26,7 @@ export function RequestAccess({
   className?: string;
 }) {
   const [access, setAccess] = useState<AccessMode[] | null>(null);
+  const [roleBased, setRoleBased] = useState(Boolean(project.rolePolicies));
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"read" | "suggest" | "publish">("read");
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
@@ -50,10 +51,14 @@ export function RequestAccess({
   useEffect(() => {
     if (!project.governed || project.role === "owner") return;
     let active = true;
+    setRoleBased(Boolean(project.rolePolicies));
     setAccess(null);
     const load = governanceCall<GovernanceCatalog>("catalog", {
       projectId: project.id,
-    }).then((value) => category.classes.map((key) => value.access[key].mode));
+    }).then((value) => {
+      if (active) setRoleBased(Boolean(value.rolePolicies));
+      return category.classes.map((key) => value.access[key].mode);
+    });
     void load
       .then((value) => {
         if (active) setAccess(value);
@@ -69,6 +74,7 @@ export function RequestAccess({
     project.governed,
     project.role,
     project.policyRevision,
+    project.rolePolicies,
     category,
   ]);
   if (
@@ -78,6 +84,12 @@ export function RequestAccess({
   )
     return null;
   const needsRead = access?.some((value) => value === "hidden");
+  if (roleBased)
+    return (
+      <p className={className}>
+        The project Owner manages access for your role.
+      </p>
+    );
   const label = category.label.toLowerCase();
   return (
     <>

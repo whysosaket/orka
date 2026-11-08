@@ -6,6 +6,12 @@ const DesignSystem = import.meta.env.DEV
   ? lazy(() => import("./design-system.js"))
   : null;
 
+// The annotations mode is for local test bundles. Ordinary builds omit the tool.
+const Agentation =
+  import.meta.env.DEV || import.meta.env.MODE === "annotations"
+    ? lazy(() => import("./annotation-tools.js"))
+    : null;
+
 export function DevelopmentTools({ children }: { children: React.ReactNode }) {
   const [designSystem, setDesignSystem] = useState(
     import.meta.env.DEV &&
@@ -14,6 +20,11 @@ export function DevelopmentTools({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
+      {Agentation && (
+        <Suspense fallback={null}>
+          <Agentation />
+        </Suspense>
+      )}
       {DesignSystem && designSystem && (
         <Suspense fallback={null}>
           <DesignSystem onClose={() => setDesignSystem(false)} />

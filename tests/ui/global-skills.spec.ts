@@ -827,8 +827,8 @@ test("review is available only when permissions require approval", async ({
     .getByRole("button", { name: "Review changes", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Requests", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+    page.getByRole("heading", { name: "Pending reviews", exact: true }),
+  ).toBeVisible();
 });
 
 for (const mode of ["paused", "blocked"]) {

@@ -1,10 +1,12 @@
 import React, { forwardRef } from "react";
 import type { ControlSize } from "./icon.js";
 
-export type ButtonVariant = "primary" | "secondary" | "tertiary";
+export type ButtonVariant =
+  "primary" | "primary-brand" | "secondary" | "tertiary";
 
 const variants = {
   primary: "ui-button--primary",
+  "primary-brand": "ui-button--primary-brand",
   secondary: "ui-button--secondary",
   tertiary: "ui-button--tertiary",
 };

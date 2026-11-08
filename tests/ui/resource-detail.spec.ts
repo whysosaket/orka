@@ -243,6 +243,7 @@ async function detailFixture(page: Page, options: Options = {}) {
                 (window as any).finishMemberCatalog = resolve;
               });
             return {
+              requests: [],
               members:
                 projectId === "one"
                   ? members
@@ -627,15 +628,15 @@ for (const [width, height, memberCatalog] of [
       }),
     ).toContainText("Mira Shah continued your session as a copy.");
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Account & service", exact: true })
-      .click();
-    await expect(
-      page.getByRole("dialog", { name: "Settings", exact: true }),
-    ).toContainText("Saket Rao (you)");
     if (memberCatalog === "cached")
       expect(await calls(page, "governance_command")).toEqual([]);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("button", { name: "Members", exact: true }).click();
+    await expect(
+      page
+        .getByRole("region", { name: "Settings", exact: true })
+        .getByRole("list"),
+    ).toContainText("Saket Rao");
   });
 
 test("author sorting follows displayed member names", async ({ page }) => {
@@ -2365,7 +2366,7 @@ test("reduced motion keeps navigation aligned and Settings keyboard focus intact
   const settings = page.getByRole("button", { name: "Settings", exact: true });
   await settings.focus();
   await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+  const dialog = page.getByRole("region", { name: "Settings", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveCSS("opacity", "1");
   expect(

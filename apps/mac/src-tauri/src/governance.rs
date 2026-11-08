@@ -604,6 +604,8 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
         None
     };
     let db = db::open()?;
+    let account = db::get(&db, "user")?;
+    let service = db::get(&db, "config")?["apiUrl"].clone();
     let project_id = input["projectId"].as_str().ok_or("Choose a project")?;
     let p = project(&db, project_id)?;
     let p = if matches!(action.as_str(), "context" | "save-candidate") {
@@ -724,6 +726,10 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
         _=>{}
     }
     let result = remote(&action, &input).await?;
+    let current = db::open()?;
+    if db::get(&current, "user")? != account || db::get(&current, "config")?["apiUrl"] != service {
+        return Err("Account or service changed. Reopen Settings.".into());
+    }
     if action == "request" {
         let r = &result["content"]["resource"];
         if r["files"].is_array() {
@@ -749,7 +755,14 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
     }
     if !matches!(
         action.as_str(),
-        "catalog" | "resource" | "requests" | "request" | "logs"
+        "catalog"
+            | "resource"
+            | "requests"
+            | "request"
+            | "logs"
+            | "role-policy"
+            | "policy-operation"
+            | "migration-preview"
     ) {
         db::set(&db, "syncRequest", &json!(Uuid::new_v4().to_string()))?;
     }

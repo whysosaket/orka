@@ -50,7 +50,12 @@ module.exports = {
     },
     fontSize: {
       "heading-xs": textStyle("heading-xs"),
+      "heading-settings": textStyle("heading-settings"),
+      "body-caption": textStyle("body-caption"),
+      "label-caption": textStyle("label-caption"),
+      "label-badge": textStyle("label-badge"),
       "label-md": textStyle("label-md"),
+      "label-item": textStyle("label-item"),
       "label-sm": textStyle("label-sm"),
       "label-xs": textStyle("label-xs"),
       "label-2xs": textStyle("label-2xs"),

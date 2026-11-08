@@ -9,9 +9,12 @@ import type {
   EffectiveAccess,
   ProjectRules,
   ReviewRequest,
+  RolePolicies,
 } from "@portable/protocol";
 
 export interface GovernanceCatalog {
+  role?: "owner" | "admin" | "member";
+  rolePolicies?: RolePolicies | null;
   governed: boolean;
   owner: boolean;
   policyRevision: number;
