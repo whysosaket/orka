@@ -11,6 +11,15 @@
   min-width: 0;
 }
 
+/* Keep measurement geometry without painting samples on Safari 15, which
+   ignores Skullet's @scope masking. The skeleton layer remains visible. */
+.loading-region [skullet-ghost],
+.loading-region [skullet-ghost] *,
+.loading-region [skullet-snapshot],
+.loading-region [skullet-snapshot] * {
+  visibility: hidden !important;
+}
+
 .source-folder-selection {
   display: grid;
   gap: 12px;

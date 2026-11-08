@@ -14,7 +14,7 @@ const theme = {
   speed: "slow" as const,
 };
 
-/** Share Orka's tokens and prevent shapes from crossing account or service scopes. */
+/** Share Orka's tokens and clear shapes persisted by earlier app versions. */
 export function LoadingProvider({
   scope,
   children,
@@ -52,7 +52,10 @@ export function LoadingRegion<T>(
       </span>
       <Skeleton
         {...props}
-        id={`${scope}:${props.id}`}
+        key={`${scope}:${props.id}`}
+        // In pinned Skullet 0.0.3, an empty ID disables shape storage; omitting
+        // it instead derives a storage key from the DOM, including raw URLs.
+        id=""
         label={undefined}
         className={`loading-region ${props.className ?? ""}`}
       />

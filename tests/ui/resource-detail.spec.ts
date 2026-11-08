@@ -442,6 +442,21 @@ test("resource skeletons keep the reader header and navigation usable", async ({
   await expect(
     view.getByRole("heading", { name: "Project notes", exact: true }),
   ).toHaveCount(0);
+  // Safari 15 discards @scope rules. The app's fallback must hide the sample
+  // while leaving its geometry and the measured skeleton bars intact.
+  await page.evaluate(() => {
+    for (const sheet of Array.from(document.styleSheets)) {
+      for (let i = sheet.cssRules.length - 1; i >= 0; i--) {
+        if (sheet.cssRules[i].cssText.startsWith("@scope")) sheet.deleteRule(i);
+      }
+    }
+  });
+  const sample = view.locator("[skullet-ghost] h1");
+  await expect(sample).toHaveCSS("visibility", "hidden");
+  expect((await sample.boundingBox())!.height).toBeGreaterThan(0);
+  await expect(
+    view.locator("[skullet-layer] [skullet-rect]").first(),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Back to Memories", exact: true }),
   ).toBeEnabled();
@@ -455,6 +470,39 @@ test("resource skeletons keep the reader header and navigation usable", async ({
     "true",
   );
   expect(await title.boundingBox()).toEqual(before);
+});
+
+test("skeleton shapes never persist resource URLs or paths", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.addInitScript(() => {
+    localStorage.setItem("skullet:shapes", "old private layout");
+    const writes: string[] = [];
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "skullet:shapes") writes.push(value);
+      original.call(this, key, value);
+    };
+    Object.assign(window, { skeletonWrites: writes });
+  });
+  await detailFixture(page, {
+    skillContent:
+      "# Private resource\n\n[Internal document](https://private.example/design?access_token=test-secret)\n\n[Source](internal/private-project.md)",
+  });
+  await page.getByRole("button", { name: /^Skills/ }).click();
+  await page.getByRole("button", { name: /Review checklist/ }).click();
+  await expect(
+    page
+      .getByRole("article", { name: "Rendered Markdown" })
+      .getByRole("link", { name: "Internal document" }),
+  ).toBeVisible();
+  // Include delayed saves from resizing/mutations as well as the initial save.
+  await page.clock.runFor(1000);
+  expect(
+    await page.evaluate(() => localStorage.getItem("skullet:shapes")),
+  ).toBe(null);
+  expect(await page.evaluate(() => (window as any).skeletonWrites)).toEqual([]);
 });
 
 test("conversation skeletons give way to virtualized turns and paging preserves existing messages", async ({
