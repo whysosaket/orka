@@ -215,7 +215,9 @@ pub fn localize_outbox(db: &Connection, project: &Value) -> Result<()> {
         "SELECT json_object('id',id,'path',path,'value',json(value)) FROM outbox WHERE project=?",
         &[&id],
     )? {
-        if q["path"] == crate::global_skills::IMPORT_PATH {
+        if q["path"] == crate::global_skills::IMPORT_PATH
+            || q["path"] == crate::selective_sharing::QUEUE_PATH
+        {
             continue;
         }
         let r = &q["value"]["resource"];

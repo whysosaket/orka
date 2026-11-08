@@ -1,3 +1,4 @@
+import { setSharingMode } from "./fixtures/sharing-mode.js";
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
 
@@ -370,14 +371,17 @@ test("save and switch targets the original project, preserves background selecti
 }) => {
   const dialog = await fixture(page, { failSharing: true });
   await exactButton(dialog, "Sharing").click();
-  await dialog.getByRole("switch", { name: "Plans", exact: true }).check();
+  await setSharingMode(
+    dialog.getByRole("combobox", { name: "Plans sharing", exact: true }),
+    true,
+  );
   await dialog.getByRole("combobox", { name: "Settings project" }).click();
   await page.getByRole("option", { name: "Website", exact: true }).click();
   const guard = page.getByRole("dialog", { name: "Save your changes?" });
   await guard.getByRole("button", { name: "Keep editing" }).click();
   await expect(
-    dialog.getByRole("switch", { name: "Plans", exact: true }),
-  ).toBeChecked();
+    dialog.getByRole("combobox", { name: "Plans sharing", exact: true }),
+  ).toContainText("Share automatically");
   await dialog.getByRole("combobox", { name: "Settings project" }).click();
   await page.getByRole("option", { name: "Website", exact: true }).click();
   await guard.getByRole("button", { name: "Save and continue" }).click();
@@ -389,8 +393,8 @@ test("save and switch targets the original project, preserves background selecti
   ).toHaveValue("Website");
   await exactButton(dialog, "Sharing").click();
   await expect(
-    dialog.getByRole("switch", { name: "Plans", exact: true }),
-  ).not.toBeChecked();
+    dialog.getByRole("combobox", { name: "Plans sharing", exact: true }),
+  ).toContainText("Only when asked");
   await dialog.getByRole("button", { name: "Close settings" }).click();
   await expect(
     page.getByRole("combobox", { name: "Select project", exact: true }),
@@ -433,16 +437,32 @@ test("Escape and backdrop guard unsaved changes; discard never saves", async ({
 }) => {
   const dialog = await fixture(page);
   await exactButton(dialog, "Sharing").click();
-  await dialog.getByRole("switch", { name: "Sessions", exact: true }).focus();
-  await page.keyboard.press("Space");
+  await dialog
+    .getByRole("combobox", { name: "Sessions sharing", exact: true })
+    .focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("option", { name: "Only when asked", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(
+    page.getByRole("option", { name: "Share automatically", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    dialog.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+  ).toContainText("Share automatically");
+  await expect(
+    dialog.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+  ).toBeFocused();
   await page.keyboard.press("Escape");
   const guard = page.getByRole("dialog", { name: "Save your changes?" });
   await expect(guard).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(guard).toBeHidden();
   await expect(
-    dialog.getByRole("switch", { name: "Sessions", exact: true }),
-  ).toBeChecked();
+    dialog.getByRole("combobox", { name: "Sessions sharing", exact: true }),
+  ).toContainText("Share automatically");
   await page.mouse.click(5, 5, { button: "right" });
   await expect(guard).toBeHidden();
   await expect(dialog).toBeVisible();

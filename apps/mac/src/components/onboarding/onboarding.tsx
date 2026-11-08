@@ -8,8 +8,8 @@ import {
   CopyIcon,
   FileDirectoryIcon,
 } from "@primer/octicons-react";
-import { Switch } from "../switch.js";
 import { PermissionSelect } from "../permission-select.js";
+import { SharingModeSelect } from "../project-sharing.js";
 import { OnboardingError, onboardingAsset } from "../onboarding-auth-layout.js";
 import type { Snapshot } from "../../types.js";
 import { AuthRecovery } from "../auth-recovery.js";
@@ -20,10 +20,10 @@ import { useOnboarding } from "./use-onboarding.js";
 import "./onboarding.css";
 
 const descriptions = {
-  memory: ["Memories", "Project instructions and knowledge your AI builds on."],
-  session: ["Sessions", "Full conversations from Claude Code and Codex."],
-  plan: ["Plans", "Plan files and plans captured from your conversations."],
-  skill: ["Skills", "Reusable AI instructions and their supporting files."],
+  memory: ["Memories", "Project instructions and knowledge."],
+  session: ["Sessions", "Codex and Claude conversations."],
+  plan: ["Plans", "Saved files and conversation plans."],
+  skill: ["Skills", "Reusable instructions and files."],
 };
 export function Onboarding({
   state,
@@ -231,7 +231,7 @@ export function Onboarding({
             string[],
           ][]
         ).map(([kind, [name, description]]) => (
-          <label className="onboarding-flow__sharing-row" key={kind}>
+          <div className="onboarding-flow__sharing-row" key={kind}>
             <img
               src={onboardingAsset(`sync-${kind}.svg`)}
               width={16}
@@ -242,15 +242,15 @@ export function Onboarding({
               <strong>{name}</strong>
               <small>{description}</small>
             </span>
-            <Switch
-              aria-label={name}
-              checked={draft.sharing[kind]}
+            <SharingModeSelect
+              label={name}
+              enabled={draft.sharing[kind]}
               disabled={
                 busy || syncing || step === "ready" || step === "background"
               }
-              onChange={(event) => flow.setSharing(kind, event.target.checked)}
+              onChange={(enabled) => flow.setSharing(kind, enabled)}
             />
-          </label>
+          </div>
         ))}
       </div>
       {actions(

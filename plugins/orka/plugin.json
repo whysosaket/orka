@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "orka",
-  "version": "0.1.0",
-  "description": "Bring shared Orka project context and teammate sessions into ChatGPT and Codex, and prepare handoffs for Claude Code.",
+  "version": "0.2.0",
+  "description": "Read shared Orka context, prepare Claude handoffs, and explicitly share selected local snapshots through the Orka desktop app.",
   "author": { "name": "Orka" },
   "license": "MIT",
   "keywords": ["project-context", "memory", "team-sessions", "claude-code"],
@@ -11,7 +11,7 @@
       "interface": {
         "displayName": "Orka",
         "shortDescription": "Project context across agents",
-        "longDescription": "Read the accepted knowledge and shared teammate sessions your Orka account can access. Find the right project, inspect source conversations, and prepare a Markdown handoff with a starter prompt for Claude Code. Version 0.1 is read-only and requires a compatible Orka service with its MCP integration enabled. Local private memory and automatic app launching are unavailable.",
+        "longDescription": "Read accepted knowledge and shared teammate sessions, and prepare Claude Code handoffs. In Codex and Claude Code on a Mac with Orka installed, explicitly share or update one local memory, skill, plan, or session snapshot without enabling automatic sharing. Existing project permissions and approval requirements still apply. ENV sharing is excluded.",
         "developerName": "Orka",
         "category": "Developer Tools",
         "capabilities": [],

@@ -1,4 +1,6 @@
 import type { ProjectSharing } from "../../types.js";
+import { defaultSharing } from "../project-sharing.js";
+export { defaultSharing } from "../project-sharing.js";
 export type OnboardingStep =
   | "location"
   | "profile"
@@ -80,13 +82,6 @@ export interface OnboardingInfo {
   draft?: OnboardingDraft | null;
   location?: { ok: boolean; path: string; reason?: string };
 }
-export const defaultSharing: ProjectSharing = {
-  memory: true,
-  session: true,
-  plan: true,
-  skill: true,
-  env: false,
-};
 export const initialDraft: OnboardingDraft = {
   step: "profile",
   projects: [],

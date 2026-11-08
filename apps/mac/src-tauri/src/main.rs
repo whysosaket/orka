@@ -16,9 +16,11 @@ mod native;
 mod onboarding;
 mod packages;
 mod plans;
+mod plugin_mcp;
 mod profiles;
 mod projects;
 mod repair;
+mod selective_sharing;
 mod session_forks;
 mod session_launcher;
 mod session_presentation;
@@ -47,6 +49,13 @@ fn main() {
         tokio::runtime::Runtime::new()
             .expect("Background runtime")
             .block_on(sync::run());
+        return;
+    }
+    if args.get(1).is_some_and(|a| a == "--orka-plugin") {
+        if let Err(error) = plugin_mcp::run() {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
         return;
     }
     if args.get(1).is_some_and(|a| a == "--orka-sync") {

@@ -1425,7 +1425,15 @@
     accent-color: var(--text-primary);
   }
   .project-sharing-copy {
-    @apply flex min-w-0 flex-col;
+    @apply flex min-w-0 flex-1 flex-col;
+  }
+  .project-sharing-choice .permission-select-trigger,
+  .onboarding-flow__sharing-row .permission-select-trigger {
+    width: auto;
+    min-width: 164px;
+    flex-shrink: 0;
+    padding: 8px 10px;
+    font-size: 12px;
   }
   .project-sharing-choice strong {
     @apply text-label-sm;
