@@ -360,7 +360,11 @@ for (const viewport of [
       dialog.getByRole("heading", { name: "Code review" }),
     ).toBeVisible();
     await expect(dialog).toHaveCSS("opacity", "1");
-    await expect(dialog.getByText("3 files")).toBeVisible();
+    await expect(
+      dialog
+        .getByRole("list", { name: "Global skills", exact: true })
+        .getByText("3 files", { exact: true }),
+    ).toBeVisible();
     await expect(
       dialog.getByRole("button", { name: "Already in project: existing" }),
     ).toBeDisabled();
