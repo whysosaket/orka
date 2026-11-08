@@ -1,0 +1,18 @@
+{
+  "pullRequest": "https://github.com/whysosaket/orka/pull/10",
+  "beforeCommit": "70eb0791bed8dd339bfb4cdc696f207d4e825efa",
+  "afterCommit": "8ba3852c69486c48176ef5768d3b6e4b1ebdd330",
+  "capturedAt": "2026-11-09T02:32:54.338026+05:30",
+  "captureMethod": "cua_repl native macOS window screenshots, unedited",
+  "runtime": "Locally built Tauri macOS app bundles using real Rust commands and the existing local self-hosted sandbox service; no browser fixtures or mocked IPC",
+  "scenario": "Unsaved General project-name edit followed by header Open requests; Members activity-log entry point and viewer",
+  "cleanup": "Project name was never saved; temporary local screenshot draft was dismissed",
+  "sha256": {
+    "before-unsaved-edit.png": "e3e9d45afd28dc7cba073b9e9f80677456b70234165b4dd3424d47b9e4025f8b",
+    "before-requests-no-prompt.png": "a8f72a228a3dbcca8560a3cb6a38db20d0d0efe64596c56e4ec29c04cfd6737d",
+    "after-unsaved-edit-prompt.png": "d314fe17a19113d45d01930f2932bd167955919593bd26312bf39c5a9997d13b",
+    "before-members.png": "b5e1451781aa486b69477dc266ec5719807c89ca0a2b9742c55850247d6b4dcf",
+    "after-members.png": "81b22bde9cb59db4edace8c2317f322cb0431c707bbe28409554f8f137dd5315",
+    "after-activity-logs.png": "6dd2a9d734471d6cde443f1f003c19509713b8aa38b970be934c6abdcf2e16b9"
+  }
+}
