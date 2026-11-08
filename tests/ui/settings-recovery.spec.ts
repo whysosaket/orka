@@ -8,6 +8,63 @@ async function choose(scope: Locator, name: string, value: string) {
   await scope.page().getByRole("option", { name: value, exact: true }).click();
 }
 
+for (const section of ["General", "Profile"])
+  test(`header requests navigation protects unsaved ${section} edits`, async ({
+    page,
+  }) => {
+    const settings = await settingsFixture(page, { pendingRequests: true });
+    await button(settings, section).click();
+    const name = settings.getByRole("textbox", {
+      name: section === "General" ? "Project name" : "Display name",
+      exact: true,
+    });
+    const openRequests = async () => {
+      await page
+        .getByRole("button", {
+          name: "Needs attention, 1 notification",
+          exact: true,
+        })
+        .click();
+      await page
+        .getByRole("button", { name: "Open requests", exact: true })
+        .click();
+    };
+    const returnToSection = async () => {
+      await page
+        .getByRole("button", { name: "Back to Members", exact: true })
+        .click();
+      await button(settings, section).click();
+    };
+    const dialog = page.getByRole("dialog", {
+      name: "Save your changes?",
+      exact: true,
+    });
+    await name.fill("Saved from header navigation");
+    await openRequests();
+    await expect(dialog).toBeVisible();
+    await button(dialog, "Stay").click();
+    await expect(name).toHaveValue("Saved from header navigation");
+    await openRequests();
+    await button(dialog, "Save").click();
+    await expect(
+      page.getByRole("heading", { name: "Pending reviews", exact: true }),
+    ).toBeVisible();
+    await returnToSection();
+    await expect(name).toHaveValue("Saved from header navigation");
+    await name.fill("Discarded from header navigation");
+    await openRequests();
+    await button(dialog, "Discard").click();
+    await returnToSection();
+    await expect(name).toHaveValue("Saved from header navigation");
+    expect(
+      (await settingsCalls(page)).filter(
+        (call) =>
+          call.args.action ===
+          (section === "General" ? "rename" : "save-settings-profile"),
+      ),
+    ).toHaveLength(1);
+  });
+
 for (const section of ["Profile", "Permissions"])
   test(`G1: ${section} save failure is visible in the navigation dialog`, async ({
     page,

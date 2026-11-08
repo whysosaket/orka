@@ -207,6 +207,26 @@ async function fixture(
             if (command === "governance_command")
               switch (args.action) {
                 case "logs":
+                  if (mode === "paginated-logs")
+                    return {
+                      items: [
+                        args.input?.before
+                          ? {
+                              id: "older-log",
+                              at: "2026-10-18T00:00:00Z",
+                              action: "member.joined",
+                              actorName: "Mira Shah",
+                            }
+                          : {
+                              id: "latest-log",
+                              at: "2026-10-19T00:00:00Z",
+                              action: "request.approved",
+                              actorName: "Saket Rao",
+                              subjectName: "Mira Shah",
+                            },
+                      ],
+                      next: args.input?.before ? null : "older-logs",
+                    };
                   return {
                     items:
                       envData && !args.input?.before
@@ -352,6 +372,39 @@ async function fixture(
 
 const management = (page: Page) =>
   page.getByRole("region", { name: "Manage", exact: true });
+
+test("Settings Members opens activity logs, paginates, and returns to Members", async ({
+  page,
+}) => {
+  await fixture(page, true, false, "paginated-logs");
+  await management(page)
+    .getByRole("button", { name: "Back to Members", exact: true })
+    .click();
+  const settings = page.getByRole("region", { name: "Settings", exact: true });
+  await settings
+    .getByRole("button", { name: "View logs", exact: true })
+    .click();
+  const logs = page.getByRole("region", { name: "Activity logs", exact: true });
+  await expect(logs).toContainText("Saket Rao approved Mira Shah's request");
+  await logs
+    .getByRole("button", { name: "View more logs", exact: true })
+    .click();
+  await expect(logs).toContainText("Mira Shah joined the project");
+  await expect(logs).toContainText("Saket Rao approved Mira Shah's request");
+  await expect(
+    logs.getByRole("button", { name: "View more logs", exact: true }),
+  ).toHaveCount(0);
+  expect(await calls(page, "logs")).toEqual([
+    { projectId: "project", limit: 25 },
+    { projectId: "project", limit: 25, before: "older-logs" },
+  ]);
+  await management(page)
+    .getByRole("button", { name: "Back to Members", exact: true })
+    .click();
+  await expect(
+    settings.getByRole("heading", { name: "Members", exact: true }),
+  ).toBeVisible();
+});
 
 test("pending reviews remain reachable and expand without removing existing requests", async ({
   page,

@@ -2,6 +2,8 @@
 
 Settings stays in the workspace and has six destinations: Profile, Devices, Sync & startup, General, Members, and Permissions. Account and Mac settings work without a selected project. Settings navigation and project/resource entry points share the Save, Discard, and Stay guard.
 
+Members provides View logs for the existing project activity history, including pagination and a return to Members. Header request and session actions use the same unsaved-changes guard before leaving Settings.
+
 Settings uses the approved 20/30 title, 14/20 field labels, 16/20 item names, 12/20 metadata, and 15px list radius. Permissions keeps its heading outside the scrolling role tables. Member management actions appear on row hover or keyboard focus without moving role controls. General's Reset to default restores the saved shared name in the current draft and retains unrelated sharing edits.
 
 Readable section labels, timestamps, and fixed-access text retain the muted text token rather than the design's disabled gray, which fails the existing contrast checks. Email remains read-only, job role remains descriptive text, Owner controls retain their authorization rules, and device rows show registered identity and Last seen without inferring live connectivity.

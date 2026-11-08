@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { KebabHorizontalIcon, PersonAddIcon } from "@primer/octicons-react";
+import {
+  HistoryIcon,
+  KebabHorizontalIcon,
+  PersonAddIcon,
+} from "@primer/octicons-react";
 import type { Project, ProjectMember, Snapshot } from "../../types.js";
 import {
   governanceCall,
@@ -165,10 +169,12 @@ export function SettingsMembers({
   state,
   project,
   onReviews,
+  onLogs,
 }: {
   state: Snapshot;
   project: Project;
   onReviews: () => void;
+  onLogs: () => void;
 }) {
   const projectId = project.id;
   const call = useCallback(
@@ -352,6 +358,11 @@ export function SettingsMembers({
       {(query.data?.requests.length ?? 0) > 0 && (
         <Button onClick={onReviews}>
           Review pending requests ({query.data!.requests.length})
+        </Button>
+      )}
+      {query.data && (
+        <Button size="sm" variant="secondary" onClick={onLogs}>
+          <HistoryIcon size={16} aria-hidden="true" /> View logs
         </Button>
       )}
       {invite && (

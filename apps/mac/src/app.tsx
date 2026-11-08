@@ -17,7 +17,10 @@ import { ENV_ENABLED, visibleRequest } from "./lib/features.js";
 import { invoke } from "@tauri-apps/api/core";
 import type { Resource } from "@portable/protocol";
 import type { ProjectPage, ProjectResource } from "./types.js";
-import { MembersPage } from "./components/members-page.js";
+import {
+  MembersPage,
+  type ManagementSection,
+} from "./components/members-page.js";
 import { RequestAccess } from "./components/request-access.js";
 import { GovernanceDialog } from "./components/governance-dialog.js";
 import { Button } from "./components/button.js";
@@ -178,18 +181,21 @@ function WorkspaceApp({
     else setSettings(section);
   };
   const [syncOpen, setSyncOpen] = useState(false);
+  const [managementSection, setManagementSection] =
+    useState<Exclude<ManagementSection, "members">>("requests");
   const [governance, setGovernance] = useState<{
     resource: string;
     env?: { title: string };
   } | null>(null);
   const openManagement = useCallback(
-    (section: "members" | "requests" = "members") => {
+    (section: ManagementSection = "members") => {
       if (section === "members") {
         if (settingsNavigation.current)
           settingsNavigation.current.requestSection("members");
         else setSettings("members");
         return;
       }
+      setManagementSection(section);
       setSettings(null);
       setTab("members");
       setResource("");
@@ -565,7 +571,7 @@ function WorkspaceApp({
                     !d.automaticSharing,
                 ).length
               }
-              onReview={() => openManagement("requests")}
+              onReview={() => leaveSettings(() => openManagement("requests"))}
               busy={busy}
               actionError={error || refreshError}
               onDismissError={error ? () => setError("") : undefined}
@@ -585,10 +591,12 @@ function WorkspaceApp({
               }
               onSettings={() => openSettings("sync")}
               onConnect={() => void act(() => connectProject(project))}
-              onOpen={(id) => {
-                openResource(id);
-                setTab("session");
-              }}
+              onOpen={(id) =>
+                leaveSettings(() => {
+                  openResource(id);
+                  setTab("session");
+                })
+              }
             />
           }
         />
@@ -600,10 +608,10 @@ function WorkspaceApp({
             initialProjectId={project}
             initialSection={settings}
             onSectionChange={setSettings}
-            onManage={(id) => {
+            onManage={(id, section) => {
               setProject(id);
               setSettings(null);
-              openManagement("requests");
+              openManagement(section);
             }}
             busy={busy}
             run={run}
@@ -658,8 +666,8 @@ function WorkspaceApp({
                   key={project}
                   project={selectedProject}
                   state={state}
-                  section="requests"
-                  onSection={() => openManagement()}
+                  section={managementSection}
+                  onSection={openManagement}
                   onRefresh={refresh}
                   onReviewFile={(resource) => setGovernance({ resource })}
                 />

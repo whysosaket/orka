@@ -5,6 +5,7 @@ export async function settingsFixture(
     noProjects?: boolean;
     role?: "owner" | "admin" | "member";
     queued?: boolean;
+    pendingRequests?: boolean;
     interval?: number;
     devices?: "empty" | "unavailable";
     deviceRows?: {
@@ -89,6 +90,25 @@ export async function settingsFixture(
       detailsSupported: options.profileSupported ?? true,
       revision: "profile-1",
     };
+    const requests = options.pendingRequests
+      ? [
+          {
+            id: "pending-review",
+            projectId: "one",
+            author: "member",
+            type: "change",
+            resourceId: "review-memory",
+            title: "Memory awaiting review",
+            status: "pending",
+            baseRevision: 1,
+            policyRevision: 1,
+            previewHash: "review-preview",
+            createdAt: "2026-11-03T12:00:00Z",
+            canReview: true,
+            unread: true,
+          },
+        ]
+      : [];
     const projects = options.noProjects
       ? []
       : [
@@ -147,6 +167,7 @@ export async function settingsFixture(
       bindings: [],
       conflicts: [],
       activity: [],
+      reviewRequests: requests,
       outbox: options.queued
         ? [{ id: "queued", project: "one", error: "Offline" }]
         : [],
@@ -191,7 +212,7 @@ export async function settingsFixture(
       memberRules: [],
       resourceRules: [],
       resourceCount: 0,
-      requests: [],
+      requests,
     };
     if (options.cachedMembers)
       Object.assign(state, {

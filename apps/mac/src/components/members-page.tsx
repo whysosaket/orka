@@ -174,7 +174,7 @@ export function MembersPage({
               }}
             >
               <ArrowLeftIcon size={16} aria-hidden="true" />
-              {section === "logs" ? "Back to Manage" : "Back to members"}
+              Back to Members
             </Button>
           )}
         </div>

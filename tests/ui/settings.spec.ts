@@ -94,6 +94,9 @@ test("avatar cancellation and corrupt or oversized uploads retain the previous p
   });
   await expect(button(settings, "Save profile")).toBeEnabled();
   await button(settings, "Save profile").click();
+  await expect(
+    settings.getByText("Profile saved.", { exact: true }),
+  ).toBeVisible();
   const saved = (await settingsCalls(page)).find(
     (call) => call.args.action === "save-settings-profile",
   );
@@ -567,10 +570,11 @@ test("members create a join link, promote explicitly, and confirm removal", asyn
 }) => {
   const settings = await settingsFixture(page);
   await button(settings, "Members").click();
+  const members = settings.getByRole("list");
   await expect(
-    settings.getByText("morgan@example.com", { exact: true }),
+    members.getByText("morgan@example.com", { exact: true }),
   ).toBeVisible();
-  await expect(settings.getByText("You", { exact: true })).toBeVisible();
+  await expect(members.getByText("You", { exact: true })).toBeVisible();
   await button(settings, "Add Member").click();
   const invite = page.getByRole("dialog", { name: "Add Member", exact: true });
   await expect(invite.getByRole("textbox", { name: "Join link" })).toHaveValue(
@@ -587,7 +591,7 @@ test("members create a join link, promote explicitly, and confirm removal", asyn
   });
   await confirm.getByRole("button", { name: "Stay", exact: true }).click();
   await expect(
-    settings.getByText("Jamie Rivera", { exact: true }),
+    members.getByText("Jamie Rivera", { exact: true }),
   ).toBeVisible();
 });
 

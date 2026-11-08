@@ -53,7 +53,7 @@ export const SettingsModal = forwardRef<
     run: (action: () => Promise<unknown>) => Promise<void>;
     onSignedOut: () => void;
     onSyncActivity: (projectId: string) => void;
-    onManage: (projectId: string) => void;
+    onManage: (projectId: string, section: "requests" | "logs") => void;
     onClose: () => void;
   }
 >(function SettingsModal(
@@ -826,7 +826,10 @@ export const SettingsModal = forwardRef<
                   <SettingsMembers
                     state={state}
                     project={project}
-                    onReviews={() => request(() => onManage(projectId))}
+                    onReviews={() =>
+                      request(() => onManage(projectId, "requests"))
+                    }
+                    onLogs={() => request(() => onManage(projectId, "logs"))}
                   />
                 )}
                 {section === "permissions" && project && (
