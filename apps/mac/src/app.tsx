@@ -68,6 +68,7 @@ import { useSessionTitles } from "./components/use-session-titles.js";
 import { useWorkspace } from "./components/use-workspace.js";
 import { useAccount } from "./components/use-account.js";
 import { MemberNamesProvider } from "./components/member-names.js";
+import { LoadingProvider } from "./components/loading-region.js";
 import {
   connectProject,
   useProjectSetup,
@@ -104,21 +105,29 @@ const pageLabels: Record<ProjectPage, string> = {
 export function App() {
   const workspace = useWorkspace();
   return (
-    <ToastProvider
+    <LoadingProvider
       scope={JSON.stringify([
         workspace.state.profile,
         workspace.state.user,
         workspace.state.config?.apiUrl,
-        workspace.project,
       ])}
     >
-      <MemberNamesProvider
-        state={workspace.state}
-        projectId={workspace.project}
+      <ToastProvider
+        scope={JSON.stringify([
+          workspace.state.profile,
+          workspace.state.user,
+          workspace.state.config?.apiUrl,
+          workspace.project,
+        ])}
       >
-        <WorkspaceApp workspace={workspace} />
-      </MemberNamesProvider>
-    </ToastProvider>
+        <MemberNamesProvider
+          state={workspace.state}
+          projectId={workspace.project}
+        >
+          <WorkspaceApp workspace={workspace} />
+        </MemberNamesProvider>
+      </ToastProvider>
+    </LoadingProvider>
   );
 }
 

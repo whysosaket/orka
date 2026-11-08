@@ -211,6 +211,10 @@ async function fixture(page: Page, mode = "normal") {
               throw "Folder access failed";
             if (mode === "loading")
               await new Promise((resolve) => setTimeout(resolve, 250));
+            if (mode === "held-scan")
+              await new Promise<void>((resolve) => {
+                (window as any).finishSkillScan = resolve;
+              });
             return {
               skills:
                 mode === "empty"
@@ -753,6 +757,59 @@ test("a loading scan can be closed and reopening starts a fresh scan", async ({
     ),
   ).toHaveLength(0);
 });
+
+for (const reducedMotion of ["no-preference", "reduce"] as const) {
+  test(`initial skill skeletons are inert and rescans retain content with ${reducedMotion} motion`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion });
+    await page.setViewportSize({ width: 900, height: 640 });
+    await fixture(page, "held-scan");
+    await page
+      .getByRole("button", { name: "Add global skills", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", { name: "Add global skills" });
+    const region = dialog.locator(".loading-region");
+    await expect(region).toHaveAttribute("aria-busy", "true");
+    await expect(
+      dialog.getByRole("heading", { name: "Project review" }),
+    ).toHaveCount(0);
+    await expect(
+      dialog.getByRole("list", { name: "Global skills" }),
+    ).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: "Close global skills" }),
+    ).toBeEnabled();
+    expect((await region.boundingBox())!.height).toBeGreaterThan(200);
+    expect(
+      (await new AxeBuilder({ page }).include(".global-skills-modal").analyze())
+        .violations,
+    ).toEqual([]);
+    await page.screenshot({
+      path: `artifacts/skill-loading-${reducedMotion}.png`,
+    });
+    await page.evaluate(() => (window as any).finishSkillScan());
+    const heading = dialog.getByRole("heading", { name: "Code review" });
+    await expect(heading).toBeVisible();
+    await expect(region).not.toHaveAttribute("aria-busy", "true");
+    const before = await heading.boundingBox();
+    await dialog
+      .getByRole("button", { name: "Scan again", exact: true })
+      .click();
+    await expect(dialog.locator(".global-skills-list")).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    await expect(heading).toBeVisible();
+    expect(await heading.boundingBox()).toEqual(before);
+    await expect(region).not.toHaveAttribute("aria-busy", "true");
+    await page.evaluate(() => (window as any).finishSkillScan());
+    await expect(dialog.locator(".global-skills-list")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
+  });
+}
 
 test("review is available only when permissions require approval", async ({
   page,
