@@ -669,13 +669,21 @@ mod tests {
         let origin = temp.path().join("origin");
         let checkout = temp.path().join("checkout");
         let git = |args: &[&str]| {
-            assert!(std::process::Command::new("/usr/bin/git")
+            let output = std::process::Command::new("/usr/bin/git")
+                .env_clear()
+                .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+                .env("LC_ALL", "C")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
                 .args(args)
                 .current_dir(temp.path())
                 .output()
-                .unwrap()
-                .status
-                .success());
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         };
         git(&["init", "origin"]);
         fs::write(origin.join("README.md"), "Repository fixture\n").unwrap();
