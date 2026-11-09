@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "439fd2380874c54cd80ad6c2826d36fdb224a08c",
+  "commit": "20f7acbdb3f00586a1bb4e687bc511665e651264",
   "candidate": false,
-  "sourceTreeSha256": "613454b7d5771ff7c37ebf7419f92f1ea703a1ef81feadf5847ebe8ab5960953",
+  "sourceTreeSha256": "d27e73c6279588063f0504a2add7898ce5b6d53bde5bc2df17702ea864ca0100",
   "files": [
     {
       "path": ".dockerignore",
@@ -111,7 +111,7 @@
     },
     {
       "path": "deploy/ec2/compose.yml",
-      "sha256": "c49e56c604b0f1d4930bd7c4d4b27f8a28c36d5b5306614118b52e9d68316b8e",
+      "sha256": "f0e97853249db2d6060a3bb38ec31f38dbe1fd1f3512224ef2b997274d50210d",
       "mode": 420
     },
     {
