@@ -46,14 +46,14 @@ jobs:
           SOURCE_REPOSITORY: ${{ github.repository }}
         run: |
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
-          image="ghcr.io/${REGISTRY_OWNER,,}/orka-server:sha-${SOURCE_SHA}"
+          image="ghcr.io/${REGISTRY_OWNER,,}/orka-server-public:sha-${SOURCE_SHA}"
           mkdir -p artifacts/release
           docker buildx build --platform linux/amd64,linux/arm64 --target oss -f deploy/Dockerfile \
             --label "org.opencontainers.image.source=https://github.com/${SOURCE_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${SOURCE_SHA}" \
             --tag "$image" --build-arg "VERSION=${SOURCE_SHA:0:12}" --metadata-file artifacts/release/image.json --push .
           digest=$(node -p 'JSON.parse(require("node:fs").readFileSync("artifacts/release/image.json"))["containerimage.digest"]')
-          pinned="ghcr.io/${REGISTRY_OWNER,,}/orka-server@${digest}"
+          pinned="ghcr.io/${REGISTRY_OWNER,,}/orka-server-public@${digest}"
           mkdir "$RUNNER_TEMP/anonymous-docker"
           if ! docker --config "$RUNNER_TEMP/anonymous-docker" manifest inspect "$pinned" >/dev/null; then
             echo 'The container package must be public before an operator release can be published. Set its visibility to public in GitHub package settings, then rerun.' >&2
