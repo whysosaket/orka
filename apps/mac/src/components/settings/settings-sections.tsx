@@ -4,9 +4,12 @@ import {
   FileDirectoryIcon,
   PlusIcon,
   XIcon,
+  KebabHorizontalIcon,
 } from "@primer/octicons-react";
+import { ActionPopover } from "../resource-actions.js";
+import { RepositoryConnections } from "../repository-connections.js";
 import { CopyLinkButton } from "../copy-link-button.js";
-import type { Project } from "../../types.js";
+import type { Project, Snapshot } from "../../types.js";
 import { Button } from "../button.js";
 import { Icon } from "../icon.js";
 import { IconButton } from "../icon-button.js";
@@ -80,6 +83,7 @@ export function SettingsGeneral({
 
 export function SettingsFolder({
   project,
+  state,
   queued,
   busy,
   onConnect,
@@ -89,6 +93,7 @@ export function SettingsFolder({
   run,
 }: {
   project: Project;
+  state: Snapshot;
   queued: number;
   busy: boolean;
   onConnect: () => void;
@@ -97,7 +102,7 @@ export function SettingsFolder({
   onSyncActivity: () => void;
   run: (action: () => Promise<unknown>) => Promise<unknown>;
 }) {
-  const sources = project.sources ?? [
+  const sources: NonNullable<Project["sources"]> = project.sources ?? [
     {
       id: "",
       name: project.path?.split("/").filter(Boolean).at(-1) ?? project.name,
@@ -107,90 +112,155 @@ export function SettingsFolder({
   ];
   return (
     <>
-      <div className="settings-group settings-source-list">
-        {sources.map((source) => {
-          const folderState = source.path
-            ? (source.folderState ?? "connected")
-            : "locate";
-          const connect = () =>
-            source.id
-              ? void run(() =>
-                  connectProject(
-                    project.id,
-                    source.id,
-                    source.path ?? undefined,
-                  ),
-                )
-              : onConnect();
-          return (
-            <div className="settings-folder-row" key={source.id}>
-              <div className="settings-folder-identity">
-                <Icon
-                  icon={FileDirectoryIcon}
-                  className="settings-folder-icon"
-                />
-                <span
-                  className="settings-folder-name"
-                  title={source.path ?? undefined}
-                >
-                  {source.name}
-                </span>
-              </div>
-              <div className="settings-folder-actions">
-                {folderState !== "connected" && (
-                  <Button
-                    variant={folderState === "locate" ? "primary" : "secondary"}
-                    size="sm"
-                    className={
-                      folderState === "reconnect"
-                        ? "settings-folder-reconnect"
-                        : undefined
-                    }
-                    disabled={busy}
-                    aria-label={`${folderState === "locate" ? "Locate" : "Reconnect"} ${source.name} folder`}
-                    onClick={connect}
-                  >
-                    {folderState === "locate" ? "Locate Folder" : "Reconnect"}
-                  </Button>
-                )}
-                <IconButton
-                  icon={XIcon}
+      <RepositoryConnections
+        project={project}
+        state={state}
+        refresh={() => run(async () => {})}
+        folderBusy={busy}
+        queued={queued}
+        onDisconnectSource={onDisconnectSource}
+        onLocalFolder={async () => {
+          let connected = false;
+          await run(async () => {
+            connected = await connectProject(project.id);
+          });
+          return connected;
+        }}
+        renderLocalFolders={(enabled, onLink) => (
+          <div
+            className={
+              enabled
+                ? "repository-local-folders"
+                : "settings-group settings-source-list"
+            }
+          >
+            {sources
+              .filter((source) => !enabled || !source.repository)
+              .map((source) => {
+                const folderState = source.path
+                  ? (source.folderState ?? "connected")
+                  : "locate";
+                const connect = () =>
+                  source.id
+                    ? void run(() =>
+                        connectProject(
+                          project.id,
+                          source.id,
+                          source.path ?? undefined,
+                        ),
+                      )
+                    : onConnect();
+                return (
+                  <div className="settings-folder-row" key={source.id}>
+                    <div className="settings-folder-identity">
+                      <Icon
+                        icon={FileDirectoryIcon}
+                        className="settings-folder-icon"
+                      />
+                      <span
+                        className="settings-folder-name"
+                        title={source.path ?? undefined}
+                      >
+                        {source.name}
+                      </span>
+                    </div>
+                    <div className="settings-folder-actions">
+                      {folderState !== "connected" && (
+                        <Button
+                          variant={
+                            folderState === "locate" ? "primary" : "secondary"
+                          }
+                          size="sm"
+                          className={
+                            folderState === "reconnect"
+                              ? "settings-folder-reconnect"
+                              : undefined
+                          }
+                          disabled={busy}
+                          aria-label={`${folderState === "locate" ? "Locate Folder for" : "Reconnect"} ${source.name}${folderState === "locate" ? "" : " folder"}`}
+                          onClick={connect}
+                        >
+                          {folderState === "locate"
+                            ? "Locate Folder"
+                            : "Reconnect"}
+                        </Button>
+                      )}
+                      {enabled ? (
+                        <ActionPopover
+                          label={`Options for ${source.name}`}
+                          trigger={
+                            <IconButton
+                              icon={KebabHorizontalIcon}
+                              variant="tertiary"
+                              size="sm"
+                              aria-label={`Options for ${source.name}`}
+                              disabled={busy}
+                            />
+                          }
+                        >
+                          {project.role === "owner" && (
+                            <Button size="sm" onClick={() => onLink(source)}>
+                              Link GitHub repository
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            disabled={busy || queued > 0 || !source.path}
+                            onClick={() =>
+                              source.id
+                                ? onDisconnectSource(source.id)
+                                : onDisconnect()
+                            }
+                          >
+                            Disconnect folder on this Mac
+                          </Button>
+                        </ActionPopover>
+                      ) : (
+                        <IconButton
+                          icon={XIcon}
+                          variant="tertiary"
+                          size="sm"
+                          aria-label={`Disconnect ${source.name} folder`}
+                          title={
+                            !source.path
+                              ? "Connect this folder before disconnecting"
+                              : queued > 0
+                                ? "Sync queued changes before disconnecting"
+                                : "Disconnect folder on this Mac"
+                          }
+                          disabled={busy || queued > 0 || !source.path}
+                          onClick={() =>
+                            source.id
+                              ? onDisconnectSource(source.id)
+                              : onDisconnect()
+                          }
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            {!enabled && sources.length === 0 && project.role !== "owner" && (
+              <p className="settings-folder-empty">
+                No source folders added yet.
+              </p>
+            )}
+            {!enabled && project.role === "owner" && (
+              <div className="settings-add-folder-row">
+                <Button
                   variant="tertiary"
-                  size="sm"
-                  aria-label={`Disconnect ${source.name} folder`}
-                  title={
-                    !source.path
-                      ? "Connect this folder before disconnecting"
-                      : queued > 0
-                        ? "Sync queued changes before disconnecting"
-                        : "Disconnect folder on this Mac"
-                  }
-                  disabled={busy || queued > 0 || !source.path}
-                  onClick={() =>
-                    source.id ? onDisconnectSource(source.id) : onDisconnect()
-                  }
-                />
+                  className="settings-add-folder"
+                  disabled={busy}
+                  onClick={onConnect}
+                >
+                  <Icon icon={PlusIcon} />
+                  <span className="settings-add-folder-label">Add Folder</span>
+                </Button>
               </div>
-            </div>
-          );
-        })}
-        {sources.length === 0 && project.role !== "owner" && (
-          <p className="settings-folder-empty">No source folders added yet.</p>
-        )}
-        {project.role === "owner" && (
-          <div className="settings-add-folder-row">
-            <Button
-              variant="tertiary"
-              className="settings-add-folder"
-              disabled={busy}
-              onClick={onConnect}
-            >
-              <Icon icon={PlusIcon} />
-              <span className="settings-add-folder-label">Add Folder</span>
-            </Button>
+            )}
           </div>
         )}
-      </div>
+      />
       {queued > 0 && (
         <div className="settings-notice settings-folder-notice">
           <p>Sync queued changes before disconnecting folders.</p>

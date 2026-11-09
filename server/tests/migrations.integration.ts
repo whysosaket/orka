@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { Pool } from "pg";
 import {
   initialMigration,
@@ -36,25 +36,28 @@ async function ledger(pool: Pool) {
   ).rows.map((row) => row.name as string);
 }
 
-await test("a fresh server installs one baseline atomically and concurrent restarts keep one ledger entry", async () => {
+await test("a fresh server installs the baseline and GitHub migration atomically across concurrent restarts", async () => {
   assert.deepEqual(
     (
       await readdir(
         new URL("../packages/server-core/migrations/", import.meta.url),
       )
     ).filter((name) => name.endsWith(".sql")),
-    ["001_initial.sql"],
+    ["001_initial.sql", "002_github_repositories.sql"],
   );
   await database(async (pool) => {
     await Promise.all([migrate(pool), migrate(pool)]);
-    assert.deepEqual(await ledger(pool), [initialMigration]);
+    assert.deepEqual(await ledger(pool), [
+      initialMigration,
+      "002_github_repositories.sql",
+    ]);
     assert.equal(
       (
         await pool.query(
           "select count(*) from pg_tables where schemaname='orka'",
         )
       ).rows[0].count,
-      "37",
+      "43",
     );
     const project = randomUUID(),
       owner = randomUUID();
@@ -71,7 +74,59 @@ await test("a fresh server installs one baseline atomically and concurrent resta
       ).rows[0].name,
       "Keep this project",
     );
-    assert.deepEqual(await ledger(pool), [initialMigration]);
+    assert.deepEqual(await ledger(pool), [
+      initialMigration,
+      "002_github_repositories.sql",
+    ]);
+  });
+});
+
+await test("an existing baseline upgrades GitHub tables without replacing projects or sources", async () => {
+  await database(async (pool) => {
+    await pool.query(
+      "create schema orka; create table orka.schema_migrations(name text primary key)",
+    );
+    await pool.query(
+      await readFile(
+        new URL(
+          "../packages/server-core/migrations/001_initial.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    await pool.query("insert into orka.schema_migrations values($1)", [
+      initialMigration,
+    ]);
+    const project = randomUUID(),
+      source = randomUUID();
+    await pool.query(
+      "insert into orka.projects(id,name,created_by,source_model) values($1,'Existing project',$2,1)",
+      [project, randomUUID()],
+    );
+    await pool.query(
+      "insert into orka.project_sources values($1,$2,'Existing source')",
+      [project, source],
+    );
+    await Promise.all([migrate(pool), migrate(pool)]);
+    assert.deepEqual(await ledger(pool), [
+      initialMigration,
+      "002_github_repositories.sql",
+    ]);
+    assert.deepEqual(
+      (
+        await pool.query(
+          "select id,name from orka.project_sources where project_id=$1",
+          [project],
+        )
+      ).rows,
+      [{ id: source, name: "Existing source" }],
+    );
+    assert.equal(
+      (await pool.query("select count(*) from orka.source_repositories"))
+        .rows[0].count,
+      "0",
+    );
   });
 });
 
@@ -94,7 +149,10 @@ await test("baseline failure rolls back its DDL and ledger without touching pre-
     );
     await pool.query("drop view orka.members");
     await migrate(pool);
-    assert.deepEqual(await ledger(pool), [initialMigration]);
+    assert.deepEqual(await ledger(pool), [
+      initialMigration,
+      "002_github_repositories.sql",
+    ]);
   });
 });
 
@@ -115,7 +173,10 @@ await test("resetting a completed historical ledger is explicit and preserves ap
     assert.deepEqual(await ledger(pool), [...legacyMigrationNames]);
     await migrate(pool, { resetLedger: true });
     await migrate(pool, { resetLedger: true });
-    assert.deepEqual(await ledger(pool), [initialMigration]);
+    assert.deepEqual(await ledger(pool), [
+      initialMigration,
+      "002_github_repositories.sql",
+    ]);
     assert.equal(
       (
         await pool.query("select name from orka.projects where id=$1", [

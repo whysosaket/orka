@@ -28,7 +28,8 @@
     "package:source": "node scripts/package-source.mjs",
     "format:check": "prettier --check \"*.{js,json,ts}\" .github/workflows apps/mac/src tests scripts",
     "lint": "eslint . --max-warnings 0",
-    "backend:update": "node scripts/update-backend.mjs"
+    "backend:update": "node scripts/update-backend.mjs",
+    "test:repository-access": "tsx scripts/repository-access-e2e.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
@@ -55,6 +56,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@portable/protocol": "file:vendor/portable-protocol-0.5.3.tgz"
+    "@portable/protocol": "file:vendor/portable-protocol-0.6.0.tgz"
   }
 }

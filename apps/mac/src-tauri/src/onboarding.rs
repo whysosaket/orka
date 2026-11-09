@@ -1,5 +1,5 @@
 //! First-run consent, durable receipts, and local setup state.
-mod discovery;
+pub(crate) mod discovery;
 mod install;
 use crate::{
     commands,

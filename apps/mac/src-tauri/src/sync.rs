@@ -25,6 +25,14 @@ pub async fn api(method: &str, path: &str, body: Option<&Value>) -> Result<Value
 async fn request(owner: &str, method: &str, path: &str) -> Result<reqwest::RequestBuilder> {
     let cfg = db::get(&db::open()?, "config")?;
     let base = cfg["apiUrl"].as_str().ok_or("Configure the service")?;
+    request_at(owner, base, method, path).await
+}
+async fn request_at(
+    owner: &str,
+    base: &str,
+    method: &str,
+    path: &str,
+) -> Result<reqwest::RequestBuilder> {
     db::validate_url(base)?;
     Ok(reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
@@ -50,7 +58,24 @@ pub(crate) async fn api_as(
     path: &str,
     body: Option<&Value>,
 ) -> Result<Value> {
-    let mut request = request(owner, method, path).await?;
+    let config = db::get(&db::open()?, "config")?;
+    api_at(
+        owner,
+        config["apiUrl"].as_str().ok_or("Configure the service")?,
+        method,
+        path,
+        body,
+    )
+    .await
+}
+pub(crate) async fn api_at(
+    owner: &str,
+    origin: &str,
+    method: &str,
+    path: &str,
+    body: Option<&Value>,
+) -> Result<Value> {
+    let mut request = request_at(owner, origin, method, path).await?;
     if let Some(body) = body {
         request = request.json(body);
     }
