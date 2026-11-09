@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import { change, type Resource } from "@portable/protocol";
-import { Store } from "../packages/server-core/src/store.js";
-import { Blobs, bytesHash } from "../packages/server-core/src/blobs.js";
-import { createApi } from "../packages/server-core/src/main.js";
+import { Store } from "./bridge/store.js";
+import { Blobs, bytesHash } from "./reference/blobs.js";
+import { createApi } from "./bridge/main.js";
 import { execFileSync } from "node:child_process";
 
 await test("project sources preserve independent same-path resources, ownership, retries and pull scope", async () => {
@@ -229,13 +229,8 @@ await test("explicit source data migration is dry-run by default, preserves reso
     const receipt = await store.mutate(user, request);
     const run = (apply = false) =>
       execFileSync(
-        process.execPath,
-        [
-          "--import",
-          "tsx",
-          "packages/server-core/src/tools/migrate-project-sources.ts",
-          ...(apply ? ["--apply"] : []),
-        ],
+        process.env.ORKA_GO_SERVER_BIN ?? "artifacts/bin/orka-server",
+        ["migrate-sources", ...(apply ? ["--apply"] : [])],
         { encoding: "utf8" },
       );
     assert.match(run(), /Dry run/);

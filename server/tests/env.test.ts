@@ -8,11 +8,8 @@ import {
   isEnvPath,
   validateEnvTransition,
 } from "@portable/protocol";
-import { verifyEnvSignature } from "../packages/server-core/src/env.js";
-import {
-  identity,
-  version,
-} from "../packages/server-core/src/testing/env-fixtures.js";
+import { verifyEnvSignature } from "./reference/env.js";
+import { identity, version } from "./reference/testing/env-fixtures.js";
 
 await test("ENV format rejects malformed keys and keeps ordinary resource types separate", () => {
   const a = identity(),

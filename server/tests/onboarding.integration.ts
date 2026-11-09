@@ -5,10 +5,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
-import { Store } from "../packages/server-core/src/store.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { authSettings } from "../packages/server-core/src/auth.js";
+import { Store } from "./bridge/store.js";
+import { Blobs } from "./reference/blobs.js";
+import { createApi } from "./bridge/main.js";
+import { authSettings } from "./reference/auth.js";
 for (const mode of ["cloud", "self-hosted"])
   await test(`onboarding identity and remote keys are scoped in ${mode}`, async () => {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });

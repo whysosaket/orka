@@ -102,7 +102,7 @@ services:
     volumes:
       - ${DATA_ROOT:-/srv/orka}/blobs:/data/blobs
     healthcheck:
-      test: [CMD, node, -e, "fetch('http://localhost:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: [CMD, orka-server, healthcheck]
       interval: 10s
       timeout: 5s
       retries: 5

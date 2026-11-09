@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
-import { migrate } from "../../packages/server-core/src/migrations.js";
+import { migrate } from "../bridge/migrations.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";

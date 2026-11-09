@@ -21,6 +21,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: server/.node-version
@@ -29,6 +33,9 @@ jobs:
       - run: npm ci
       - run: shellcheck configure.sh orka-server deploy/self-hosted/restore.sh
       - run: npm run build && npm run typecheck && npm run lint && npm run format:check && npm test
+      - run: npm run test:go && go vet ./internal/... ./cmd/...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./cmd/orka-server
+      - run: npm run contracts:check
       - run: npm run licenses:check
       - run: PG_BIN=/usr/lib/postgresql/16/bin npm run test:integration
       - run: docker build --target oss -f deploy/Dockerfile -t orka-test:oss .

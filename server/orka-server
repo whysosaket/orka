@@ -89,29 +89,7 @@ prepare_image() {
   fi
 }
 doctor() {
-  compose exec -T api node --input-type=module -e '
-    const check = async (url, label) => {
-      try {
-        const response = await fetch(url, {signal: AbortSignal.timeout(15000), redirect: "error"});
-        if (!response.ok) throw new Error();
-        return response;
-      } catch { throw new Error(label + " check failed"); }
-    };
-    try {
-      await check("http://auth:9999/health", "Authentication service");
-      await check("http://127.0.0.1:8080/health", "API/database");
-      const instance = await (await check("http://127.0.0.1:8080/v2/instance", "Capabilities")).json();
-      if (instance.mode !== "self-hosted") throw new Error("Expected a self-hosted API");
-      if (!instance.auth.password && !instance.auth.github && !instance.auth.magicLink) throw new Error("No sign-in provider is enabled; check .env");
-      if (process.env.TRUST_PROXY === "true") {
-        for (let attempt = 0; ; attempt++) {
-          try { await check(process.env.PUBLIC_URL + "/health", "Public HTTPS (check DNS, ports 80/443 and Caddy logs)"); break; }
-          catch (error) { if (attempt === 5) throw error; await new Promise(resolve => setTimeout(resolve, 2000)); }
-        }
-      }
-      console.log("Database, authentication and API checks passed" + (process.env.TRUST_PROXY === "true" ? "; public HTTPS passed." : "."));
-    } catch (error) { console.error(error.message); process.exit(1); }
-  '
+  compose exec -T api orka-server doctor
 }
 backup() {
   backup_directory=${1:-"$server_root/.runtime/backups/$(date -u +%Y%m%dT%H%M%SZ)-$$"}
@@ -244,7 +222,7 @@ case "$action" in
     prepare_image
     if [ "$reset_ledger" = true ]; then
       compose stop api auth
-      compose run --rm --no-deps --entrypoint node api packages/server-core/dist/migrate.js --reset-ledger
+      compose run --rm --no-deps --entrypoint orka-server api migrate --reset-ledger
     fi
     start; doctor; connection ;;
 esac

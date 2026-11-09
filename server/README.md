@@ -255,12 +255,14 @@ docker compose logs --tail 100 api
 For source development, `sh ./orka-server build` builds the image without starting services.
 The helper builds during setup/upgrade; ordinary `start` uses the installed image.
 
-Contributors need Node.js 24+ and PostgreSQL binaries for integration tests.
+Contributors need Go 1.27.3, Node.js 24+ and PostgreSQL binaries for integration tests.
 The server has its own dependency graph:
 
 ```sh
 npm ci
 npm run build
+npm run test:go
+npm run contracts:check
 npm run typecheck
 npm run lint
 npm run format:check
@@ -283,9 +285,17 @@ and [dependency inventory](docs/dependency-licenses.md).
 
 ## Contributor layout
 
-Application source and contracts live in `packages/` and `apps/`. HTTP and Docker
-acceptance drivers live in `tests/acceptance/`; unit/integration fixtures stay in
-`tests/`. `scripts/managed/` owns managed deployment, `scripts/release/` owns release
-packaging, and the remaining scripts check repository/dependency boundaries.
-Generated deployment copies inside the npm package are recreated by the build.
-They are not maintained or distributed as a second operator configuration tree.
+Native server source lives in `internal/server/` and the single executable entry
+point in `cmd/orka-server/`. The unchanged SQL baseline stays in
+`packages/server-core/migrations/`; shared desktop contracts stay in
+`packages/protocol/`. Generated contracts are embedded in Go and checked for drift.
+
+`tests/acceptance/` runs Docker and operator drills. PostgreSQL integration tests
+call Go through a test-only bridge. `tests/reference/` is the frozen TypeScript
+compatibility oracle and is excluded from runtime images and operator releases.
+`scripts/managed/` and `scripts/release/` are maintainer tools.
+
+Production images contain a native Go executable and no Node/npm runtime. The
+same HTTP contracts, hashes, database schema, blob storage and operator commands
+are preserved. Upgrading a current baseline requires no database conversion.
+Preserve [Go dependency notices](GO_THIRD_PARTY_NOTICES.md) when distributing it.

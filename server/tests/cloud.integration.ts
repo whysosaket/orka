@@ -10,10 +10,10 @@ import {
   type Change,
   type Receipt,
 } from "@portable/protocol";
-import { Store, HttpError } from "../packages/server-core/src/store.js";
-import { Blobs, bytesHash } from "../packages/server-core/src/blobs.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { acceptingMemoryResolver } from "../packages/server-core/src/testing/memory-fixtures.js";
+import { Store, HttpError } from "./bridge/store.js";
+import { Blobs, bytesHash } from "./reference/blobs.js";
+import { createApi } from "./bridge/main.js";
+import { acceptingMemoryResolver } from "./reference/testing/memory-fixtures.js";
 
 await test("exchange API: isolation, retries, merges, snapshots, and session conflict concurrency", async () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });

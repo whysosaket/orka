@@ -6,11 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import type { Change, ResourceInput } from "@portable/protocol";
-import { Store, HttpError } from "../packages/server-core/src/store.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { authSettings } from "../packages/server-core/src/auth.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
-import { acceptingMemoryResolver } from "../packages/server-core/src/testing/memory-fixtures.js";
+import { Store, HttpError } from "./bridge/store.js";
+import { createApi } from "./bridge/main.js";
+import { authSettings } from "./reference/auth.js";
+import { Blobs } from "./reference/blobs.js";
+import { acceptingMemoryResolver } from "./reference/testing/memory-fixtures.js";
 
 for (const mode of ["cloud", "self-hosted"]) {
   await test(`${mode} selected sharing preserves permissions, snapshots, reviews and retry identity`, async () => {

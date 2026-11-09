@@ -10,14 +10,14 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { ResourceInput, Resource } from "@portable/protocol";
-import { Store, HttpError } from "../packages/server-core/src/store.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { authSettings } from "../packages/server-core/src/auth.js";
-import { tokenHash } from "../packages/server-core/src/mcp/oauth.js";
-import { readSession } from "../packages/server-core/src/mcp/sessions.js";
-import { addSources } from "../packages/server-core/src/sources.js";
-import { acceptingMemoryResolver } from "../packages/server-core/src/testing/memory-fixtures.js";
+import { Store, HttpError } from "./bridge/store.js";
+import { Blobs } from "./reference/blobs.js";
+import { createApi } from "./bridge/main.js";
+import { authSettings } from "./reference/auth.js";
+import { tokenHash } from "./bridge/mcp.js";
+import { readSession } from "./bridge/mcp.js";
+import { addSources } from "./reference/sources.js";
+import { acceptingMemoryResolver } from "./reference/testing/memory-fixtures.js";
 
 await test("Orka plugin: real MCP transport, consent/PKCE, project ACLs, teammate sessions, handoff, refresh and revocation", async () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });

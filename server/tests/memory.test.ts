@@ -6,11 +6,8 @@ import {
   type MemoryContext,
   type MemoryResolver,
   type MemoryState,
-} from "../packages/server-core/src/memory.js";
-import {
-  JevMemoryResolver,
-  memorySettings,
-} from "../packages/server-core/src/jev.js";
+} from "./reference/memory.js";
+import { JevMemoryResolver, memorySettings } from "./reference/jev.js";
 import type { MemoryChoice } from "@portable/protocol";
 
 const context: MemoryContext = {

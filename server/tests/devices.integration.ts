@@ -6,10 +6,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
-import { Store } from "../packages/server-core/src/store.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { acceptingMemoryResolver } from "../packages/server-core/src/testing/memory-fixtures.js";
+import { Store } from "./bridge/store.js";
+import { Blobs } from "./reference/blobs.js";
+import { createApi } from "./bridge/main.js";
+import { acceptingMemoryResolver } from "./reference/testing/memory-fixtures.js";
 
 const families = [
   "laptop",
@@ -195,8 +195,7 @@ await test(
   { skip: !process.env.ORKA_ENV_NATIVE_BIN },
   async () => {
     const f = await fixture();
-    const { startEnvMac } =
-      await import("../packages/server-core/src/testing/env-native.js");
+    const { startEnvMac } = await import("./reference/testing/env-native.js");
     let older = false;
     const proxy = createServer((request, response) => {
       void (async () => {

@@ -9,10 +9,10 @@ import {
   authSettings,
   createEmailHook,
   desktopRedirect,
-} from "../packages/server-core/src/auth.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { Store } from "../packages/server-core/src/store.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
+} from "./reference/auth.js";
+import { createApi } from "./reference/main.js";
+import { Store } from "./reference/store.js";
+import { Blobs } from "./reference/blobs.js";
 
 async function listen(server: Server) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

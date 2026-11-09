@@ -16,7 +16,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseEnv } from "node:util";
-import { legacyMigrationNames } from "../../packages/server-core/src/migrations.js";
+import { legacyMigrationNames } from "../bridge/migrations.js";
 
 const source = resolve(process.argv[2] ?? ".");
 const temporary = await mkdtemp(join(tmpdir(), "orka-readme-e2e-"));

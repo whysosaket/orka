@@ -20,7 +20,6 @@ flock -w 60 9 || fail 'Another deployment holds the host lock.'
 mkdir -p "$root/releases"
 release=$(mktemp -d "$root/releases/$commit.XXXXXXXX")
 tar -xf "$stage/deploy.tar" -C "$release"
-cp "$stage/verify-deployment.ts" "$release/verify-deployment.ts"
 mkdir "$release/operations"
 cp "$stage/backup.sh" "$stage/restore-check.sh" "$stage/verify-blobs.py" "$release/operations/"
 printf '%s\n' "$image" > "$release/image"
@@ -39,14 +38,10 @@ trap cleanup EXIT
 docker login ghcr.io --username "$registry_user" --password-stdin >/dev/null
 docker pull "$image" >/dev/null
 [[ $(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image") = "$commit" ]] || fail 'Image revision does not match the release commit.'
-docker run --rm --network none --user 0 --entrypoint node \
-  -v "$root/.env:/run/orka.env:ro" "$image" \
-  packages/server-core/dist/tools/check-deployment.js /run/orka.env --cloud
-docker run --rm --network none --user 0 --entrypoint node \
-  -v "$root/.env:/run/orka.env:ro" "$image" -e '
-    const env = require("node:util").parseEnv(require("node:fs").readFileSync("/run/orka.env", "utf8"));
-    if (env.DATA_ROOT && env.DATA_ROOT !== "/srv/orka") throw Error("CI requires DATA_ROOT=/srv/orka");
-  '
+docker run --rm --network none --user 0 --entrypoint orka-server \
+  -v "$root/.env:/run/orka.env:ro" "$image" check-deployment /run/orka.env --cloud
+docker run --rm --network none --user 0 --entrypoint orka-server \
+  -v "$root/.env:/run/orka.env:ro" "$image" check-data-root /run/orka.env
 export COMPOSE_PROJECT_NAME=orka-managed
 export COMPOSE_ENV_FILES="$root/.env"
 export COMPOSE_FILE ORKA_IMAGE
@@ -88,11 +83,8 @@ else
   # Initial provisioning is explicit; never adopt an unrelated running stack.
   [[ -z $(docker ps -aq --filter label=com.docker.compose.project=orka-managed) ]] || fail 'Existing orka-managed containers require explicit migration before CI adoption.'
   # Read as root inside Docker: the SSH user cannot inspect PostgreSQL's private directory.
-  docker run --rm --network none --user 0 --entrypoint node \
-    -v /srv/orka:/run/data:ro "$image" -e '
-      if (require("node:fs").readdirSync("/run/data/postgres").length)
-        throw Error("Initial CI deployment requires an empty database directory; migrate existing stacks explicitly");
-    '
+  docker run --rm --network none --user 0 --entrypoint orka-server \
+    -v /srv/orka:/run/data:ro "$image" check-empty-database /run/data/postgres
 fi
 use_release "$release"
 # active records the actual attempted configuration, even if health later fails.
@@ -105,9 +97,8 @@ if [[ -f "$release/deploy/ec2/backfill-member-emails.sql" ]]; then
   docker compose exec -T db psql -X -U postgres -d orka -v ON_ERROR_STOP=1 \
     < "$release/deploy/ec2/backfill-member-emails.sql"
 fi
-docker run --rm --user 0 --entrypoint node \
-  -v "$root/.env:/run/orka.env:ro" -v "$release/verify-deployment.ts:/run/verify-deployment.ts:ro" \
-  "$image" /run/verify-deployment.ts /run/orka.env
+docker run --rm --user 0 --entrypoint orka-server \
+  -v "$root/.env:/run/orka.env:ro" "$image" verify-deployment /run/orka.env
 ln -s "$release" "$release/current.next"
 mv -Tf "$release/current.next" "$root/current"
 docker compose ps

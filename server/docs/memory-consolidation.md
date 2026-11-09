@@ -9,7 +9,7 @@
 5. Validate the model, question IDs, answer types, complete probability distribution and confidence. Require a winning probability of at least 0.65 with a margin of 0.15 over the next option. An uncertain result, oversized context or provider failure returns HTTP 503; the transaction rolls back, and the native client retains the existing outbox request and local file for retry. No acceptance-order fallback discards memory.
 6. Persist the resolved content as a verified blob and snapshot. Record the model, choice, probabilities and base line span in optional `event.memoryResolutions`, stored with the event and idempotent receipt. Line numbers are one-based, with an exclusive end. Replaying an accepted request returns the same receipt without another JEV call. Failed requests create no receipt, revision or event.
 
-The canonical implementation is `packages/server-core/src/memory.ts`, with the provider boundary in `jev.ts` and integration in `store.ts`. Both OSS and managed servers use this same path. Existing plan/skill merges and session resolution retain their contracts. Explicit whole-resource tombstones remain direct deletions. Semantic contradictions in pure additions or across separate files are outside this line-edit consolidation step.
+The canonical implementation is `internal/server/memory.go`, with the provider boundary in `jev.go` and integration in `sync.go`. Both OSS and managed servers use this same path. Existing plan/skill merges and session resolution retain their contracts. Explicit whole-resource tombstones remain direct deletions. Semantic contradictions in pure additions or across separate files are outside this line-edit consolidation step.
 
 ## JEV contract and configuration
 

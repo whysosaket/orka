@@ -4,7 +4,7 @@ import {
   profileInput,
   remoteKey,
   validAvatarData,
-} from "../packages/server-core/src/profiles.js";
+} from "./reference/profiles.js";
 await test("onboarding profiles accept only names and GitHub avatar URLs", () => {
   assert.equal(
     profileInput.parse({
