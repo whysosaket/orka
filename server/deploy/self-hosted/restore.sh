@@ -49,6 +49,12 @@ mv "$temporary" .env
 export COMPOSE_PROJECT_NAME="$project" COMPOSE_FILE="$files"
 mkdir -p .runtime/accounts
 chmod 700 .runtime .runtime/accounts
+# A replacement host may have none of the stack's images cached.
+if [ "$(saved ORKA_SERVER_MODE)" = local ]; then
+  docker compose pull --policy missing db auth
+else
+  docker compose pull --policy missing db auth caddy
+fi
 if [ -n "$image" ]; then
   docker image inspect "$image" >/dev/null 2>&1 || docker pull "$image"
 else
