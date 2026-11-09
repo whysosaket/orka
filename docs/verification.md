@@ -8,7 +8,7 @@ The public checks cover repository boundaries and protocol checksums, TypeScript
 
 `npm run test:profiles` exercises isolated desktop profiles, callback routing, local settings, and background-agent state. `npm run test:native-smoke` uses an isolated Codex home without running a model turn and requires an installed compatible Codex executable.
 
-The backend implementation and service integration suites remain private. The public desktop checks do not require them and do not claim to validate a deployed API, OAuth provider, email delivery, database migration, or restore.
+The public `server/` workspace has separate build, type, lint, unit, PostgreSQL integration and final-image checks. Its CI builds the OSS image from source and exercises the public Compose configuration with real GoTrue, captured mail, membership isolation, blobs and backup/restore. Desktop checks remain independent. These checks do not establish public DNS/TLS, real provider delivery, external OAuth consent or signed-app handoff; record those separately for an actual deployment.
 
 ## Release acceptance
 

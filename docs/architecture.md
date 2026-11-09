@@ -6,7 +6,7 @@ The public desktop has three boundaries:
 2. `apps/mac/src-tauri/src` implements native indexing, local SQLite state, Keychain authentication, imports/exports, and background synchronization. The UI does not start a second sync loop.
 3. The checksummed `@portable/protocol` package in `vendor/` supplies shared schemas, validation, merge contracts, and signing fixtures. Its provenance is recorded in `vendor/manifest.json`.
 
-The API is a separate service. Its implementation, authorization, database migrations, deployment tooling, and integration suites are maintained privately. They are not desktop build dependencies. Both Cloud and existing compatible self-hosted services use the same desktop binary and wire contracts.
+The API is a separate service. The public `server/` tree includes its shared implementation, authorization, migrations, Docker Compose deployment tooling and integration suites. It has a separate npm workspace and is not a desktop build dependency. Both Cloud and self-hosted services use the same desktop binary and wire contracts. `server/source-manifest.json` records the canonical backend commit and file hashes; maintainers import reviewed changes without private Git history. See [server source updates](../server/README.md#source-updates).
 
 ## Data flow
 

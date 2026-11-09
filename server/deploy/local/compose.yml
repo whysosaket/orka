@@ -1,0 +1,21 @@
+# Use with deploy/ec2/compose.yml. Start only the api service and dependencies.
+services:
+  db:
+    volumes:
+      - db-data:/var/lib/postgresql/data
+  auth:
+    environment:
+      API_EXTERNAL_URL: http://127.0.0.1:${ORKA_LOCAL_PORT:-8080}/auth
+      GOTRUE_SITE_URL: http://127.0.0.1:${ORKA_LOCAL_PORT:-8080}
+      GOTRUE_EXTERNAL_GITHUB_REDIRECT_URI: http://127.0.0.1:${ORKA_LOCAL_PORT:-8080}/auth/callback
+      GOTRUE_JWT_ISSUER: http://127.0.0.1:${ORKA_LOCAL_PORT:-8080}/auth
+  api:
+    environment:
+      TRUST_PROXY: 'false'
+      PUBLIC_URL: http://127.0.0.1:${ORKA_LOCAL_PORT:-8080}
+    ports: ['127.0.0.1:${ORKA_LOCAL_PORT:-8080}:8080']
+    volumes:
+      - blob-data:/data/blobs
+volumes:
+  db-data:
+  blob-data:

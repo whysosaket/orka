@@ -13,6 +13,8 @@ export default defineConfig(
       "**/gen/**",
       "artifacts/**",
       ".runtime/**",
+      // The backend has its own dependency graph, TypeScript project and lint command.
+      "server/**",
       ".agents/skills/fluid-functionalism/**",
       ".claude/skills/fluid-functionalism/**",
     ],

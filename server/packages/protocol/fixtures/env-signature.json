@@ -1,0 +1,15 @@
+{
+  "seedHex": "0707070707070707070707070707070707070707070707070707070707070707",
+  "publicKey": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+  "value": {
+    "format": 1,
+    "revision": 1,
+    "nested": {
+      "z": false,
+      "a": ["秘密", "line\n\"\\", 9007199254740991]
+    },
+    "label": "Staging 🔑"
+  },
+  "canonical": "{\"format\":1,\"label\":\"Staging 🔑\",\"nested\":{\"a\":[\"秘密\",\"line\\n\\\"\\\\\",9007199254740991],\"z\":false},\"revision\":1}",
+  "signature": "b409527c4bc4e87f381e60114369a1934a67f1d66fe4b5a74240d7018b945056a0e540a6389e464f9978e7c862d18386a2fc3567526c14fd51a977dfe4962c0c"
+}

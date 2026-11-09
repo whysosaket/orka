@@ -1,0 +1,124 @@
+name: orka
+services:
+  db:
+    image: postgres:17.9-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orka
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?Set AUTH_DB_PASSWORD}
+      API_DB_PASSWORD: ${API_DB_PASSWORD:?Set API_DB_PASSWORD}
+    volumes:
+      - ${DATA_ROOT:-/srv/orka}/postgres:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/01-orka.sh:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U postgres -d orka']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  auth:
+    image: supabase/gotrue:v2.196.0
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: https://${DOMAIN:?Set DOMAIN}/auth
+      GOTRUE_URI_ALLOW_LIST: orka://auth/callback,orka://auth/callback?profile=*
+      GOTRUE_EXTERNAL_GITHUB_ENABLED: ${GITHUB_ENABLED:-false}
+      GOTRUE_EXTERNAL_GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GOTRUE_EXTERNAL_GITHUB_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOTRUE_EXTERNAL_GITHUB_REDIRECT_URI: https://${DOMAIN}/auth/callback
+      GOTRUE_HOOK_SEND_EMAIL_ENABLED: ${RESEND_ENABLED:-false}
+      GOTRUE_HOOK_SEND_EMAIL_URI: ${SEND_EMAIL_HOOK_URL:-https://${DOMAIN}/auth/hooks/send-email}
+      GOTRUE_HOOK_SEND_EMAIL_SECRETS: ${SEND_EMAIL_HOOK_SECRET:-}
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/confirm
+      GOTRUE_MAILER_URLPATHS_MAGIC_LINK: /auth/confirm
+      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/confirm
+      GOTRUE_MAILER_URLPATHS_INVITE: /auth/confirm
+      GOTRUE_MAILER_OTP_EXP: 600
+      GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED: 'true'
+      GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL: 10
+      GOTRUE_SITE_URL: https://${DOMAIN}
+      GOTRUE_JWT_ISSUER: https://${DOMAIN}/auth
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_NAMESPACE: auth
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${AUTH_DB_PASSWORD}@db:5432/orka
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-true}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true'
+      GOTRUE_EXTERNAL_PHONE_ENABLED: 'false'
+      GOTRUE_MAILER_AUTOCONFIRM: 'false'
+      GOTRUE_MAILER_TEMPLATES_CONFIRMATION: http://api:8080/email-template
+      GOTRUE_MAILER_TEMPLATES_MAGIC_LINK: http://api:8080/email-template
+      GOTRUE_MAILER_SUBJECTS_CONFIRMATION: Your Orka sign-in code
+      GOTRUE_MAILER_SUBJECTS_MAGIC_LINK: Your Orka sign-in code
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASSWORD:-}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_FROM:-}
+      GOTRUE_SMTP_SENDER_NAME: Orka
+      GOTRUE_SMTP_MAX_FREQUENCY: 60s
+      GOTRUE_RATE_LIMIT_EMAIL_SENT: 30
+      GOTRUE_RATE_LIMIT_HEADER: X-Orka-Client-IP
+      GOTRUE_LOG_LEVEL: error
+    healthcheck:
+      test: [CMD, wget, --no-verbose, --tries=1, --spider, 'http://localhost:9999/health']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  api:
+    image: ${ORKA_IMAGE:-ghcr.io/whysosaket/orka-server:0.3.0}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      auth: { condition: service_healthy }
+    environment:
+      PORT: 8080
+      # API is reachable only through the Caddy proxy in this deployment.
+      TRUST_PROXY: 'true'
+      AUTH_URL: http://auth:9999
+      DATABASE_URL: postgres://orka_api:${API_DB_PASSWORD}@db:5432/orka
+      BLOB_ROOT: /data/blobs
+      MEMORY_JEV_ENABLED: ${MEMORY_JEV_ENABLED:-true}
+      JEV_API_KEY: ${JEV_API_KEY:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      PUBLIC_URL: https://${DOMAIN}
+      MCP_ENABLED: ${MCP_ENABLED:-false}
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-self-hosted}
+      PASSWORD_ENABLED: ${PASSWORD_ENABLED:-true}
+      GITHUB_ENABLED: ${GITHUB_ENABLED:-false}
+      MAGIC_LINK_ENABLED: ${MAGIC_LINK_ENABLED:-false}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+      SEND_EMAIL_HOOK_SECRET: ${SEND_EMAIL_HOOK_SECRET:-}
+    volumes:
+      - ${DATA_ROOT:-/srv/orka}/blobs:/data/blobs
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  caddy:
+    image: caddy:2.11.2-alpine
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    ports: ['80:80', '443:443', '443:443/udp']
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./${CADDY_CONFIG:-Caddyfile}:/etc/caddy/Caddyfile:ro
+      - ${DATA_ROOT:-/srv/orka}/caddy:/data
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:2019/config/']
+      interval: 30s
+      timeout: 5s
+      retries: 3

@@ -1,0 +1,52 @@
+name: orka-self-hosted
+services:
+  db:
+    extends:
+      file: deploy/ec2/compose.yml
+      service: db
+    volumes:
+      - db-data:/var/lib/postgresql/data
+  auth:
+    extends:
+      file: deploy/ec2/compose.yml
+      service: auth
+  api:
+    extends:
+      file: deploy/ec2/compose.yml
+      service: api
+    image: orka-server:${COMPOSE_PROJECT_NAME:-local}
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: oss
+    environment:
+      MEMORY_JEV_ENABLED: ${MEMORY_JEV_ENABLED:-false}
+    volumes:
+      - blob-data:/data/blobs
+  caddy:
+    extends:
+      file: deploy/ec2/compose.yml
+      service: caddy
+    volumes:
+      - caddy-data:/data
+  admin:
+    profiles: [tools]
+    image: orka-server:${COMPOSE_PROJECT_NAME:-local}
+    pull_policy: never
+    user: ${ORKA_OPERATOR_UID:-1000}:${ORKA_OPERATOR_GID:-1000}
+    depends_on:
+      auth: { condition: service_healthy }
+    entrypoint: [node, packages/server-core/dist/tools/create-user.js]
+    environment:
+      AUTH_URL: http://auth:9999
+    secrets: [operator_env]
+    volumes:
+      - ./.runtime/accounts:/output
+volumes:
+  db-data:
+  blob-data:
+  caddy-data:
+secrets:
+  operator_env:
+    file: ${ORKA_OPERATOR_ENV_FILE:-.env}

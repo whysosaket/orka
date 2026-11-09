@@ -40,3 +40,10 @@ apps/mac/src-tauri/release.conf.json
 .portable/
 .orka/
 backups/
+
+# Local implementation plans
+/PLAN.md
+/PLANS.md
+/docs/*-plan.md
+/.codex/plans/
+/.claude/plans/

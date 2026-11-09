@@ -64,8 +64,8 @@ Settings profile editing requires the API's `profile.conditionalSave: 1`
 capability. The client reviews shared changes and saves against the confirmed
 revision. Older services stay readable and require an update for editing.
 
-Follow [CONTRIBUTING.md](../CONTRIBUTING.md). Unit and browser tests use synthetic fixtures. Native tests and `npm run test:profiles` exercise local desktop behavior without private backend packages. Live authentication and sync need a compatible running service; backend integration suites are maintained privately.
+Follow [CONTRIBUTING.md](../CONTRIBUTING.md). Unit and browser tests use synthetic fixtures. Native tests and `npm run test:profiles` exercise local desktop behavior without backend packages. Live authentication and sync need a running service; the public [server workspace](../server/README.md#direct-compose-and-development) includes backend integration suites and Compose instructions.
 
 ## Updating the shared protocol
 
-The public checkout contains only the checksummed client protocol package recorded in `vendor/manifest.json`. Maintainers with access to backend release artifacts can run `npm run backend:update -- vX.Y.Z [release-directory]`. The updater verifies SHA-256 and npm integrity and imports only `@portable/protocol`; it excludes the server implementation and its tools. Consumers building the desktop need no access to that private release source.
+The desktop uses the checksummed client protocol package recorded in `vendor/manifest.json`. Maintainers with access to backend release artifacts can run `npm run backend:update -- vX.Y.Z [release-directory]`. The updater verifies SHA-256 and npm integrity and imports only `@portable/protocol` into the desktop dependency graph. Server source and tooling live independently in `server/`; update that reviewed snapshot using the canonical export procedure in the [server source-update guide](../server/README.md#source-updates). Building either tree needs no private registry access.

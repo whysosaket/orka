@@ -1,0 +1,207 @@
+#!/bin/sh
+set -eu
+umask 077
+server_root=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+cd "$server_root"
+
+fail() { printf '%s\n' "$*" >&2; exit 1; }
+setting() { sed -n "s/^$1=//p" .env | tail -n 1; }
+help() {
+  cat <<'EOF'
+Orka server — Docker Compose, no host Node.js required
+
+  sh ./orka-server setup --local --email you@example.com [--port 8080]
+  sh ./orka-server setup --domain sync.example.com --email you@example.com
+  sh ./orka-server setup                 Guided setup in an interactive terminal
+  sh ./orka-server credentials           Show your saved owner login locally
+  sh ./orka-server start                 Start the saved installation
+  sh ./orka-server stop                  Stop containers and keep all data
+  sh ./orka-server status                Show containers and connection address
+  sh ./orka-server doctor                Check database, auth, API and public HTTPS
+  sh ./orka-server logs [service]         Show the last 100 log lines
+  sh ./orka-server user teammate@example.com
+  sh ./orka-server backup [directory]    Back up data/configuration and verify restore
+  sh ./orka-server verify-backup directory
+  sh ./orka-server upgrade [--reset-ledger]  Verify a backup, then rebuild and restart
+
+Setup saves the mode, port and project name in private .env. Reuse this directory.
+Local mode binds to 127.0.0.1. Public mode requires a domain and open ports 80/443.
+EOF
+}
+docker_ready() {
+  command -v docker >/dev/null 2>&1 || fail 'Install Docker Desktop or Docker Engine with the Compose plugin, then retry.'
+  docker compose version >/dev/null 2>&1 || fail 'Docker Compose is missing. Install the Docker Compose plugin, then retry.'
+  docker info >/dev/null 2>&1 || fail 'Docker is not running or this user cannot access it. Start Docker and retry.'
+}
+load_config() {
+  [ -f .env ] || fail 'No installation configured. Run sh ./orka-server setup first.'
+  domain=$(setting DOMAIN)
+  mode=$(setting ORKA_SERVER_MODE)
+  if [ -z "$mode" ]; then
+    mode=public
+    if [ "$domain" = localhost ]; then mode=local; fi
+  fi
+  case "$mode" in local|public) ;; *) fail 'ORKA_SERVER_MODE in .env must be local or public.' ;; esac
+  local_port=$(setting ORKA_LOCAL_PORT)
+  local_port=${local_port:-8080}
+  COMPOSE_PROJECT_NAME=$(setting COMPOSE_PROJECT_NAME)
+  COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-orka-self-hosted}
+  COMPOSE_FILE="$server_root/compose.yml"
+  if [ "$mode" = local ]; then COMPOSE_FILE="$COMPOSE_FILE:$server_root/deploy/local/compose.yml"; fi
+  export COMPOSE_PROJECT_NAME COMPOSE_FILE
+  origin="https://$domain"
+  if [ "$mode" = local ]; then origin="http://127.0.0.1:$local_port"; fi
+}
+compose() { docker compose --env-file "$server_root/.env" "$@"; }
+connection() {
+  printf '\nConnect Orka → Connect to your server → %s\n' "$origin"
+  if [ -f .runtime/accounts/owner.json ]; then
+    printf 'Owner login: sh ./orka-server credentials\n'
+  else
+    printf 'Sign in with your existing account password.\n'
+  fi
+}
+start() {
+  compose config --quiet || return $?
+  if [ "$mode" = local ]; then
+    compose up --build -d --wait --wait-timeout 180 api
+  else
+    compose up --build -d --wait --wait-timeout 180
+  fi
+}
+doctor() {
+  compose exec -T api node --input-type=module -e '
+    const check = async (url, label) => {
+      try {
+        const response = await fetch(url, {signal: AbortSignal.timeout(15000), redirect: "error"});
+        if (!response.ok) throw new Error();
+        return response;
+      } catch { throw new Error(label + " check failed"); }
+    };
+    try {
+      await check("http://auth:9999/health", "Authentication service");
+      await check("http://127.0.0.1:8080/health", "API/database");
+      const instance = await (await check("http://127.0.0.1:8080/v2/instance", "Capabilities")).json();
+      if (instance.mode !== "self-hosted") throw new Error("Expected a self-hosted API");
+      if (!instance.auth.password && !instance.auth.github && !instance.auth.magicLink) throw new Error("No sign-in provider is enabled; check .env");
+      if (process.env.TRUST_PROXY === "true") {
+        for (let attempt = 0; ; attempt++) {
+          try { await check(process.env.PUBLIC_URL + "/health", "Public HTTPS (check DNS, ports 80/443 and Caddy logs)"); break; }
+          catch (error) { if (attempt === 5) throw error; await new Promise(resolve => setTimeout(resolve, 2000)); }
+        }
+      }
+      console.log("Database, authentication and API checks passed" + (process.env.TRUST_PROXY === "true" ? "; public HTTPS passed." : "."));
+    } catch (error) { console.error(error.message); process.exit(1); }
+  '
+}
+backup() {
+  backup_directory=${1:-"$server_root/.runtime/backups/$(date -u +%Y%m%dT%H%M%SZ)-$$"}
+  case "$backup_directory" in /*) ;; *) backup_directory="$server_root/$backup_directory" ;; esac
+  mkdir -p "$(dirname "$backup_directory")"
+  command -v bash >/dev/null || fail 'Install Bash to create backups.'
+  command -v python3 >/dev/null || fail 'Install Python 3 for backup verification, then retry.'
+  bash deploy/ec2/backup.sh "$backup_directory"
+  cp .env "$backup_directory/operator.env"
+  chmod 600 "$backup_directory/operator.env"
+  if [ -f source-manifest.json ]; then cp source-manifest.json "$backup_directory/source-manifest.json"; fi
+  if command -v git >/dev/null && revision=$(git rev-parse HEAD 2>/dev/null); then
+    printf '%s\n' "$revision" > "$backup_directory/source-revision.txt"
+    if [ -n "$(git status --porcelain -- .)" ]; then
+      printf 'Working-tree changes were present; consult source-manifest.json.\n' >> "$backup_directory/source-revision.txt"
+    fi
+  fi
+  (cd "$backup_directory" && {
+    for file in operator.env source-manifest.json source-revision.txt; do
+      if [ -f "$file" ]; then
+        if command -v sha256sum >/dev/null; then sha256sum "$file"
+        else shasum -a 256 "$file"; fi
+      fi
+    done
+  } >> SHA256SUMS)
+  sh deploy/ec2/restore-check.sh "$backup_directory"
+  printf 'Verified backup (includes private server credentials): %s\n' "$backup_directory"
+}
+
+action=${1:-help}
+if [ "$#" -gt 0 ]; then shift; fi
+case "$action" in help|--help|-h) help; exit 0 ;; esac
+if [ "$action" = credentials ]; then
+  [ "$#" -eq 0 ] || fail 'Usage: sh ./orka-server credentials'
+  [ -f .runtime/accounts/owner.json ] || fail 'No saved owner login. Complete setup, or use the private account file printed when you created your user.'
+  cat .runtime/accounts/owner.json
+  exit 0
+fi
+case "$action" in setup|start|stop|status|doctor|logs|user|backup|verify-backup|upgrade) ;; *) help >&2; exit 1 ;; esac
+docker_ready
+if [ "$action" = verify-backup ]; then
+  [ "$#" -eq 1 ] || fail 'Usage: sh ./orka-server verify-backup directory'
+  backup_directory=$1
+  case "$backup_directory" in /*) ;; *) backup_directory="$server_root/$backup_directory" ;; esac
+  sh deploy/ec2/restore-check.sh "$backup_directory"
+  exit 0
+fi
+if [ "$action" = setup ]; then
+  requested_domain='' requested_port='' email=''
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --local) [ -z "$requested_domain" ] || fail 'Choose --local or --domain, not both.'; requested_domain=localhost; shift ;;
+      --domain) [ "$#" -ge 2 ] || fail '--domain needs a hostname.'; [ -z "$requested_domain" ] || fail 'Choose --local or --domain, not both.'; requested_domain=${2#https://}; requested_domain=${requested_domain%/}; shift 2 ;;
+      --email) [ "$#" -ge 2 ] || fail '--email needs an address.'; email=$2; shift 2 ;;
+      --port) [ "$#" -ge 2 ] || fail '--port needs a number.'; requested_port=$2; shift 2 ;;
+      *) fail "Unknown setup option: $1. Run sh ./orka-server help." ;;
+    esac
+  done
+  if [ -z "$requested_domain" ] && [ ! -f .env ]; then
+    if [ -t 0 ]; then
+      printf 'Public hostname, or press Enter to run only on this computer: '
+      read -r requested_domain
+    fi
+    requested_domain=${requested_domain:-localhost}
+  fi
+  if [ -z "$email" ] && [ -t 0 ]; then printf 'Your sign-in email: '; read -r email; fi
+  if ! printf '%s\n' "$email" | awk '/^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$/ {valid=1} END {exit !valid}'; then
+    fail 'Provide your sign-in email: --email you@example.com'
+  fi
+  if [ -f .env ]; then
+    load_config
+    [ -z "$requested_domain" ] || [ "$requested_domain" = "$domain" ] || fail 'This directory already has a different server configuration. Use another checkout for a separate server; .env was preserved.'
+    if [ -n "$requested_port" ] && [ "$requested_port" != "$local_port" ]; then
+      [ "$mode" = local ] || fail '--port is for local installations. Public HTTPS uses ports 80/443.'
+      case "$requested_port" in ''|*[!0-9]*|0*|??????*) fail 'Port must be a number from 1 to 65535.' ;; esac
+      [ "$requested_port" -le 65535 ] || fail 'Port must be a number from 1 to 65535.'
+      temporary_env=$(mktemp "$server_root/.env.XXXXXX")
+      awk -v port="$requested_port" '/^ORKA_LOCAL_PORT=/ {print "ORKA_LOCAL_PORT=" port; found=1; next} {print} END {if (!found) print "ORKA_LOCAL_PORT=" port}' .env > "$temporary_env"
+      mv "$temporary_env" .env
+      load_config
+    fi
+  else
+    command -v openssl >/dev/null 2>&1 || fail 'Install OpenSSL, then retry setup.'
+    sh configure.sh "$requested_domain" --port "${requested_port:-8080}"
+    load_config
+  fi
+  if ! start; then
+    fail 'Startup failed; .env and volumes were preserved. Check Docker resources/port conflicts with sh ./orka-server logs. For local port conflicts, edit ORKA_LOCAL_PORT in .env and retry setup.'
+  fi
+  compose run --rm --no-deps admin "$email" --output owner.json
+  doctor
+  connection
+  exit 0
+fi
+load_config
+case "$action" in
+  start) [ "$#" -eq 0 ] || fail 'Usage: sh ./orka-server start'; start; doctor; connection ;;
+  stop) [ "$#" -eq 0 ] || fail 'Usage: sh ./orka-server stop'; compose down; printf 'Stopped. Database, blobs, certificates and configuration were kept.\n' ;;
+  status) compose ps; connection ;;
+  doctor) doctor; connection ;;
+  logs) compose logs --tail 100 "$@" ;;
+  user) [ "$#" -eq 1 ] || fail 'Usage: sh ./orka-server user teammate@example.com'; compose run --rm --no-deps admin "$1" ;;
+  backup) [ "$#" -le 1 ] || fail 'Usage: sh ./orka-server backup [directory]'; backup "$@" ;;
+  upgrade)
+    [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = --reset-ledger ]; } || fail 'Usage: sh ./orka-server upgrade [--reset-ledger]'
+    backup
+    if [ "${1:-}" = --reset-ledger ]; then
+      compose stop api auth
+      compose run --rm --no-deps --entrypoint node api packages/server-core/dist/migrate.js --reset-ledger
+    fi
+    start; doctor; connection ;;
+esac

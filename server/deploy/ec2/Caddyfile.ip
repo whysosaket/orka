@@ -1,0 +1,17 @@
+{
+    default_sni {$DOMAIN}
+}
+
+{$DOMAIN} {
+    tls {
+        issuer acme {
+            dir https://acme-v02.api.letsencrypt.org/directory
+            profile shortlived
+        }
+    }
+    encode zstd gzip
+    request_body {
+        max_size 128MB
+    }
+    reverse_proxy api:8080
+}

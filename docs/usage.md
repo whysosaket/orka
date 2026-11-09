@@ -121,7 +121,7 @@ Sessions never line-merge. Incoming updates/deletions stay staged while a sessio
 
 ## Services and verification
 
-Use Orka Cloud or an existing compatible self-hosted service. The desktop repository does not include backend deployment tooling; see [hosting and authentication](hosting-and-auth.md).
+Use Orka Cloud or your own [Docker Compose server](../server/README.md). The public repository includes the server source and deployment tools; see [hosting and authentication](hosting-and-auth.md).
 
 Follow [CONTRIBUTING.md](../CONTRIBUTING.md) for desktop checks. The browser suite uses fixtures. Native service integration and two-Mac acceptance remain separate release checks.
 

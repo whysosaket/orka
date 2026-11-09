@@ -1,0 +1,23 @@
+{
+  "name": "@portable/protocol",
+  "version": "0.5.4",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./*": "./dist/*.js",
+    "./fixtures/*": "./fixtures/*"
+  },
+  "dependencies": {
+    "zod": "^4.3.6",
+    "diff": "^9.0.0"
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "LICENSE",
+    "fixtures"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}
