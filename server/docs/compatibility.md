@@ -2,12 +2,12 @@
 
 ## GitHub repository connections
 
-The 0.6.0 candidate adds optional repository bindings, native clone support and
+Release 0.6.0 adds optional repository bindings, native clone support and
 user-scoped GitHub access requests. It builds on the initial schema baseline,
 adding migration `002_github_repositories.sql`. Older services retain local-folder
 setup. Both editions share the implementation; see [configuration and the
-single-app migration guide](github-repositories.md). This candidate is not a
-published release or production OAuth migration.
+single-app migration guide](github-repositories.md). Publishing this release does
+not provision an operator's GitHub App, credentials or webhook configuration.
 
 ## Initial schema baseline
 
