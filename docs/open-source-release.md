@@ -2,7 +2,9 @@
 
 The public `orka` repository begins with a reviewed desktop source snapshot and fresh Git history. The original repository remains private under `orka-private`; it retains its history, branches, pull requests, workflow logs, and historical artifacts.
 
-Public source includes the desktop, its client protocol package, tests, documentation, and integration plugin. Server implementation packages, database migrations, deployment tooling, private environment files, and service integration suites are excluded. Preserve [contributor attribution](../AUTHORS.md), [MIT licensing](../LICENSE), and [third-party notices](../THIRD_PARTY_NOTICES.md).
+Public source includes the desktop, its client protocol package, tests, documentation, integration plugin, and a reviewed server snapshot in `server/`. The server includes shared implementation packages, migrations, deployment tooling and service integration suites. Private environment files, runtime data and historical Git metadata remain excluded. Preserve [contributor attribution](../AUTHORS.md), [MIT licensing](../LICENSE), and [third-party notices](../THIRD_PARTY_NOTICES.md).
+
+The canonical backend exporter copies an explicit source allowlist and records the source commit, candidate status and per-file SHA-256 in `server/source-manifest.json`. It never copies Git history, provider credentials or runtime data. Before publishing, review this manifest and validate the source-built Compose stack. An uncommitted candidate is not a tagged backend release; source publication and registry/image publication are separate actions. See the [server source-update guide](../server/README.md#source-updates).
 
 ## Prepare a source archive
 

@@ -209,8 +209,10 @@ async function fixture(page: Page, mode = "normal") {
             scanCount += 1;
             if (mode === "retry" && scanCount === 1)
               throw "Folder access failed";
-            if (mode === "loading")
-              await new Promise((resolve) => setTimeout(resolve, 250));
+            if (mode === "loading" && scanCount === 1)
+              await new Promise<void>((resolve) => {
+                (window as any).finishSkillScan = resolve;
+              });
             if (mode === "held-scan")
               await new Promise<void>((resolve) => {
                 (window as any).finishSkillScan = resolve;
@@ -753,6 +755,7 @@ test("a loading scan can be closed and reopening starts a fresh scan", async ({
   await expect(
     page.getByRole("heading", { name: "Code review" }),
   ).toBeVisible();
+  await page.evaluate(() => (window as any).finishSkillScan());
   expect(
     await page.evaluate(() =>
       (window as any).invokeCalls.filter(

@@ -6,6 +6,11 @@ Orka is an alpha macOS desktop application. Discuss substantial behavior or prot
 
 Run commands from the repository root. Install Node.js 24+ (CI uses `.node-version`), Rust, and Apple's Command Line Tools, then run `npm ci`. No private repository, registry credentials, Docker stack, or database is required for desktop development. See [local development](docs/development.md).
 
+The self-hosted server is a separate workspace in `server/`. Follow its
+[development and verification instructions](server/README.md#direct-compose-and-development).
+Running the Compose server requires Docker, a shell and OpenSSL; backend source
+development additionally needs Node.js and PostgreSQL test binaries.
+
 ## Before submitting
 
 Run the checks relevant to your changes:
@@ -36,7 +41,7 @@ Browser tests use Google Chrome on macOS and Playwright Chromium on Linux. Nativ
 - Preserve app identifiers, Keychain services, account storage, and sync contracts unless an explicit migration accompanies the change.
 - Cover behavior changes at the relevant boundary using synthetic fixtures and isolated native homes.
 - Keep lockfiles committed. Never commit credentials, database copies, logs, build outputs, or native session history.
-- Keep server implementation packages and deployment tooling out of this desktop repository. `check:repository` verifies the protocol-only vendor boundary.
+- Keep server dependencies and deployment tooling in `server/`, outside the desktop dependency graph. `check:repository` verifies protocol-only desktop vendoring and the imported server source manifest. Maintainers coordinate server changes through the [canonical backend export](server/README.md#source-updates).
 - Describe what changed, why, and which checks ran in the pull request.
 
 ## Reporting problems

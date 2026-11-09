@@ -1,0 +1,7 @@
+# Backend development only. Production Compose consumes immutable release images.
+services:
+  api:
+    build:
+      context: ${ORKA_BUILD_CONTEXT:?Set ORKA_BUILD_CONTEXT to the backend checkout}
+      dockerfile: deploy/Dockerfile
+      target: ${ORKA_BUILD_TARGET:-oss}

@@ -52,7 +52,7 @@ try {
     );
     assert.match(manifest.sourceTreeSha256, /^[a-f0-9]{64}$/);
   }
-  // Backend releases also contain private server packages; only publish the client contract.
+  // Keep the desktop dependency graph limited to the client contract; server source is imported separately.
   manifest.packages = manifest.packages.filter(
     (pkg) => pkg.name === "@portable/protocol",
   );

@@ -1,0 +1,9 @@
+{
+  "name": "@portable/oss",
+  "version": "0.5.4",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@portable/server-core": "0.5.4"
+  }
+}

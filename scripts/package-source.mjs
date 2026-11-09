@@ -20,13 +20,19 @@ if (
 execFileSync("npm", ["run", "check:repository"], { stdio: "inherit" });
 const temporary = mkdtempSync(join(tmpdir(), "orka-source-"));
 try {
-  const source = execFileSync("git", ["archive", "--format=tar", "HEAD"], {
-    maxBuffer: 32_000_000,
-  });
-  execFileSync("tar", ["-xf", "-", "-C", temporary], { input: source });
+  const source = join(temporary, "source");
+  const sourceArchive = join(temporary, "source.tar");
+  mkdirSync(source);
+  execFileSync("git", [
+    "archive",
+    "--format=tar",
+    `--output=${sourceArchive}`,
+    "HEAD",
+  ]);
+  execFileSync("tar", ["-xf", sourceArchive, "-C", source]);
   execFileSync(
     "gitleaks",
-    ["dir", temporary, "--redact", "--no-banner", "--max-archive-depth=2"],
+    ["dir", source, "--redact", "--no-banner", "--max-archive-depth=2"],
     { stdio: "inherit" },
   );
   const commit = execFileSync("git", ["rev-parse", "--short=12", "HEAD"], {
