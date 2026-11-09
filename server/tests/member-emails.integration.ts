@@ -6,12 +6,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
-import { Store } from "../packages/server-core/src/store.js";
-import { migrate } from "../packages/server-core/src/migrations.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { accountAuthenticator } from "../packages/server-core/src/runtime.js";
-import { authSettings } from "../packages/server-core/src/auth.js";
+import { Store } from "./bridge/store.js";
+import { migrate } from "./bridge/migrations.js";
+import { Blobs } from "./reference/blobs.js";
+import { createApi } from "./bridge/main.js";
+import { accountAuthenticator } from "./bridge/migrations.js";
+import { authSettings } from "./reference/auth.js";
 
 async function listen(server: Server) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

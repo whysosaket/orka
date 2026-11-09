@@ -1,31 +1,30 @@
-FROM node:24-bookworm-slim AS build
-WORKDIR /app
-COPY package.json package-lock.json tsconfig*.json ./
-COPY packages packages
-COPY apps apps
-COPY scripts scripts
-COPY deploy deploy
-COPY LICENSE THIRD_PARTY_NOTICES.md ./
-RUN npm ci --ignore-scripts && npm run build && npm prune --omit=dev --ignore-scripts
+FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd cmd
+COPY internal internal
+COPY packages/server-core/migrations packages/server-core/migrations
+ARG VERSION=development
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -X github.com/whysosaket/orka-api/internal/server.Version=${VERSION} -X github.com/whysosaket/orka-api/internal/server.Edition=oss" -o /out/oss ./cmd/orka-server \
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -X github.com/whysosaket/orka-api/internal/server.Version=${VERSION} -X github.com/whysosaket/orka-api/internal/server.Edition=managed" -o /out/managed ./cmd/orka-server
 
-FROM node:24-bookworm-slim AS runtime
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --gid 1000 orka && useradd --uid 1000 --gid orka --no-create-home orka \
+ && mkdir -p /app /data/blobs && chown orka:orka /data/blobs
 WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=build /app/node_modules node_modules
-COPY --from=build /app/packages/protocol/package.json packages/protocol/package.json
-COPY --from=build /app/packages/protocol/dist packages/protocol/dist
-COPY --from=build /app/packages/protocol/fixtures packages/protocol/fixtures
-COPY --from=build /app/packages/server-core/package.json packages/server-core/package.json
-COPY --from=build /app/packages/server-core/dist packages/server-core/dist
-COPY --from=build /app/packages/server-core/migrations packages/server-core/migrations
-COPY --from=build /app/artifacts/apps artifacts/apps
-COPY --from=build /app/LICENSE /app/THIRD_PARTY_NOTICES.md ./
-RUN rm -rf packages/server-core/dist/testing && mkdir -p /data/blobs && chown node:node /data/blobs
-USER node
+COPY LICENSE THIRD_PARTY_NOTICES.md GO_THIRD_PARTY_NOTICES.md ./
+COPY licenses licenses
+USER orka
 EXPOSE 8080
+CMD ["orka-server", "serve"]
 
 FROM runtime AS managed
-CMD ["node", "artifacts/apps/managed/main.js"]
+COPY --from=build /out/managed /usr/local/bin/orka-server
 
 FROM runtime AS oss
-CMD ["node", "artifacts/apps/oss/main.js"]
+COPY --from=build /out/oss /usr/local/bin/orka-server

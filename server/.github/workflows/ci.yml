@@ -18,12 +18,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
       - run: npm run build && npm run typecheck && npm run lint && npm run format:check && npm test
+      - run: npm run test:go && go vet ./internal/... ./cmd/... && test -z "$(gofmt -l cmd internal packages/server-core/migrations)"
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./cmd/orka-server
+      - run: npm run contracts:check
       - run: npm run check:repository && npm run licenses:check
       - name: Check deployment lifecycle and shell scripts
         run: |
@@ -51,6 +58,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
@@ -64,9 +75,3 @@ jobs:
         run: npm run test:self-hosted
       - if: matrix.edition == 'oss'
         run: ORKA_TEST_OPERATOR_IMAGE=orka-test:oss npm run test:self-hosted
-      - if: matrix.edition == 'oss'
-        run: ORKA_IMAGE=orka-test:oss node packages/server-core/dist/tools/local-dev.js up
-      - if: matrix.edition == 'oss'
-        run: npm run local:user -- contributor@example.test && npm run test:local
-      - if: always() && matrix.edition == 'oss'
-        run: npm run local:down

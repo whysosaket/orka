@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
-import { migrate } from "../../packages/server-core/src/migrations.js";
+import { migrate } from "../bridge/migrations.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
@@ -60,6 +60,7 @@ try {
         ? process.argv.slice(2)
         : [
             "tests/migrations.integration.ts",
+            "tests/shutdown.integration.ts",
             "tests/cloud.integration.ts",
             "tests/onboarding.integration.ts",
             "tests/member-emails.integration.ts",

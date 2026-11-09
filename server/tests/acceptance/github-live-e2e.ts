@@ -6,14 +6,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseEnv } from "node:util";
 import { Pool } from "pg";
-import { Store } from "../../packages/server-core/src/store.js";
-import { Blobs } from "../../packages/server-core/src/blobs.js";
-import { migrate } from "../../packages/server-core/src/migrations.js";
-import { createApi } from "../../packages/server-core/src/main.js";
-import {
-  githubSettings,
-  GitHubRepositories,
-} from "../../packages/server-core/src/github.js";
+import { Store } from "../bridge/store.js";
+import { Blobs } from "../reference/blobs.js";
+import { migrate } from "../bridge/migrations.js";
+import { createApi } from "../bridge/main.js";
+import { githubSettings, GitHubRepositories } from "../bridge/github.js";
 
 const [environmentPath, nativePath, repositoryName] = process.argv.slice(2);
 assert.ok(

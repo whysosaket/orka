@@ -7,10 +7,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import { defaultRolePolicies, type RolePolicies } from "@portable/protocol";
-import { Store } from "../packages/server-core/src/store.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { acceptingMemoryResolver } from "../packages/server-core/src/testing/memory-fixtures.js";
-import { Blobs, bytesHash } from "../packages/server-core/src/blobs.js";
+import { Store } from "./bridge/store.js";
+import { createApi } from "./bridge/main.js";
+import { acceptingMemoryResolver } from "./reference/testing/memory-fixtures.js";
+import { Blobs, bytesHash } from "./reference/blobs.js";
 
 await test("role policies: authorization, atomic rollback, replay, conflicts, access, membership and legacy migration", async () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -868,8 +868,7 @@ await test(
   "isolated native Macs persist profiles, separate local sharing/names, block queued disconnect and revoked writes, and keep private files",
   { skip: !process.env.ORKA_ENV_NATIVE_BIN },
   async () => {
-    const { startEnvMac } =
-      await import("../packages/server-core/src/testing/env-native.js");
+    const { startEnvMac } = await import("./reference/testing/env-native.js");
     const { DatabaseSync } = await import("node:sqlite");
     const { mkdir, writeFile, readFile } = await import("node:fs/promises");
     const { createHash } = await import("node:crypto");

@@ -16,7 +16,7 @@ if (
 const output = resolve("artifacts/release");
 mkdirSync(output, { recursive: true });
 const packages = [];
-for (const name of ["protocol", "server-core"]) {
+for (const name of ["protocol"]) {
   const result = JSON.parse(
     execFileSync(
       "npm",
@@ -41,6 +41,11 @@ for (const name of ["protocol", "server-core"]) {
   });
 }
 const manifest = {
+  server: {
+    language: "Go",
+    module: "github.com/whysosaket/orka-api",
+    toolchain: "1.27.3",
+  },
   repository: "https://github.com/whysosaket/orka-api",
   commit: execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",

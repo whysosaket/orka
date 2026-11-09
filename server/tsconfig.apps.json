@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": false,
-    "rootDir": "apps",
-    "outDir": "artifacts/apps"
-  },
-  "include": ["apps/**/*.ts"]
-}

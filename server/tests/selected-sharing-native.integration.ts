@@ -18,9 +18,9 @@ import { DatabaseSync } from "node:sqlite";
 import { Pool } from "pg";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { Store, HttpError } from "../packages/server-core/src/store.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
-import { createApi } from "../packages/server-core/src/main.js";
+import { Store, HttpError } from "./bridge/store.js";
+import { Blobs } from "./reference/blobs.js";
+import { createApi } from "./bridge/main.js";
 
 const binary = process.env.ORKA_TEST_NATIVE_BINARY;
 const records = (text: string): unknown[] =>

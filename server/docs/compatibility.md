@@ -1,13 +1,30 @@
 # Release compatibility
 
+## Go runtime contract checks
+
+The Go runtime retains the TypeScript protocol package as its contract source.
+After changing protocol or MCP schemas, run `npm run build` followed by
+`npm run contracts:check`. The latter checks generated schema/transport drift
+and replays parser inputs through both the installed Zod/MCP SDK schemas and
+the Go validators, comparing acceptance and normalized output. Cases cover
+required and unknown fields, defaults, trimming, Unicode length boundaries,
+safe integers, nested resource refinements and MCP request envelopes.
+
+Go regression tests also cover MCP batches, version negotiation and canonical
+OAuth origins. PostgreSQL integration starts the production executable and
+verifies that SIGTERM drains an authenticated request before closing the pool
+and exiting. These checks supplement the HTTP, authorization, migration,
+encrypted ENV, sync and final-image suites; credential-dependent provider and
+native multi-Mac acceptance still require their configured environments.
+
 ## GitHub repository connections
 
-The 0.6.0 candidate adds optional repository bindings, native clone support and
+Release 0.6.0 adds optional repository bindings, native clone support and
 user-scoped GitHub access requests. It builds on the initial schema baseline,
 adding migration `002_github_repositories.sql`. Older services retain local-folder
 setup. Both editions share the implementation; see [configuration and the
-single-app migration guide](github-repositories.md). This candidate is not a
-published release or production OAuth migration.
+single-app migration guide](github-repositories.md). Publishing this release does
+not provision an operator's GitHub App, credentials or webhook configuration.
 
 ## Initial schema baseline
 
@@ -23,7 +40,7 @@ then run the new image's migration command in the existing Compose deployment:
 
 ```sh
 docker compose stop api auth
-docker compose run --rm --no-deps --entrypoint node api packages/server-core/dist/migrate.js --reset-ledger
+docker compose run --rm --no-deps --entrypoint orka-server api migrate --reset-ledger
 ```
 
 The source-built helper combines backup, verification, ledger adoption and restart
@@ -178,6 +195,6 @@ Compatibility rows about retained contracts are not a claim of testing every his
 
 The desktop consumes immutable npm tarballs stored under `vendor/`, with the source commit, SHA-256 and npm integrity in `manifest.json` and the lockfile. This works for private repos without shipping registry credentials. Source ownership stays here; the tarballs are generated release artifacts, not another editable server. To update, run `npm run backend:update -- vX.Y.Z` in `orka` with GitHub repository read access, then its compatibility checks. Local pre-release validation accepts an explicit release-directory argument. Never use an unversioned sibling-path dependency.
 
-Rust verifies the canonical signing fixture from the installed protocol package. Both repositories retain contract tests to verify their respective package/source boundary. Client tests import backend test helpers and core rather than maintaining backend source. Production uses released images; local development can explicitly build a sibling checkout with `ORKA_API_SOURCE=../orka-api npm run local:up`.
+Rust verifies the canonical signing fixture from the installed protocol package. Both repositories retain contract tests to verify their respective package/source boundary. Client tests import backend test helpers and core rather than maintaining backend source. Production uses released Go images; local development builds the checked-in source with `sh ./orka-server setup --local --email you@example.com`.
 
 Before upgrades, take and verify a coordinated database/blob backup. Baseline-era startup is idempotent; adopt a completed historical ledger explicitly as described above. Rollback after a destructive migration needs a tested restore; changing an image tag alone is not a database rollback plan.

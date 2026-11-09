@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
-import { createApi } from "../packages/server-core/src/main.js";
-import { authSettings } from "../packages/server-core/src/auth.js";
-import { Store } from "../packages/server-core/src/store.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
+import { createApi } from "./bridge/main.js";
+import { authSettings } from "./reference/auth.js";
+import { Store } from "./bridge/store.js";
+import { Blobs } from "./reference/blobs.js";
 
 for (const mode of ["cloud", "self-hosted"]) {
   await test(`${mode} browser invites preview without consuming and redeem only through authenticated join`, async () => {
