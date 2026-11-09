@@ -51,7 +51,7 @@ jobs:
           docker buildx build --platform linux/amd64,linux/arm64 --target oss -f deploy/Dockerfile \
             --label "org.opencontainers.image.source=https://github.com/${SOURCE_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${SOURCE_SHA}" \
-            --tag "$image" --metadata-file artifacts/release/image.json --push .
+            --tag "$image" --build-arg "VERSION=${SOURCE_SHA:0:12}" --metadata-file artifacts/release/image.json --push .
           digest=$(node -p 'JSON.parse(require("node:fs").readFileSync("artifacts/release/image.json"))["containerimage.digest"]')
           pinned="ghcr.io/${REGISTRY_OWNER,,}/orka-server@${digest}"
           mkdir "$RUNNER_TEMP/anonymous-docker"
