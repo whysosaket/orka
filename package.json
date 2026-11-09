@@ -55,6 +55,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@portable/protocol": "file:vendor/portable-protocol-0.5.3.tgz"
+    "@portable/protocol": "file:vendor/portable-protocol-0.6.0.tgz"
   }
 }

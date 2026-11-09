@@ -68,6 +68,7 @@ try {
             "tests/projects.integration.ts",
             "tests/sources.integration.ts",
             "tests/project-invite.integration.ts",
+            "tests/github.integration.ts",
             "tests/env.integration.ts",
             "tests/governance.integration.ts",
             "tests/role-policies.integration.ts",

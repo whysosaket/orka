@@ -1,4 +1,44 @@
 @layer components {
+  .repository-panel {
+    @apply flex min-w-0 flex-col gap-4 border-b border-line pb-4;
+  }
+  .repository-onboarding {
+    @apply mx-auto flex min-w-0 flex-col gap-5 overflow-y-auto p-8;
+    max-width: 900px;
+    height: 100vh;
+  }
+  .repository-onboarding form {
+    @apply flex flex-col gap-4;
+  }
+  .repository-onboarding .actions {
+    @apply flex flex-wrap gap-2;
+  }
+  .repository-panel .actions {
+    @apply flex flex-wrap gap-2;
+  }
+  .repository-panel p {
+    overflow-wrap: anywhere;
+  }
+  .repository-panel .settings-row > div:first-child {
+    min-width: 0;
+  }
+  .repository-source {
+    @apply flex min-w-0 flex-col gap-2 border-t border-line pt-3;
+  }
+  .repository-browser {
+    @apply flex min-w-0 flex-col gap-3;
+  }
+  .repository-browser label {
+    @apply flex flex-col gap-2 text-label-sm;
+  }
+  .repository-browser select {
+    @apply min-h-9 w-full border border-line bg-raised px-2 text-body-xs;
+    border-radius: var(--radius-control);
+  }
+  .repository-panel .settings-row {
+    @apply flex min-w-0 flex-wrap items-center justify-between gap-3;
+  }
+
   .sidebar .navigation-action[aria-current="page"] {
     background: var(--surface-tertiary);
     color: var(--text-primary);

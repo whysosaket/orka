@@ -155,7 +155,12 @@ function WorkspaceApp({
     state.user,
     state.config?.apiUrl,
   ]);
-  const setup = useProjectSetup(setProject, setError, state.config?.apiUrl);
+  const setup = useProjectSetup(
+    setProject,
+    setError,
+    state.config?.apiUrl,
+    () => openSettings("general"),
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const reducedMotion = useReducedMotion();
   const [sidebarInstant, setSidebarInstant] = useState(false);
@@ -651,7 +656,14 @@ function WorkspaceApp({
               <FolderConnectionPrompt
                 projectName={projectLabel(selectedProject)}
                 busy={busy}
-                onConnect={() => void act(() => connectProject(project))}
+                repositories={selectedProject.sources?.some(
+                  (source) => source.repository,
+                )}
+                onConnect={() =>
+                  selectedProject.sources?.some((source) => source.repository)
+                    ? openSettings("general")
+                    : void act(() => connectProject(project))
+                }
               />
             )}
             <Suspense

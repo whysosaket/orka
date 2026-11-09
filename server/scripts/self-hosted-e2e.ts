@@ -221,7 +221,10 @@ try {
     );
   helper(installation, "status");
   helper(installation, "doctor");
-  assert.equal(migrationLedger(installation), "001_initial.sql");
+  assert.equal(
+    migrationLedger(installation),
+    "001_initial.sql\n002_github_repositories.sql",
+  );
   console.log(
     "Fresh setup, repeated setup, port changes and diagnostics passed.",
   );
@@ -380,7 +383,10 @@ try {
       legacyMigrationNames.map((name) => `('${name}')`).join(","),
   ]);
   helper(installation, "upgrade", "--reset-ledger");
-  assert.equal(migrationLedger(installation), "001_initial.sql");
+  assert.equal(
+    migrationLedger(installation),
+    "001_initial.sql\n002_github_repositories.sql",
+  );
   await verifyContent(origin, (await login(origin, owner)).access_token);
   console.log(
     "README setup, repeated setup, credentials, teammate join, real sync, cold restart, verified backup and upgrade passed.",
@@ -435,7 +441,10 @@ try {
     gunzipSync(await readFile(join(backup, "blobs.tar.gz"))),
   );
   helper(recovery, "start");
-  assert.equal(migrationLedger(recovery), "001_initial.sql");
+  assert.equal(
+    migrationLedger(recovery),
+    "001_initial.sql\n002_github_repositories.sql",
+  );
   const recoveredOrigin = `http://127.0.0.1:${recoveryPort}`;
   await verifyContent(
     recoveredOrigin,

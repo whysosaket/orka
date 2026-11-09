@@ -907,6 +907,16 @@ await test(
         home,
         name: "owner",
         user: owner,
+        session: {
+          access_token: owner,
+          refresh_token: "fixture-refresh",
+          expires_in: 86400,
+          user: {
+            id: owner,
+            email: "owner@example.test",
+            user_metadata: { full_name: "Native Owner" },
+          },
+        },
         url,
         project,
         enable: false,
@@ -932,10 +942,17 @@ await test(
       macs.push(c);
       for (const mac of macs) await mac.request({ action: "sync" });
       const context = { user: owner, service: url };
+      const initialProfile = await a.request<{ revision: string }>({
+        action: "onboarding",
+        operation: "profile",
+        input: {},
+        context,
+      });
       const profile = await a.request<{ displayName: string }>({
         action: "onboarding",
         operation: "save-settings-profile",
         input: {
+          expectedRevision: initialProfile.revision,
           displayName: "Native Owner",
           jobRole: "Admin",
           avatarData: null,

@@ -27,6 +27,7 @@ export function useProjectSetup(
   onProject: (id: string) => void,
   onError: (message: string) => void,
   apiUrl?: string,
+  onRepositorySetup?: (id: string) => void,
 ) {
   const [dialog, setDialog] = useState<ProjectSetupMode | null>(null);
   const [input, setInput] = useState("");
@@ -61,13 +62,16 @@ export function useProjectSetup(
       throw new Error(
         `Sign in to ${invite.serviceUrl} before joining this project.`,
       );
-    const result = await invoke<{ id: string }>("cloud_action", {
-      action: dialog,
-      input:
-        dialog === "create"
-          ? { name: input.trim(), sharing }
-          : { ...invite, sharing },
-    });
+    const result = await invoke<{ id: string; repositorySetup?: boolean }>(
+      "cloud_action",
+      {
+        action: dialog,
+        input:
+          dialog === "create"
+            ? { name: input.trim(), sharing }
+            : { ...invite, sharing },
+      },
+    );
     onProject(result.id);
     setDialog(null);
     setInput("");
@@ -78,7 +82,15 @@ export function useProjectSetup(
           paths: selection.folders,
         });
       selection.clear();
-    } else await connectProject(result.id);
+      if (
+        !selection.folders.length &&
+        result.repositorySetup &&
+        onRepositorySetup
+      )
+        onRepositorySetup(result.id);
+    } else if (result.repositorySetup && onRepositorySetup)
+      onRepositorySetup(result.id);
+    else await connectProject(result.id);
   };
 
   return {

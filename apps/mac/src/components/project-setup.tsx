@@ -193,10 +193,12 @@ export function FolderConnectionPrompt({
   projectName,
   busy,
   onConnect,
+  repositories = false,
 }: {
   projectName: string;
   busy: boolean;
   onConnect: () => void;
+  repositories?: boolean;
 }) {
   return (
     <section className="folder-connection" aria-label="Connect this Mac">
@@ -206,8 +208,18 @@ export function FolderConnectionPrompt({
       <div className="min-w-0 flex-1">
         <h2>Connect this Mac</h2>
         <p>
-          Choose the local folder for <strong>{projectName}</strong> to sync
-          files and open native sessions.
+          {repositories ? (
+            <>
+              Clone or locate the repositories for{" "}
+              <strong>{projectName}</strong> to sync files and open native
+              sessions.
+            </>
+          ) : (
+            <>
+              Choose the local folder for <strong>{projectName}</strong> to sync
+              files and open native sessions.
+            </>
+          )}
         </p>
       </div>
       <Button
@@ -217,7 +229,7 @@ export function FolderConnectionPrompt({
         variant="primary"
         size="md"
       >
-        Connect folder
+        {repositories ? "Connect repositories" : "Connect folder"}
         <Icon icon={ArrowRightIcon} />
       </Button>
     </section>

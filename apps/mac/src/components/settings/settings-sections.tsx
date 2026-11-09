@@ -5,8 +5,9 @@ import {
   PlusIcon,
   XIcon,
 } from "@primer/octicons-react";
+import { RepositoryConnections } from "../repository-connections.js";
 import { CopyLinkButton } from "../copy-link-button.js";
-import type { Project } from "../../types.js";
+import type { Project, Snapshot } from "../../types.js";
 import { Button } from "../button.js";
 import { Icon } from "../icon.js";
 import { IconButton } from "../icon-button.js";
@@ -80,6 +81,7 @@ export function SettingsGeneral({
 
 export function SettingsFolder({
   project,
+  state,
   queued,
   busy,
   onConnect,
@@ -89,6 +91,7 @@ export function SettingsFolder({
   run,
 }: {
   project: Project;
+  state: Snapshot;
   queued: number;
   busy: boolean;
   onConnect: () => void;
@@ -107,6 +110,11 @@ export function SettingsFolder({
   ];
   return (
     <>
+      <RepositoryConnections
+        project={project}
+        state={state}
+        refresh={() => run(async () => {})}
+      />
       <div className="settings-group settings-source-list">
         {sources.map((source) => {
           const folderState = source.path
@@ -147,7 +155,7 @@ export function SettingsFolder({
                         : undefined
                     }
                     disabled={busy}
-                    aria-label={`${folderState === "locate" ? "Locate" : "Reconnect"} ${source.name} folder`}
+                    aria-label={`${folderState === "locate" ? "Locate Folder for" : "Reconnect"} ${source.name}${folderState === "locate" ? "" : " folder"}`}
                     onClick={connect}
                   >
                     {folderState === "locate" ? "Locate Folder" : "Reconnect"}

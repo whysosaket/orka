@@ -18,6 +18,8 @@ import { RecoveryStep } from "./recovery-step.js";
 import { frameForStep, type OnboardingStep } from "./model.js";
 import { useOnboarding } from "./use-onboarding.js";
 import "./onboarding.css";
+import { RepositoryOnboarding } from "../repository-onboarding.js";
+import { useRepositoryCommand } from "../repository-connections.js";
 
 const descriptions = {
   memory: ["Memories", "Project instructions and knowledge."],
@@ -37,6 +39,20 @@ export function Onboarding({
   const flow = useOnboarding(state, refresh, onComplete);
   const { draft, busy, error } = flow;
   const step = draft.step;
+  const repositoryCall = useRepositoryCommand(state);
+  const [repositoryEnabled, setRepositoryEnabled] = useState(false);
+  const [githubSetup, setGithubSetup] = useState(false);
+  useEffect(() => {
+    let canceled = false;
+    void repositoryCall<{ enabled: boolean }>("capabilities")
+      .then((value) => {
+        if (!canceled) setRepositoryEnabled(value.enabled);
+      })
+      .catch(() => {});
+    return () => {
+      canceled = true;
+    };
+  }, [repositoryCall]);
   const [showProgress, setShowProgress] = useState(true);
   const title = useRef<HTMLHeadingElement>(null);
   const continueAfterSync = useEffectEvent(() =>
@@ -96,6 +112,15 @@ export function Onboarding({
       ? 3
       : 2;
   const go = (next: OnboardingStep) => flow.go(next);
+  if (githubSetup && repositoryEnabled)
+    return (
+      <RepositoryOnboarding
+        state={state}
+        refresh={refresh}
+        onBack={() => setGithubSetup(false)}
+        onComplete={flow.completeProject}
+      />
+    );
   if (step === "profile")
     return (
       <ProfileStep
@@ -311,6 +336,11 @@ export function Onboarding({
                 <Button disabled={busy} onClick={() => go("folder")}>
                   Choose a folder instead
                 </Button>
+                {repositoryEnabled && (
+                  <Button disabled={busy} onClick={() => setGithubSetup(true)}>
+                    Connect a GitHub repository
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="onboarding-flow__selection">
