@@ -1,11 +1,7 @@
-# GitHub integration UI review
+# GitHub repository UI comparisons
 
-Synthetic fixture screenshots for [Orka draft PR #12](https://github.com/whysosaket/orka/pull/12), captured from implementation commit `137caa2e16fbc7094c598c76651883dd5c0a0a1a` on 2026-11-09. The only subsequent checkout change before this commit was rebasing the same feature onto the merged self-hosting base; the UI is unchanged.
+Before/after fixture screenshots for [Orka draft PR #12](https://github.com/whysosaket/orka/pull/12).
 
-These screenshots establish UI rendering and interactions. Backend authorization, native clone behavior, and live development consent have separate tests described in the PR. No real credentials or private repository content appear here.
+Before: `137caa2e16fbc7094c598c76651883dd5c0a0a1a`. After: `3fd36dd4b01ddffddb322199ce9a2f0ba0103475`.
 
-- `01-connect`: first-run setup, Settings source connection, repository discovery.
-- `02-clone`: reviewed destination and progress/cancellation at 1160×800 and 900×640.
-- `03-access`: requester flow and owner coordination in Settings Members.
-
-This branch holds review images only; it is not intended to merge into the product branch.
+The [single UI review comment](https://github.com/whysosaket/orka/pull/12#issuecomment-6736938485) is edited in place when the UI changes. This branch contains only the current four before/after pairs and their provenance; it is not intended to merge into the product branch. Images use synthetic fixture data.
