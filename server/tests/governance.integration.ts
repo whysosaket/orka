@@ -11,15 +11,12 @@ import {
   type ProjectRules,
   type ReviewRequest,
 } from "@portable/protocol";
-import { Store } from "../packages/server-core/src/store.js";
-import { migrate } from "../packages/server-core/src/migrations.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { Blobs, bytesHash } from "../packages/server-core/src/blobs.js";
-import { acceptingMemoryResolver } from "../packages/server-core/src/testing/memory-fixtures.js";
-import {
-  identity,
-  version,
-} from "../packages/server-core/src/testing/env-fixtures.js";
+import { Store } from "./bridge/store.js";
+import { migrate } from "./bridge/migrations.js";
+import { createApi } from "./bridge/main.js";
+import { Blobs, bytesHash } from "./reference/blobs.js";
+import { acceptingMemoryResolver } from "./reference/testing/memory-fixtures.js";
+import { identity, version } from "./reference/testing/env-fixtures.js";
 
 // Review workflows remain supported when an owner selects restrictive rules.
 const reviewRule = {
@@ -920,8 +917,8 @@ await test("category access and member names work without exposing hidden files"
     member,
     "Mira Shah",
   ]);
-  const { governanceAction } =
-    await import("../packages/server-core/src/governance.js");
+  const governanceAction = (store: Store, user: string, input: unknown) =>
+    store.invoke("governance", { user, input });
   const action = (
     user: string,
     action: string,

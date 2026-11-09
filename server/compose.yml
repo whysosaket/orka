@@ -37,7 +37,7 @@ services:
     user: ${ORKA_OPERATOR_UID:-1000}:${ORKA_OPERATOR_GID:-1000}
     depends_on:
       auth: { condition: service_healthy }
-    entrypoint: [node, packages/server-core/dist/tools/create-user.js]
+    entrypoint: [orka-server, create-user]
     environment:
       AUTH_URL: http://auth:9999
     secrets: [operator_env]

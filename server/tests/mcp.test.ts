@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sessionMessages } from "../packages/server-core/src/mcp/sessions.js";
+import { sessionMessages } from "./reference/mcp/sessions.js";
 
 await test("readable sessions omit analysis, tools and setup while retaining real repeated turns", () => {
   const message = (role: string, text: string) => ({

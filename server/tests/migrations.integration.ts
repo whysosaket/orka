@@ -8,7 +8,7 @@ import {
   legacyMigrationNames,
   LegacySchemaError,
   migrate,
-} from "../packages/server-core/src/migrations.js";
+} from "./bridge/migrations.js";
 
 async function database(run: (pool: Pool) => Promise<void>) {
   const admin = new Pool({ connectionString: process.env.DATABASE_URL });

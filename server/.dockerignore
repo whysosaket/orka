@@ -29,3 +29,14 @@
 **/.runtime
 **/backups
 packages/server-core/deploy
+
+!go.mod
+!go.sum
+!cmd/
+!cmd/**
+!internal/
+!internal/**
+!GO_THIRD_PARTY_NOTICES.md
+!licenses/
+!licenses/**
+internal/server/testdata

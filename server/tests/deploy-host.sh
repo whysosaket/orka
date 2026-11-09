@@ -33,9 +33,9 @@ case "$*" in
     [[ ${TEST_FAILURE:-} != up ]] ;;
   *"pg_database_size('orka')"*) if [[ ${TEST_FAILURE:-} = space ]]; then echo 1000000000000; else echo 100; fi ;;
   'compose exec -T db psql '*) cat >/dev/null; [[ ${TEST_FAILURE:-} != backfill ]] ;;
-  *'/run/verify-deployment.ts /run/orka.env') [[ ${TEST_FAILURE:-} != health ]] ;;
+  *'verify-deployment /run/orka.env') [[ ${TEST_FAILURE:-} != health ]] ;;
   'ps '*) if [[ ${TEST_FAILURE:-} = existing ]]; then echo existing-container; fi ;;
-  *'Initial CI deployment requires'*) [[ ${TEST_FAILURE:-} != existing-data ]] ;;
+  *'check-empty-database /run/data/postgres') [[ ${TEST_FAILURE:-} != existing-data ]] ;;
 esac
 SH
 cat > "$workspace/fixture/deploy/ec2/backup.sh" <<'SH'
@@ -53,7 +53,6 @@ chmod +x "$workspace/bin/"*
 touch "$workspace/fixture/deploy/ec2/compose.yml" "$workspace/fixture/deploy/cloud/compose.yml"
 cp deploy/ec2/backfill-member-emails.sql "$workspace/fixture/deploy/ec2/"
 tar -cf "$workspace/stage/deploy.tar" -C "$workspace/fixture" deploy
-cp scripts/managed/verify-deployment.ts "$workspace/stage/"
 cp "$workspace/fixture/deploy/ec2/backup.sh" "$workspace/fixture/deploy/ec2/restore-check.sh" "$workspace/stage/"
 touch "$workspace/stage/verify-blobs.py"
 new_root() {

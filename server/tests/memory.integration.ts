@@ -12,10 +12,10 @@ import type {
   Receipt,
   ResourceInput,
 } from "@portable/protocol";
-import { Store } from "../packages/server-core/src/store.js";
-import { Blobs, bytesHash } from "../packages/server-core/src/blobs.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { JevMemoryResolver } from "../packages/server-core/src/jev.js";
+import { Store } from "./bridge/store.js";
+import { Blobs, bytesHash } from "./reference/blobs.js";
+import { createApi } from "./bridge/main.js";
+import { JevMemoryResolver } from "./reference/jev.js";
 
 async function fixture(resolver: JevMemoryResolver) {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });

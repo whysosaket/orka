@@ -5,14 +5,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
-import { Store } from "../packages/server-core/src/store.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { authSettings } from "../packages/server-core/src/auth.js";
-import {
-  GitHubRepositories,
-  githubSettings,
-} from "../packages/server-core/src/github.js";
+import { Store } from "./bridge/store.js";
+import { Blobs } from "./reference/blobs.js";
+import { createApi } from "./bridge/main.js";
+import { authSettings } from "./reference/auth.js";
+import { GitHubRepositories, githubSettings } from "./bridge/github.js";
 
 for (const mode of ["cloud", "self-hosted"] as const)
   await test(`GitHub repository lifecycle over HTTP/PostgreSQL (${mode})`, async () => {
@@ -169,6 +166,16 @@ for (const mode of ["cloud", "self-hosted"] as const)
         "GitHub integration",
         true,
       );
+      const legacyClient = await fetch(`${base}/v2/github/action`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${owner}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "requests", input: { projectId } }),
+      });
+      assert.equal(legacyClient.status, 409);
+      assert.match((await legacyClient.json()).error, /Update Orka/);
       await pool.query("insert into orka.members values($1,$2,'member')", [
         projectId,
         member,

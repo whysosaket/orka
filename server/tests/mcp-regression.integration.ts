@@ -6,12 +6,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import type { Resource, ResourceInput } from "@portable/protocol";
-import { Store } from "../packages/server-core/src/store.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
-import { authSettings } from "../packages/server-core/src/auth.js";
-import { OrkaOAuth, tokenHash } from "../packages/server-core/src/mcp/oauth.js";
-import { OrkaReader } from "../packages/server-core/src/mcp/reader.js";
-import { orkaTools } from "../packages/server-core/src/mcp/server.js";
+import { Store } from "./bridge/store.js";
+import { Blobs } from "./reference/blobs.js";
+import { authSettings } from "./reference/auth.js";
+import { OrkaOAuth, tokenHash } from "./bridge/mcp.js";
+import { OrkaReader } from "./bridge/mcp.js";
+import { orkaTools } from "./bridge/mcp.js";
 
 async function withStore(run: (store: Store) => Promise<void>) {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -36,9 +36,14 @@ await test("MCP disconnect and refresh replay revoke concurrent replacement toke
     });
     const user = randomUUID();
     const settings = authSettings({ PUBLIC_URL: "https://fixture.example" });
+    const runtimeStores = new Map<Pool, Store>();
     const oauth = (pool: Pool) =>
       new OrkaOAuth(
-        new Store(pool, store.blobs),
+        (() => {
+          const runtime = new Store(pool, store.blobs);
+          runtimeStores.set(pool, runtime);
+          return runtime;
+        })(),
         settings.publicUrl!,
         async () => user,
         settings,
@@ -86,12 +91,12 @@ await test("MCP disconnect and refresh replay revoke concurrent replacement toke
         client.client_id,
         client,
       ]);
-      const refreshPid = (
-        await refreshPool.query("select pg_backend_pid() as pid")
-      ).rows[0].pid as number;
-      const revokePid = (
-        await revokePool.query("select pg_backend_pid() as pid")
-      ).rows[0].pid as number;
+      const refreshPid = await runtimeStores
+        .get(refreshPool)!
+        .invoke<number>("pid", {});
+      const revokePid = await runtimeStores
+        .get(revokePool)!
+        .invoke<number>("pid", {});
       const independent = await seed();
       for (const method of ["access", "refresh", "replay"] as const) {
         const original = await seed();

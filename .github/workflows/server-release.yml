@@ -20,12 +20,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: server/.node-version
           cache: npm
           cache-dependency-path: server/package-lock.json
-      - run: npm ci && npm run build && npm run typecheck && npm test
+      - run: npm ci && npm run build && npm run typecheck && npm run test:go && npm run contracts:check && npm test
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Build and exercise the operator image
@@ -42,14 +46,14 @@ jobs:
           SOURCE_REPOSITORY: ${{ github.repository }}
         run: |
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
-          image="ghcr.io/${REGISTRY_OWNER,,}/orka-server:sha-${SOURCE_SHA}"
+          image="ghcr.io/${REGISTRY_OWNER,,}/orka-server-public:sha-${SOURCE_SHA}"
           mkdir -p artifacts/release
           docker buildx build --platform linux/amd64,linux/arm64 --target oss -f deploy/Dockerfile \
             --label "org.opencontainers.image.source=https://github.com/${SOURCE_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${SOURCE_SHA}" \
-            --tag "$image" --metadata-file artifacts/release/image.json --push .
+            --tag "$image" --build-arg "VERSION=${SOURCE_SHA:0:12}" --metadata-file artifacts/release/image.json --push .
           digest=$(node -p 'JSON.parse(require("node:fs").readFileSync("artifacts/release/image.json"))["containerimage.digest"]')
-          pinned="ghcr.io/${REGISTRY_OWNER,,}/orka-server@${digest}"
+          pinned="ghcr.io/${REGISTRY_OWNER,,}/orka-server-public@${digest}"
           mkdir "$RUNNER_TEMP/anonymous-docker"
           if ! docker --config "$RUNNER_TEMP/anonymous-docker" manifest inspect "$pinned" >/dev/null; then
             echo 'The container package must be public before an operator release can be published. Set its visibility to public in GitHub package settings, then rerun.' >&2

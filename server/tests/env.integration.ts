@@ -6,19 +6,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import type { EnvVersion } from "@portable/protocol";
-import { createApi } from "../packages/server-core/src/main.js";
-import { Store } from "../packages/server-core/src/store.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
-import { migrate } from "../packages/server-core/src/migrations.js";
+import { createApi } from "./bridge/main.js";
+import { Store } from "./bridge/store.js";
+import { Blobs } from "./reference/blobs.js";
+import { migrate } from "./bridge/migrations.js";
 import {
   identity,
   version,
   headerHash,
-} from "../packages/server-core/src/testing/env-fixtures.js";
-import {
-  startEnvMac,
-  type EnvMac,
-} from "../packages/server-core/src/testing/env-native.js";
+} from "./reference/testing/env-fixtures.js";
+import { startEnvMac, type EnvMac } from "./reference/testing/env-native.js";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import type { EnvManifest, EnvSet } from "@portable/protocol";
 

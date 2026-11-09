@@ -7,11 +7,11 @@ import { join, resolve } from "node:path";
 import { parseEnv } from "node:util";
 import { createServer, type ServerResponse } from "node:http";
 import { Pool } from "pg";
-import { Store } from "../../packages/server-core/src/store.js";
-import { Blobs } from "../../packages/server-core/src/blobs.js";
-import { migrate } from "../../packages/server-core/src/migrations.js";
-import { createApi } from "../../packages/server-core/src/main.js";
-import { authSettings } from "../../packages/server-core/src/auth.js";
+import { Store } from "../bridge/store.js";
+import { Blobs } from "../reference/blobs.js";
+import { migrate } from "../bridge/migrations.js";
+import { createApi } from "../bridge/main.js";
+import { authSettings } from "../reference/auth.js";
 
 const [environmentPath, nativePath, githubLogin = "whysosaket"] =
   process.argv.slice(2);

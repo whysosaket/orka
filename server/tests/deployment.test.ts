@@ -1,9 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  ossSettings,
-  managedSettings,
-} from "../packages/server-core/src/deployment.js";
+import { ossSettings, managedSettings } from "./reference/deployment.js";
 
 await test("OSS starts without cloud secrets; managed composition requires its email configuration", () => {
   const oss = ossSettings({ DEPLOYMENT_MODE: "cloud" });
