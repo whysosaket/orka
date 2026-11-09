@@ -33,7 +33,13 @@ export function ProjectSetupDialog({
   inviteService,
   serviceMismatch = false,
   onSwitchService,
+  repositoryEnabled = false,
+  sourceMode = "folder",
+  onSourceMode,
 }: {
+  repositoryEnabled?: boolean;
+  sourceMode?: "github" | "folder";
+  onSourceMode?: (value: "github" | "folder") => void;
   mode: ProjectSetupMode;
   value: string;
   busy: boolean;
@@ -96,7 +102,36 @@ export function ProjectSetupDialog({
                 disabled={busy}
                 onChange={(event) => onChange(event.target.value)}
               />
-              <SourceFolders selection={selection} busy={busy} run={run} />
+              {repositoryEnabled && (
+                <fieldset className="repository-source-choice">
+                  <legend>Repository</legend>
+                  <label>
+                    <input
+                      type="radio"
+                      name="source-kind"
+                      checked={sourceMode === "github"}
+                      onChange={() => onSourceMode?.("github")}
+                    />
+                    GitHub repository
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="source-kind"
+                      checked={sourceMode === "folder"}
+                      onChange={() => onSourceMode?.("folder")}
+                    />
+                    Local folder
+                  </label>
+                </fieldset>
+              )}
+              {sourceMode === "github" ? (
+                <p className="create-project-source-hint">
+                  Choose an account and repository next.
+                </p>
+              ) : (
+                <SourceFolders selection={selection} busy={busy} run={run} />
+              )}
             </>
           ) : (
             <TextField

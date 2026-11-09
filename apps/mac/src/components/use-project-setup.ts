@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ProjectSharing } from "../types.js";
@@ -21,6 +21,7 @@ export async function connectProject(
   const paths = typeof path === "string" ? [path] : (path ?? []);
   if (paths.length)
     await invoke("connect_project_sources", { id, paths, sourceId });
+  return paths.length > 0;
 }
 
 export function useProjectSetup(
@@ -29,6 +30,22 @@ export function useProjectSetup(
   apiUrl?: string,
   onRepositorySetup?: (id: string) => void,
 ) {
+  const [repositoryEnabled, setRepositoryEnabled] = useState(false);
+  const [sourceChoice, setSourceChoice] = useState<"github" | "folder" | null>(
+    null,
+  );
+  const sourceMode = sourceChoice ?? (repositoryEnabled ? "github" : "folder");
+  useEffect(() => {
+    let canceled = false;
+    void invoke<{ repositories?: { github?: number } }>("auth_capabilities")
+      .then((value) => {
+        if (!canceled) setRepositoryEnabled(value.repositories?.github === 1);
+      })
+      .catch(() => {});
+    return () => {
+      canceled = true;
+    };
+  }, [apiUrl]);
   const [dialog, setDialog] = useState<ProjectSetupMode | null>(null);
   const [input, setInput] = useState("");
   const selection = useSourceFolders();
@@ -49,6 +66,7 @@ export function useProjectSetup(
     onError("");
     setInput(value);
     selection.clear();
+    setSourceChoice(null);
     setSharing(defaultSharing);
     setDialog(mode);
   };
@@ -76,14 +94,14 @@ export function useProjectSetup(
     setDialog(null);
     setInput("");
     if (dialog === "create") {
-      if (selection.folders.length)
+      if (sourceMode === "folder" && selection.folders.length)
         await invoke("connect_project_sources", {
           id: result.id,
           paths: selection.folders,
         });
       selection.clear();
       if (
-        !selection.folders.length &&
+        sourceMode === "github" &&
         result.repositorySetup &&
         onRepositorySetup
       )
@@ -95,6 +113,12 @@ export function useProjectSetup(
 
   return {
     dialog,
+    repositoryEnabled,
+    sourceMode,
+    setSourceMode: (value: "github" | "folder") => {
+      setSourceChoice(value);
+      selection.clear();
+    },
     input,
     setInput,
     selection,

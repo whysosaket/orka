@@ -1,728 +1,493 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
-import type {
-  GitHubRepository,
-  RepositoryAccessRequest,
-} from "@portable/protocol";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  CheckCircleFillIcon,
+  AlertFillIcon,
+  DotFillIcon,
+  FileDirectoryIcon,
+  KebabHorizontalIcon,
+  PlusIcon,
+  SyncIcon,
+  XIcon,
+} from "@primer/octicons-react";
+import type { RepositoryAccessRequest } from "@portable/protocol";
 import type { Project, Snapshot } from "../types.js";
 import { Button } from "./button.js";
+import { IconButton } from "./icon-button.js";
 import { TextField } from "./text-field.js";
+import { Overlay } from "./overlay.js";
+import { ActionPopover } from "./resource-actions.js";
 import { connectProject } from "./use-project-setup.js";
+import {
+  RepositoryPicker,
+  type RepositorySource,
+} from "./repository-picker.js";
+import { useRepositories, useRepositoryCommand } from "./use-repositories.js";
+export { useRepositoryCommand } from "./use-repositories.js";
 
-interface GitHubStatus {
-  connected: boolean;
-  identity: { id: string; login: string } | null;
-  installationUrl: string;
-}
-interface Authorization {
-  id: string;
-  userCode: string;
-  verificationUrl: string;
-  interval: number;
-  expiresIn: number;
-}
-interface CloneJob {
-  id: string;
-  projectId: string;
-  sourceId: string;
-  state: string;
-  message: string;
-  destination: string;
-  folderIdentity?: string;
-}
-interface Access {
-  state: "ready" | "not_connected" | "reconnect" | "access_unavailable";
-}
-export function useRepositoryCommand(state: Snapshot) {
-  const user = state.user,
-    service = state.config?.apiUrl;
-  return useCallback(
-    <T,>(action: string, input: unknown = {}) =>
-      invoke<T>("repository_command", {
-        action,
-        input,
-        context: { user, service },
-      }),
-    [user, service],
-  );
-}
-
+type ConnectionDialog = {
+  kind: "connect" | "request";
+  source?: RepositorySource;
+} | null;
 export function RepositoryConnections({
   project,
   state,
   refresh,
+  renderLocalFolders,
+  onLocalFolder,
+  onDisconnectSource,
+  folderBusy = false,
+  queued = 0,
+  initiallyOpen = false,
+  initialSource,
+  dialogOnly = false,
+  onClose,
+  onConnecting,
 }: {
   project: Project;
   state: Snapshot;
   refresh: () => Promise<unknown>;
+  renderLocalFolders?: (
+    enabled: boolean,
+    onLink: (source: RepositorySource) => void,
+  ) => ReactNode;
+  onLocalFolder?: () => Promise<unknown>;
+  onDisconnectSource?: (sourceId: string) => void;
+  folderBusy?: boolean;
+  queued?: number;
+  initiallyOpen?: boolean;
+  initialSource?: RepositorySource;
+  dialogOnly?: boolean;
+  onClose?: () => void;
+  onConnecting?: () => void;
 }) {
-  const call = useRepositoryCommand(state);
-  const [enabled, setEnabled] = useState(false);
-  const [status, setStatus] = useState<GitHubStatus | null>(null);
-  const [authorization, setAuthorization] = useState<Authorization | null>(
-    null,
+  const controller = useRepositories(project, state, refresh);
+  const { call, enabled, busy, access, jobs, run, error, status } = controller;
+  const multipleSources =
+    (project.sources ?? []).filter(
+      (source) =>
+        source.repository &&
+        (!source.path || source.folderState === "reconnect"),
+    ).length > 1;
+  const [dialog, setDialog] = useState<ConnectionDialog>(
+    initiallyOpen && !multipleSources
+      ? { kind: "connect", source: initialSource }
+      : null,
   );
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [jobs, setJobs] = useState<CloneJob[]>([]);
-  const [access, setAccess] = useState<Record<string, Access>>({});
-  const [installations, setInstallations] = useState<
-    { id: string; name: string }[]
-  >([]);
-  const [installationPage, setInstallationPage] = useState<number | null>(null);
-  const [installation, setInstallation] = useState("");
-  const [repositories, setRepositories] = useState<GitHubRepository[]>([]);
-  const [nextPage, setNextPage] = useState<number | null>(null);
-  const [sourceId, setSourceId] = useState("");
-  const [search, setSearch] = useState("");
-  const [directory, setDirectory] = useState("");
-  const [cloneSource, setCloneSource] = useState("");
-  const [folderName, setFolderName] = useState("");
-  const [requestSource, setRequestSource] = useState("");
   const [reason, setReason] = useState("");
-  const active = useRef(true);
-  const jobsRef = useRef<CloneJob[]>([]);
+  const [requested, setRequested] = useState<string[]>([]);
+  const [notice, setNotice] = useState("");
+  const denied = Object.values(access).some(
+    (value) => value.state === "access_unavailable",
+  );
   useEffect(() => {
-    active.current = true;
-    return () => {
-      active.current = false;
-    };
-  }, []);
-  const run = async (operation: () => Promise<void>) => {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      await operation();
-    } catch (e) {
-      if (active.current) setError(String(e));
-    } finally {
-      if (active.current) setBusy(false);
-    }
-  };
-  useEffect(() => {
+    if (!denied) return;
     let canceled = false;
-    void call<{ enabled: boolean }>("capabilities")
-      .then(async (caps) => {
-        if (!caps.enabled || canceled) return;
-        const value = await call<GitHubStatus>("status");
-        if (!canceled) {
-          setEnabled(true);
-          setStatus(value);
-        }
+    void call<{ items: RepositoryAccessRequest[] }>("requests", {
+      projectId: project.id,
+    })
+      .then((value) => {
+        if (!canceled)
+          setRequested(
+            value.items
+              .filter(
+                (request) =>
+                  request.requester === state.user &&
+                  [
+                    "requested",
+                    "waiting_on_github",
+                    "invitation_pending",
+                  ].includes(request.status),
+              )
+              .map((request) => request.sourceId),
+          );
       })
-      .catch(() => {
-        /* Older servers retain local-folder connection. */
-      });
+      .catch(() => {});
     return () => {
       canceled = true;
     };
-  }, [call]);
-  useEffect(() => {
-    if (!authorization) return;
-    let canceled = false,
-      timer: ReturnType<typeof setTimeout>;
-    const expires = Date.now() + authorization.expiresIn * 1000;
-    const poll = async () => {
-      try {
-        if (Date.now() >= expires)
-          throw new Error("GitHub authorization expired. Connect again.");
-        const result = await call<{
-          connected?: boolean;
-          pending?: boolean;
-          interval?: number;
-          error?: string;
-        }>("poll", { id: authorization.id });
-        if (canceled) return;
-        if (result.error) throw new Error(result.error);
-        if (result.connected) {
-          setAuthorization(null);
-          setStatus(await call<GitHubStatus>("status"));
-          setNotice(
-            "GitHub connected. Review the account and select repository access.",
-          );
-        } else
-          timer = setTimeout(
-            () => void poll(),
-            Math.max(5, result.interval ?? authorization.interval) * 1000,
-          );
-      } catch (e) {
-        if (!canceled) {
-          setError(String(e));
-          setAuthorization(null);
+  }, [call, denied, project.id, state.user]);
+  const close = () => {
+    setDialog(null);
+    onClose?.();
+  };
+  const openPicker = (source?: RepositorySource) => {
+    setNotice("");
+    setDialog({ kind: "connect", source });
+  };
+  if (!enabled) return <>{renderLocalFolders?.(false, openPicker)}</>;
+  const disabled = busy || folderBusy;
+  const sources = (project.sources ?? []).filter((source) => source.repository);
+  const needsAccountConnection =
+    !status?.connected ||
+    Object.values(access).some((value) =>
+      ["not_connected", "reconnect"].includes(value.state),
+    );
+  const dialogUi =
+    dialog?.kind === "connect" ? (
+      <RepositoryPicker
+        project={project}
+        source={
+          dialog.source
+            ? (project.sources?.find(
+                (source) => source.id === dialog.source?.id,
+              ) ?? dialog.source)
+            : undefined
         }
-      }
-    };
-    timer = setTimeout(() => void poll(), authorization.interval * 1000);
-    return () => {
-      canceled = true;
-      clearTimeout(timer);
-    };
-  }, [authorization, call]);
-  useEffect(() => {
-    if (!enabled) return;
-    let canceled = false,
-      timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const values = await call<CloneJob[]>("jobs");
-        if (canceled) return;
-        const own = values.filter((job) => job.projectId === project.id);
-        if (
-          own.some(
-            (job) =>
-              job.state === "connected" &&
-              jobsRef.current.some(
-                (previous) =>
-                  previous.id === job.id && previous.state !== "connected",
-              ),
-          )
-        )
-          await refresh();
-        jobsRef.current = own;
-        setJobs(own);
-      } catch (e) {
-        if (!canceled) setError(String(e));
-      }
-      if (!canceled) timer = setTimeout(() => void poll(), 1000);
-    };
-    void poll();
-    return () => {
-      canceled = true;
-      clearTimeout(timer);
-    };
-  }, [enabled, call, project.id, refresh]);
-  if (!enabled) return null;
-  const sources = project.sources ?? [];
-  const openGitHub = (url: string) => call("open-github", { url });
-  const loadInstallations = async (page = 1) => {
-    const value = await call<{
-      items: { id: string; name: string }[];
-      nextPage: number | null;
-    }>("installations", { page });
-    setInstallations((previous) =>
-      page === 1
-        ? value.items
-        : [
-            ...new Map(
-              [...previous, ...value.items].map((item) => [item.id, item]),
-            ).values(),
-          ],
-    );
-    setInstallationPage(value.nextPage);
-    if (!value.items.length && page === 1)
-      setNotice(
-        "Install Orka on your account or request organization approval, then refresh accounts.",
-      );
-  };
-  const loadRepositories = async (id: string, page = 1) => {
-    const value = await call<{
-      items: GitHubRepository[];
-      nextPage: number | null;
-    }>("repositories", { installationId: id, page });
-    setRepositories((previous) =>
-      page === 1
-        ? value.items
-        : [
-            ...new Map(
-              [...previous, ...value.items].map((item) => [item.id, item]),
-            ).values(),
-          ],
-    );
-    setNextPage(value.nextPage);
-  };
-  const selectedSource = sources.find((source) => source.id === cloneSource);
-  return (
-    <section className="repository-panel" aria-label="GitHub repositories">
-      <div className="settings-row">
-        <div>
-          <h3>GitHub repositories</h3>
-          <p>
-            {status?.connected
-              ? `Connected as @${status.identity?.login}`
-              : "Connect GitHub to select and clone repositories."}
-          </p>
-        </div>
-        <div className="actions">
-          <Button
-            size="sm"
-            disabled={busy}
-            onClick={() =>
-              void run(async () => {
-                const value = await call<Authorization>("begin");
-                setAuthorization(value);
-                await openGitHub(value.verificationUrl);
-              })
-            }
-          >
-            {status?.connected ? "Reconnect GitHub" : "Connect GitHub"}
-          </Button>
-          {status?.connected && (
-            <Button
+        controller={controller}
+        onClose={close}
+        onRequestAccess={(source) => {
+          setReason("");
+          setDialog({ kind: "request", source });
+        }}
+        onLocalFolder={
+          onLocalFolder ??
+          (async () => {
+            const connected = await connectProject(project.id);
+            if (connected) await refresh();
+            return connected;
+          })
+        }
+        onConnected={() => {
+          close();
+          onConnecting?.();
+        }}
+      />
+    ) : (
+      dialog?.source && (
+        <Overlay
+          open
+          title="Request repository access"
+          className="repository-dialog"
+          onClose={() => {
+            if (!busy) close();
+          }}
+        >
+          <div className="repository-dialog-heading">
+            <h2>Request access</h2>
+            <IconButton
+              icon={XIcon}
               size="sm"
+              variant="tertiary"
+              aria-label="Close access request"
               disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  await call("disconnect");
-                  setStatus(await call<GitHubStatus>("status"));
-                  setInstallations([]);
-                  setRepositories([]);
-                  setAccess({});
-                })
-              }
-            >
-              Disconnect GitHub
-            </Button>
-          )}
-        </div>
-      </div>
-      {authorization && (
-        <div className="settings-notice" role="status">
-          <p>
-            Enter this code on GitHub: <strong>{authorization.userCode}</strong>
-            . Confirm the account before authorizing Orka.
-          </p>
-          <div className="actions">
-            <Button
-              size="sm"
-              onClick={() =>
-                void run(async () => {
-                  await openGitHub(authorization.verificationUrl);
-                })
-              }
-            >
-              Open GitHub authorization
-            </Button>
-            <Button
-              size="sm"
-              onClick={() =>
-                void run(async () => {
-                  await call("cancel-authorization", { id: authorization.id });
-                  setAuthorization(null);
-                })
-              }
-            >
-              Cancel GitHub connection
-            </Button>
+              onClick={close}
+            />
           </div>
-        </div>
-      )}
-      {status?.connected && (
-        <>
-          <div className="actions">
-            <Button
-              size="sm"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  await openGitHub(status.installationUrl);
-                })
-              }
-            >
-              Configure GitHub access
-            </Button>
-            {project.role === "owner" && (
-              <Button
-                size="sm"
-                disabled={busy}
-                onClick={() => void run(() => loadInstallations())}
-              >
-                Browse repositories
-              </Button>
-            )}
-          </div>
-          {project.role === "owner" && installations.length > 0 && (
-            <div className="repository-browser">
-              <label>
-                GitHub account
-                <select
-                  aria-label="GitHub account"
-                  value={installation}
-                  disabled={busy}
-                  onChange={(event) => {
-                    const id = event.target.value;
-                    setInstallation(id);
-                    setRepositories([]);
-                    if (id) void run(() => loadRepositories(id));
-                  }}
-                >
-                  <option value="">Choose an account</option>
-                  {installations.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {installationPage && (
-                <Button
-                  size="sm"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(() => loadInstallations(installationPage))
-                  }
-                >
-                  Load more accounts
-                </Button>
-              )}
-              <label>
-                Destination source
-                <select
-                  aria-label="Destination source"
-                  value={sourceId}
-                  disabled={busy}
-                  onChange={(event) => setSourceId(event.target.value)}
-                >
-                  <option value="">Add a new repository source</option>
-                  {sources.map((source) => (
-                    <option key={source.id} value={source.id}>
-                      {source.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <TextField
-                label="Filter loaded repositories"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-              {repositories
-                .filter((repo) =>
-                  repo.fullName.toLowerCase().includes(search.toLowerCase()),
-                )
-                .map((repo) => (
-                  <div className="settings-row" key={repo.id}>
-                    <div>
-                      <h3>{repo.fullName}</h3>
-                      <p>{repo.private ? "Private" : "Public"}</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      disabled={busy}
-                      onClick={() =>
-                        void run(async () => {
-                          if (sourceId) {
-                            const source = sources.find(
-                              (item) => item.id === sourceId,
-                            );
-                            await call("bind", {
-                              projectId: project.id,
-                              sourceId,
-                              repositoryId: repo.id,
-                              expectedRevision:
-                                source?.repositoryRevision ??
-                                source?.repository?.revision ??
-                                0,
-                            });
-                          } else
-                            await call("add-source", {
-                              projectId: project.id,
-                              repositoryId: repo.id,
-                            });
-                          await refresh();
-                          setNotice(
-                            "Repository linked. Review its location, then clone or locate an existing checkout.",
-                          );
-                        })
-                      }
-                    >
-                      {sourceId ? "Link repository" : "Add repository source"}
-                    </Button>
-                  </div>
-                ))}
-              {nextPage && (
-                <Button
-                  size="sm"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(() => loadRepositories(installation, nextPage))
-                  }
-                >
-                  Load more repositories
-                </Button>
-              )}
-            </div>
-          )}
-        </>
-      )}
-      {sources
-        .filter((source) => source.repository)
-        .map((source) => (
-          <div className="repository-source" key={source.id}>
-            <div>
-              <h3>{source.name}</h3>
-              <p>
-                {source.repository!.fullName} ·{" "}
-                {source.path
-                  ? "Connected on this Mac"
-                  : "Not connected on this Mac"}
-              </p>
-            </div>
-            <div className="actions">
-              <Button
-                size="sm"
-                disabled={busy}
-                onClick={() =>
-                  void run(async () => {
-                    const value = await call<Access>("access", {
-                      projectId: project.id,
-                      sourceId: source.id,
-                    });
-                    setAccess((previous) => ({
-                      ...previous,
-                      [source.id]: value,
-                    }));
-                  })
-                }
-              >
-                Check access
-              </Button>
-              {!source.path && (
-                <>
-                  <Button
-                    size="sm"
-                    disabled={busy || access[source.id]?.state !== "ready"}
-                    onClick={() =>
-                      void run(async () => {
-                        setCloneSource(source.id);
-                        setFolderName(
-                          source.repository!.fullName.replace("/", "-"),
-                        );
-                        if (!directory)
-                          setDirectory(await call<string>("default-directory"));
-                      })
-                    }
-                  >
-                    Clone &amp; connect
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(async () => {
-                        await connectProject(project.id, source.id);
-                        await refresh();
-                      })
-                    }
-                  >
-                    Locate existing checkout
-                  </Button>
-                </>
-              )}
-              {access[source.id]?.state === "access_unavailable" && (
-                <>
-                  <Button
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => {
-                      setRequestSource(source.id);
-                      setReason("");
-                    }}
-                  >
-                    Request repository access
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(async () => {
-                        if (status) await openGitHub(status.installationUrl);
-                      })
-                    }
-                  >
-                    Request app approval
-                  </Button>
-                </>
-              )}
-              {project.role === "owner" && (
-                <Button
-                  size="sm"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      await call("unlink", {
-                        projectId: project.id,
-                        sourceId: source.id,
-                        expectedRevision:
-                          source.repositoryRevision ??
-                          source.repository!.revision,
-                      });
-                      await refresh();
-                    })
-                  }
-                >
-                  Unlink repository
-                </Button>
-              )}
-            </div>
-            {access[source.id] && (
-              <p role="status">
-                {access[source.id].state === "ready"
-                  ? "GitHub access verified. Ready to clone."
-                  : access[source.id].state === "not_connected" ||
-                      access[source.id].state === "reconnect"
-                    ? "Connect or reconnect GitHub to verify access."
-                    : "Access unavailable. Check repository membership, app approval and organization SSO."}
-              </p>
-            )}
-          </div>
-        ))}
-      {selectedSource && (
-        <div className="repository-browser" aria-label="Clone destination">
-          <h3>Clone {selectedSource.repository?.fullName}</h3>
-          <TextField
-            label="Workspace location"
-            value={directory}
-            disabled={busy}
-            onChange={(event) => setDirectory(event.target.value)}
-          />
-          <Button
-            size="sm"
-            disabled={busy}
-            onClick={() =>
-              void run(async () => {
-                const selected = await open({
-                  directory: true,
-                  multiple: false,
-                  title: "Choose workspace location",
-                });
-                if (typeof selected === "string") setDirectory(selected);
-              })
-            }
-          >
-            Choose workspace folder
-          </Button>
-          <TextField
-            label="Checkout folder name"
-            value={folderName}
-            disabled={busy}
-            onChange={(event) => setFolderName(event.target.value)}
-          />
-          <p>
-            Destination: {directory}/{folderName}
-          </p>
-          <div className="actions">
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={busy || !directory || !folderName}
-              onClick={() =>
-                void run(async () => {
-                  const job = await call<CloneJob>("clone", {
-                    projectId: project.id,
-                    sourceId: selectedSource.id,
-                    directory,
-                    folderName,
-                  });
-                  setJobs((previous) => [job, ...previous]);
-                  jobsRef.current = [job, ...jobsRef.current];
-                  setCloneSource("");
-                })
-              }
-            >
-              Start clone
-            </Button>
-            <Button
-              size="sm"
-              disabled={busy}
-              onClick={() => setCloneSource("")}
-            >
-              Cancel clone setup
-            </Button>
-          </div>
-        </div>
-      )}
-      {requestSource && (
-        <div className="repository-browser">
+          <p>{dialog.source.repository?.fullName}</p>
           <TextField
             label="Reason for repository access"
             maxLength={1000}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
           />
-          <p>
-            An Orka owner coordinates the request with a GitHub administrator.
-            GitHub access is verified separately.
-          </p>
-          <div className="actions">
+          <p>A project owner will coordinate access on GitHub.</p>
+          <details className="repository-help">
+            <summary>Already have repository access?</summary>
+            <p>
+              Orka may need permission to use this repository. Your organization
+              may require approval.
+            </p>
             <Button
               size="sm"
+              disabled={busy}
+              onClick={() =>
+                void run(() => controller.openGitHub(status!.installationUrl))
+              }
+            >
+              Manage GitHub access
+            </Button>
+          </details>
+          <div className="repository-dialog-footer">
+            <span />
+            <Button
+              variant="primary"
               disabled={busy || !reason.trim()}
               onClick={() =>
                 void run(async () => {
+                  const sourceId = dialog.source!.id;
                   await call("request-access", {
                     projectId: project.id,
-                    sourceId: requestSource,
+                    sourceId,
                     reason,
                   });
-                  setRequestSource("");
+                  setRequested((values) => [...values, sourceId]);
                   setNotice(
-                    "Request sent to project owners. Follow its progress in Manage → Requests.",
+                    "Access request sent. Follow it in Settings → Members.",
                   );
+                  close();
                 })
               }
             >
-              Send repository request
-            </Button>
-            <Button size="sm" onClick={() => setRequestSource("")}>
-              Cancel request
+              {busy ? "Sending…" : "Send request"}
             </Button>
           </div>
-        </div>
-      )}
-      {jobs.map((job) => (
-        <div className="repository-source" key={job.id}>
-          <p>
-            <strong>
-              {sources.find((source) => source.id === job.sourceId)?.name ??
-                "Repository"}
-            </strong>{" "}
-            · {job.state}
-          </p>
-          <p role="status">{job.message}</p>
-          <p className="settings-path">{job.destination}</p>
-          <div className="actions">
-            {["queued", "cloning"].includes(job.state) && (
-              <Button
-                size="sm"
-                onClick={() =>
-                  void run(async () => {
-                    await call("cancel-clone", { id: job.id });
-                  })
-                }
-              >
-                Cancel clone
-              </Button>
-            )}
-            {["failed", "interrupted", "canceled"].includes(job.state) &&
-              job.folderIdentity && (
-                <Button
-                  size="sm"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      await call("retry-connect", { id: job.id });
-                      await refresh();
-                    })
-                  }
+          {error && <p role="alert">{error}</p>}
+        </Overlay>
+      )
+    );
+  const content = (
+    <section
+      aria-label="Project repositories"
+      className="repository-connections"
+    >
+      <div className="settings-group settings-source-list">
+        {renderLocalFolders?.(true, openPicker)}
+        {sources.map((source) => {
+          const value = access[source.id];
+          const job = jobs.find(
+            (job) => job.sourceId === source.id && job.state !== "connected",
+          );
+          const active =
+            job && ["queued", "cloning", "connecting"].includes(job.state);
+          const ready = value?.state === "ready";
+          const needsGithub =
+            value && ["not_connected", "reconnect"].includes(value.state);
+          const denied = value?.state === "access_unavailable";
+          const failed = value?.state === "unavailable";
+          const connected = Boolean(
+            source.path && source.folderState !== "reconnect",
+          );
+          const label = !value
+            ? "Checking GitHub access"
+            : ready
+              ? "GitHub access verified"
+              : denied
+                ? "GitHub access required"
+                : needsGithub
+                  ? "Connect GitHub to verify access"
+                  : "Could not check GitHub access";
+          const StatusIcon = ready
+            ? CheckCircleFillIcon
+            : value
+              ? AlertFillIcon
+              : DotFillIcon;
+          return (
+            <div className="repository-card-row" key={source.id}>
+              <div className="repository-card-main">
+                <FileDirectoryIcon size={18} aria-hidden="true" />
+                <div className="repository-card-identity">
+                  <strong>{source.repository!.fullName}</strong>
+                  <span className="repository-card-meta">
+                    {active
+                      ? job.message
+                      : connected
+                        ? "Connected on this Mac"
+                        : source.folderState === "reconnect"
+                          ? "Folder needs reconnecting"
+                          : "Not connected on this Mac"}
+                  </span>
+                </div>
+                <span
+                  className="repository-access-icon"
+                  data-state={ready ? "ready" : value ? "warning" : "checking"}
+                  role="img"
+                  aria-label={label}
+                  title={`${label}${value?.checkedAt ? ` · ${new Date(value.checkedAt).toLocaleString()}` : ""}`}
                 >
-                  Retry connect
-                </Button>
+                  <StatusIcon size={16} />
+                </span>
+                <div className="repository-card-actions">
+                  {active ? (
+                    job.state !== "connecting" && (
+                      <IconButton
+                        icon={XIcon}
+                        size="sm"
+                        variant="tertiary"
+                        aria-label={`Cancel clone for ${source.name}`}
+                        title="Cancel clone"
+                        onClick={() =>
+                          void run(async () => {
+                            await call("cancel-clone", { id: job.id });
+                          })
+                        }
+                      />
+                    )
+                  ) : job?.folderIdentity && ready ? (
+                    <Button
+                      size="sm"
+                      disabled={disabled}
+                      onClick={() =>
+                        void run(async () => {
+                          await call("retry-connect", { id: job.id });
+                          await refresh();
+                        })
+                      }
+                    >
+                      Finish connecting
+                    </Button>
+                  ) : needsGithub ? null : denied ? (
+                    <Button
+                      size="sm"
+                      disabled={disabled || requested.includes(source.id)}
+                      onClick={() => {
+                        setReason("");
+                        setDialog({ kind: "request", source });
+                      }}
+                    >
+                      {requested.includes(source.id)
+                        ? "Request sent"
+                        : "Request access"}
+                    </Button>
+                  ) : failed ? (
+                    <IconButton
+                      icon={SyncIcon}
+                      size="sm"
+                      variant="tertiary"
+                      aria-label={`Retry access check for ${source.name}`}
+                      title="Retry access check"
+                      disabled={disabled}
+                      onClick={() =>
+                        void run(() => controller.recheck(source.id))
+                      }
+                    />
+                  ) : (
+                    !connected && (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        disabled={disabled || !ready}
+                        onClick={() =>
+                          source.path
+                            ? void run(async () => {
+                                await connectProject(
+                                  project.id,
+                                  source.id,
+                                  source.path!,
+                                );
+                                await refresh();
+                              })
+                            : openPicker(source)
+                        }
+                      >
+                        {source.path ? "Reconnect" : "Connect"}
+                      </Button>
+                    )
+                  )}
+                  <ActionPopover
+                    label={`Options for ${source.name}`}
+                    trigger={
+                      <IconButton
+                        icon={KebabHorizontalIcon}
+                        size="sm"
+                        variant="tertiary"
+                        aria-label={`Options for ${source.name}`}
+                        disabled={disabled || Boolean(active)}
+                      />
+                    }
+                  >
+                    {!connected && (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          void run(async () => {
+                            await connectProject(
+                              project.id,
+                              source.id,
+                              source.path ?? undefined,
+                            );
+                            await refresh();
+                          })
+                        }
+                      >
+                        Use existing folder
+                      </Button>
+                    )}
+                    {connected && onDisconnectSource && (
+                      <Button
+                        size="sm"
+                        disabled={queued > 0}
+                        onClick={() => onDisconnectSource(source.id)}
+                      >
+                        Disconnect folder on this Mac
+                      </Button>
+                    )}
+                    {value && !ready && (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          void run(() => controller.recheck(source.id))
+                        }
+                      >
+                        Refresh access
+                      </Button>
+                    )}
+                    {project.role === "owner" && (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          void run(async () => {
+                            await call("unlink", {
+                              projectId: project.id,
+                              sourceId: source.id,
+                              expectedRevision:
+                                source.repositoryRevision ??
+                                source.repository!.revision,
+                            });
+                            await refresh();
+                          })
+                        }
+                      >
+                        Remove GitHub link
+                      </Button>
+                    )}
+                  </ActionPopover>
+                </div>
+              </div>
+              {job && !active && (
+                <p className="repository-job-feedback" role="status">
+                  {job.message}
+                </p>
               )}
+            </div>
+          );
+        })}
+        {(needsAccountConnection || project.role === "owner") && (
+          <div className="settings-add-folder-row">
+            <Button
+              variant={needsAccountConnection ? "primary" : "tertiary"}
+              className={
+                needsAccountConnection ? undefined : "settings-add-folder"
+              }
+              disabled={disabled}
+              onClick={() =>
+                openPicker(needsAccountConnection ? sources[0] : undefined)
+              }
+            >
+              {!needsAccountConnection && (
+                <PlusIcon size={16} aria-hidden="true" />
+              )}
+              {needsAccountConnection ? "Connect GitHub" : "Connect repository"}
+            </Button>
           </div>
-        </div>
-      ))}
+        )}
+      </div>
       {notice && <p role="status">{notice}</p>}
-      {error && (
-        <p className="setup-error" role="alert">
-          {error}
-        </p>
-      )}
+      {error && !dialog && <p role="alert">{error}</p>}
+      {dialogUi}
     </section>
   );
+  if (dialogOnly && multipleSources)
+    return (
+      <Overlay
+        open
+        title="Connect project repositories"
+        className="repository-dialog"
+        onClose={close}
+      >
+        <div className="repository-dialog-heading">
+          <h2>Connect repositories</h2>
+          <IconButton
+            icon={XIcon}
+            variant="tertiary"
+            size="sm"
+            aria-label="Close project repository setup"
+            onClick={close}
+          />
+        </div>
+        {content}
+      </Overlay>
+    );
+  return dialogOnly ? dialogUi : content;
 }
 
 export function RepositoryRequests({

@@ -21,6 +21,7 @@ use zeroize::Zeroizing;
 
 static JOBS: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+mod access;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -399,6 +400,9 @@ pub async fn repository_command(action: String, input: Value, context: Context) 
     if action == "jobs" {
         return list(&context);
     }
+    if action == "access-status" {
+        return access::status(&context, input).await;
+    }
     if action == "default-directory" {
         return Ok(json!(dirs::home_dir()
             .ok_or("Cannot locate your home folder")?
@@ -565,6 +569,15 @@ pub async fn repository_command(action: String, input: Value, context: Context) 
         return Err("Unknown repository operation".into());
     }
     let result = context.api(&action, input).await?;
+    if action == "disconnect" || (action == "poll" && result["connected"] == true) {
+        let _lock = projects::lock()?;
+        context.check()?;
+        let db = context.database()?;
+        let revision = db::get(&db, "repository-auth-revision")?
+            .as_u64()
+            .unwrap_or(0);
+        db::set(&db, "repository-auth-revision", &json!(revision + 1))?;
+    }
     if action == "bind" || action == "unlink" || action == "add-source" {
         let catalog =
             sync::api_at(&context.user, &context.service, "GET", "/v2/projects", None).await?;

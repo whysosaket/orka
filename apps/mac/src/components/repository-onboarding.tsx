@@ -25,6 +25,12 @@ export function RepositoryOnboarding({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const project = state.projects.find((item) => item.id === projectId);
+  const unconnectedSources =
+    project?.sources?.filter(
+      (source) =>
+        source.repository &&
+        (!source.path || source.folderState === "reconnect"),
+    ) ?? [];
   const submit = async () => {
     setBusy(true);
     setError("");
@@ -54,12 +60,13 @@ export function RepositoryOnboarding({
   };
   return (
     <main className="repository-onboarding">
-      <h1>Connect repositories from GitHub</h1>
+      <h1>Connect a repository</h1>
       <p>
-        Create or join an Orka project, connect GitHub, then clone the
-        repositories you need on this Mac.
+        {project
+          ? `Add a repository to ${project.name}.`
+          : "Choose a project, then connect your repository."}
       </p>
-      {state.projects.length > 0 && (
+      {state.projects.length > 1 && (
         <label>
           Orka project
           <select
@@ -83,28 +90,6 @@ export function RepositoryOnboarding({
             void submit();
           }}
         >
-          <div className="actions">
-            <Button
-              disabled={busy}
-              aria-pressed={mode === "create"}
-              onClick={() => {
-                setMode("create");
-                setValue("");
-              }}
-            >
-              Create project
-            </Button>
-            <Button
-              disabled={busy}
-              aria-pressed={mode === "join"}
-              onClick={() => {
-                setMode("join");
-                setValue("");
-              }}
-            >
-              Join project
-            </Button>
-          </div>
           <TextField
             label={mode === "create" ? "Project name" : "Invite link or token"}
             value={value}
@@ -126,14 +111,33 @@ export function RepositoryOnboarding({
             {busy
               ? "Preparing project…"
               : mode === "create"
-                ? "Create project and connect GitHub"
-                : "Join project and connect GitHub"}
+                ? "Create project"
+                : "Join project"}
+          </Button>
+          <Button
+            variant="tertiary"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              setMode(mode === "create" ? "join" : "create");
+              setValue("");
+            }}
+          >
+            {mode === "create"
+              ? "Join an existing project"
+              : "Create a new project"}
           </Button>
         </form>
       )}
       {project && (
         <RepositoryConnections
           key={project.id}
+          initiallyOpen={
+            project.role === "owner" || unconnectedSources.length === 1
+          }
+          initialSource={
+            unconnectedSources.length === 1 ? unconnectedSources[0] : undefined
+          }
           project={project}
           state={state}
           refresh={refresh}
@@ -142,7 +146,7 @@ export function RepositoryOnboarding({
       {error && <p role="alert">{error}</p>}
       <div className="actions">
         <Button disabled={busy} onClick={onBack}>
-          Back to local projects
+          Back
         </Button>
         {project && (
           <Button
