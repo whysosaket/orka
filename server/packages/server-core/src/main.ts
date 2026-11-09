@@ -27,6 +27,7 @@ import { showProjectInvite } from "./project-invite.js";
 import { envAction } from "./env.js";
 import { listProjects, mutateProject } from "./projects.js";
 import { addSources } from "./sources.js";
+import { GitHubRepositories, githubSettings } from "./github.js";
 import { appendManagementLog } from "./management-log.js";
 import { governanceAction, pullAuthorized } from "./governance.js";
 import { createMcpApp, isMcpPath } from "./mcp/server.js";
@@ -57,6 +58,7 @@ export function createApi(
   settings: AuthSettings = authSettings({}),
   emailHook?: EmailHook,
   mcpEnabled = false,
+  repositories = new GitHubRepositories(store, githubSettings({})),
 ) {
   const mcp = mcpEnabled
     ? createMcpApp(store, authenticate, settings, authUrl)
@@ -89,6 +91,7 @@ export function createApi(
               conditionalSave: 1,
             },
             mode: settings.mode,
+            repositories: { github: repositories.settings.enabled ? 1 : 0 },
             auth: {
               password: settings.password,
               github: settings.github,
@@ -120,6 +123,16 @@ export function createApi(
       if (path === "/health") {
         await store.pool.query("select 1");
         res.end(JSON.stringify({ ok: true, version: 2 }));
+        return;
+      }
+      if (path === "/integrations/github/webhook" && req.method === "POST") {
+        const result = await repositories.webhook(
+          await bytes(req, 1_000_000),
+          String(req.headers["x-hub-signature-256"] ?? ""),
+          String(req.headers["x-github-delivery"] ?? ""),
+          String(req.headers["x-github-event"] ?? ""),
+        );
+        res.end(JSON.stringify(result));
         return;
       }
       if (path.startsWith("/join/") && settings.publicUrl) {
@@ -164,6 +177,7 @@ export function createApi(
         "/v2/projects/action",
         "/v2/projects/sources",
         "/v2/invites",
+        "/v2/github/action",
       ];
       let projectId =
         url.searchParams.get("projectId") ??
@@ -200,7 +214,9 @@ export function createApi(
           "Update Orka to use this project's resource permissions",
         );
       let result: unknown;
-      if (path === "/v2/env/capabilities" && req.method === "GET")
+      if (path === "/v2/github/action" && req.method === "POST")
+        result = await repositories.action(user, await json());
+      else if (path === "/v2/env/capabilities" && req.method === "GET")
         result = { format: 1, maxPlaintextBytes: 1_000_000 };
       else if (path === "/v2/env/action" && req.method === "POST")
         result = await envAction(store, user, await json());

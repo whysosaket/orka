@@ -21,6 +21,7 @@ mod plugin_mcp;
 mod profiles;
 mod projects;
 mod repair;
+mod repositories;
 mod selective_sharing;
 mod session_forks;
 mod session_launcher;
@@ -154,12 +155,31 @@ fn main() {
                 else { session_launcher::resume(input["id"].as_str().unwrap_or(""),tool,destination) }
             }),
             "onboarding"=>tokio::runtime::Runtime::new().expect("Test runtime").block_on(onboarding::onboarding_command(input["operation"].as_str().unwrap_or("").into(),input["input"].clone(),input.get("context").cloned())),
+            "repository"=>(|| -> db::Result<Value> {
+                let context: repositories::Context = serde_json::from_value(input["context"].clone()).map_err(|e| e.to_string())?;
+                tokio::runtime::Runtime::new().map_err(|e|e.to_string())?.block_on(async {
+                    let operation=input["operation"].as_str().ok_or("Missing repository operation")?;
+                    let result=repositories::repository_command(operation.into(),input["input"].clone(),context.clone()).await?;
+                    if operation=="clone" && input["wait"]==true {
+                        for _ in 0..600 {
+                            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                            let jobs=repositories::repository_command("jobs".into(),json!({}),context.clone()).await?;
+                            if let Some(job)=jobs.as_array().and_then(|jobs|jobs.iter().find(|job|job["id"]==result["id"])) {
+                                if !["queued","cloning","connecting"].contains(&job["state"].as_str().unwrap_or("")) {return Ok(job.clone());}
+                            }
+                        }
+                        return Err("Clone acceptance timed out".into());
+                    }
+                    Ok(result)
+                })
+            })(),
             "profile-info"=>(|| -> db::Result<Value> { Ok(json!({"profile":profiles::current(),"root":db::root()?,"keychain":profiles::credential_service()?,"agent":profiles::label(),"codexHome":native::codex_home()?,"claudeHome":native::claude_home()?})) })(),
             "profiles"=>profiles::profile_list(),
             "session-user"=>auth::session().map(|value|json!({"user":value["user"]["id"]})),
             "queue-callback"=>profiles::queue_callback(input["callback"].as_str().unwrap_or("")).map(|name|json!({"profile":name})),
             "take-callback"=>profiles::take_callback().map(|callback|json!({"callback":callback})),
             "project"=>tokio::runtime::Runtime::new().expect("Test runtime").block_on(projects::project_command(input["operation"].as_str().unwrap_or("").into(),input["input"].clone())),
+            "cloud-action"=>tokio::runtime::Runtime::new().expect("Test runtime").block_on(commands::cloud_action(input["operation"].as_str().unwrap_or("").into(),input["input"].clone())),
             "connect"=>tokio::runtime::Runtime::new().expect("Test runtime").block_on(sources::connect_project_sources(input["id"].as_str().unwrap_or("").into(),vec![input["path"].as_str().unwrap_or("").into()],input["sourceId"].as_str().map(str::to_owned))).map(|_|json!({"ok":true})),
             "sync-now"=>commands::sync_now().map(|_|json!({"ok":true})),
             "scan"=>db::open().and_then(|db|indexer::scan(&db,&input["project"]).map(|_|json!({"resources":db::rows(&db,"SELECT value FROM resources",&[]).unwrap_or_default(),"outbox":db::rows(&db,"SELECT value FROM outbox",&[]).unwrap_or_default()}))),
@@ -240,6 +260,7 @@ fn main() {
             commands::cloud_action,
             commands::connect_project,
             sources::connect_project_sources,
+            repositories::repository_command,
             sources::disconnect_project_source,
             sources::scan_project_folders,
             commands::disconnect_project,

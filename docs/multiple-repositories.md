@@ -11,10 +11,14 @@ results require selection. Scanning recognizes both `.git` directories and files
 does not follow directory symlinks, and does not recursively include unrelated
 repositories. Ordinary folders can be added through the folder picker.
 
-Use **Settings → Source folders** to attach more repositories, locate a shared
+Use **Settings → General → Source Folder** to attach more repositories, locate a shared
 source on this Mac, or disconnect one source. Owners register shared sources;
 members connect their checkout using Locate folder. Paths can differ between Macs.
 Two source folders cannot cover the same or overlapping local directories.
+
+Services with GitHub enabled can also [link and clone repositories](github-repositories.md)
+without an existing local checkout. GitHub repository access and app installation
+remain separate from Orka project membership and context permissions.
 
 Use **Reconnect folder** beside a connected source to confirm its existing folder
 after a replacement or a stale connection warning. This preserves queued changes;

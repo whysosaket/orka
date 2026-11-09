@@ -303,7 +303,7 @@ export function useOnboarding(
           if (active.current) setError(String(e));
         });
     });
-  const complete = () =>
+  const complete = (projectId?: string) =>
     void run(async () => {
       await command("complete");
       if (!active.current) return;
@@ -311,7 +311,8 @@ export function useOnboarding(
         (project) =>
           project.projectId && current.current.selected.includes(project.path),
       );
-      if (connected?.projectId) onComplete(connected.projectId);
+      if (projectId || connected?.projectId)
+        onComplete(projectId ?? connected!.projectId!);
       await refresh();
     });
   const invite = async (projectId: string) => {
@@ -426,7 +427,8 @@ export function useOnboarding(
       }),
     proceed,
     sync,
-    complete,
+    complete: () => complete(),
+    completeProject: (id: string) => complete(id),
     invite,
     background,
     saveProfile: (input: AccountProfile) =>

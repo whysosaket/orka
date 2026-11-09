@@ -257,7 +257,7 @@ pub async fn cloud_action(action: String, input: Value) -> Result<Value> {
         "join" => "/v2/join",
         _ => return Err("Unknown project action".into()),
     };
-    let r = sync::api("POST", path, Some(&request)).await?;
+    let mut r = sync::api("POST", path, Some(&request)).await?;
     if let Some(sharing) = sharing {
         let id = r["id"].as_str().ok_or("Missing project")?;
         let db = db::open()?;
@@ -274,6 +274,22 @@ pub async fn cloud_action(action: String, input: Value) -> Result<Value> {
         // the user to create the same project again; sync will refresh it later.
         if let Ok(list) = sync::api("GET", "/v2/projects?includeArchived=true", None).await {
             projects::merge_catalog(&db, &list)?;
+        }
+        let current = db::rows(&db, "SELECT value FROM projects WHERE id=?", &[&id])?
+            .into_iter()
+            .next()
+            .unwrap_or(Value::Null);
+        if (action == "create"
+            || current["sources"].as_array().is_some_and(|sources| {
+                sources
+                    .iter()
+                    .any(|source| source["repository"]["id"].is_string())
+            }))
+            && sync::api("GET", "/v2/instance", None)
+                .await
+                .is_ok_and(|caps| caps["repositories"]["github"] == 1)
+        {
+            r["repositorySetup"] = json!(true);
         }
     }
     sync_now()?;

@@ -5,6 +5,7 @@ import { memoryMetadata } from "./governance.js";
 export * from "./env.js";
 export * from "./governance.js";
 export * from "./sources.js";
+export * from "./repositories.js";
 export * from "./role-policies.js";
 
 export const VERSION = 2 as const;

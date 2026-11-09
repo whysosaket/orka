@@ -23,6 +23,8 @@ pub fn views(project: &Value) -> Vec<Value> {
             view["sourceId"] = source["id"].clone();
             view["path"] = source["path"].clone();
             view["folderIdentity"] = source["folderIdentity"].clone();
+            view["repository"] = source["repository"].clone();
+            view["repositoryRevision"] = source["repositoryRevision"].clone();
             view
         })
         .collect()
@@ -92,6 +94,20 @@ pub fn validate(project: &Value) -> Result<()> {
             "Connected source folder changed or is unavailable; local writes and deletions paused. Reconnect it in Settings → Source folders."
                 .into(),
         );
+    }
+    if let Some(url) = project["repository"]["cloneUrl"].as_str() {
+        if let Err(error) = crate::repositories::verify_remote(root, url) {
+            if !project["repository"]["previousCloneUrls"]
+                .as_array()
+                .is_some_and(|urls| {
+                    urls.iter()
+                        .filter_map(Value::as_str)
+                        .any(|url| crate::repositories::verify_remote(root, url).is_ok())
+                })
+            {
+                return Err(error);
+            }
+        }
     }
     Ok(())
 }
@@ -171,11 +187,24 @@ pub async fn connect_project_sources(
     paths: Vec<String>,
     source_id: Option<String>,
 ) -> Result<()> {
+    connect_sources(id, paths, source_id, None).await
+}
+pub(crate) async fn connect_sources(
+    id: String,
+    paths: Vec<String>,
+    source_id: Option<String>,
+    context: Option<(&str, &str)>,
+) -> Result<()> {
     if paths.is_empty() || paths.len() > 100 || (source_id.is_some() && paths.len() != 1) {
         return Err("Choose between 1 and 100 source folders".into());
     }
     let _lock = projects::lock()?;
     let db = db::open()?;
+    if let Some((user, service)) = context {
+        if db::get(&db, "user")? != user || db::get(&db, "config")?["apiUrl"] != service {
+            return Err("Account or service changed; reopen repository setup".into());
+        }
+    }
     let mut project = crate::governance::project(&db, &id)?;
     let pending_key = format!("source-registration:{id}");
     let pending = db::get(&db, &pending_key)?;
@@ -289,6 +318,7 @@ pub async fn connect_project_sources(
             let mut view = project.clone();
             view["path"] = source["path"].clone();
             view["folderIdentity"] = source["folderIdentity"].clone();
+            view["repository"] = source["repository"].clone();
             validate(&view)?;
             native::install_hooks(Path::new(path))?;
         }

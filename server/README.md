@@ -152,7 +152,8 @@ destructive database migration.
 
 ### Move an existing migration ledger to the baseline
 
-Fresh installations already use one `001_initial.sql` migration and need no reset.
+Fresh installations use `001_initial.sql` and subsequent incremental migrations
+and need no reset.
 For an existing server that completed all eleven historical Orka migrations:
 
 ```sh
@@ -160,7 +161,8 @@ sh ./orka-server upgrade --reset-ledger
 ```
 
 This takes and verifies a backup, replaces only the completed Orka migration
-ledger with its one baseline entry, and restarts. It preserves accounts, projects,
+ledger with its baseline entry, applies subsequent incremental migrations, and
+restarts. It preserves accounts, projects,
 resources and blobs. Incomplete or unknown histories are rejected unchanged.
 GoTrue's separate authentication migrations are unaffected. See
 [baseline compatibility](docs/compatibility.md#initial-schema-baseline).
@@ -289,3 +291,7 @@ acceptance drivers live in `tests/acceptance/`; unit/integration fixtures stay i
 packaging, and the remaining scripts check repository/dependency boundaries.
 Generated deployment copies inside the npm package are recreated by the build.
 They are not maintained or distributed as a second operator configuration tree.
+
+Optional [GitHub repository connections](docs/github-repositories.md) let members
+clone authorized repositories from Orka and request missing access. They use the
+same GitHub App as sign-in, with separate user and repository consent.

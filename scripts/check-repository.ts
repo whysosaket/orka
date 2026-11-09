@@ -56,7 +56,10 @@ assert.deepEqual(
     .filter((path) =>
       /^packages\/server-core\/migrations\/.*\.sql$/.test(path),
     ),
-  ["packages/server-core/migrations/001_initial.sql"],
+  [
+    "packages/server-core/migrations/001_initial.sql",
+    "packages/server-core/migrations/002_github_repositories.sql",
+  ],
 );
 assert.equal(
   new Set(server.files.map((file) => file.path)).size,

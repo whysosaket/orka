@@ -1,3 +1,4 @@
+import { RepositoryRequests } from "../repository-connections.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -365,6 +366,7 @@ export function SettingsMembers({
           <HistoryIcon size={16} aria-hidden="true" /> View logs
         </Button>
       )}
+      <RepositoryRequests project={project} state={state} />
       {invite && (
         <Overlay
           open

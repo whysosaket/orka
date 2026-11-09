@@ -33,7 +33,13 @@ export function ProjectSetupDialog({
   inviteService,
   serviceMismatch = false,
   onSwitchService,
+  repositoryEnabled = false,
+  sourceMode = "folder",
+  onSourceMode,
 }: {
+  repositoryEnabled?: boolean;
+  sourceMode?: "github" | "folder";
+  onSourceMode?: (value: "github" | "folder") => void;
   mode: ProjectSetupMode;
   value: string;
   busy: boolean;
@@ -96,7 +102,36 @@ export function ProjectSetupDialog({
                 disabled={busy}
                 onChange={(event) => onChange(event.target.value)}
               />
-              <SourceFolders selection={selection} busy={busy} run={run} />
+              {repositoryEnabled && (
+                <fieldset className="repository-source-choice">
+                  <legend>Repository</legend>
+                  <label>
+                    <input
+                      type="radio"
+                      name="source-kind"
+                      checked={sourceMode === "github"}
+                      onChange={() => onSourceMode?.("github")}
+                    />
+                    GitHub repository
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="source-kind"
+                      checked={sourceMode === "folder"}
+                      onChange={() => onSourceMode?.("folder")}
+                    />
+                    Local folder
+                  </label>
+                </fieldset>
+              )}
+              {sourceMode === "github" ? (
+                <p className="create-project-source-hint">
+                  Choose an account and repository next.
+                </p>
+              ) : (
+                <SourceFolders selection={selection} busy={busy} run={run} />
+              )}
             </>
           ) : (
             <TextField
@@ -193,10 +228,12 @@ export function FolderConnectionPrompt({
   projectName,
   busy,
   onConnect,
+  repositories = false,
 }: {
   projectName: string;
   busy: boolean;
   onConnect: () => void;
+  repositories?: boolean;
 }) {
   return (
     <section className="folder-connection" aria-label="Connect this Mac">
@@ -206,8 +243,18 @@ export function FolderConnectionPrompt({
       <div className="min-w-0 flex-1">
         <h2>Connect this Mac</h2>
         <p>
-          Choose the local folder for <strong>{projectName}</strong> to sync
-          files and open native sessions.
+          {repositories ? (
+            <>
+              Clone or locate the repositories for{" "}
+              <strong>{projectName}</strong> to sync files and open native
+              sessions.
+            </>
+          ) : (
+            <>
+              Choose the local folder for <strong>{projectName}</strong> to sync
+              files and open native sessions.
+            </>
+          )}
         </p>
       </div>
       <Button
@@ -217,7 +264,7 @@ export function FolderConnectionPrompt({
         variant="primary"
         size="md"
       >
-        Connect folder
+        {repositories ? "Connect repositories" : "Connect folder"}
         <Icon icon={ArrowRightIcon} />
       </Button>
     </section>

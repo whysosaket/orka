@@ -1,5 +1,10 @@
 # Authentication and deployment
 
+New deployments can use one GitHub App for sign-in and repositories, with Email
+addresses read and selected-repository Metadata/Contents read. Existing OAuth
+registrations remain supported during the [explicit single-app migration](github-repositories.md);
+verify existing-account continuity and native PKCE before switching credentials.
+
 GoTrue owns accounts, password hashes, OAuth state, verification tokens and sessions. Orka's API exposes only the allowed authentication routes and checks project membership separately. Resend is a delivery adapter. The managed origin is `https://api.tryorka.ai`; DNS, TLS, OAuth registration and a verified sender must be provisioned before that origin is usable.
 
 ## Managed configuration
@@ -20,7 +25,7 @@ DISABLE_SIGNUP=true
 PASSWORD_ENABLED=true
 ```
 
-Use a GitHub OAuth App with callback `https://api.tryorka.ai/auth/callback`, and a separate app for staging. Orka asks for identity, not repository access. Verify the sender domain in Resend and disable link tracking for auth mail. Generate the shared hook secret with `printf 'v1,whsec_'; openssl rand -base64 32`. The overlay enables the signed hook at `https://<DOMAIN>/auth/hooks/send-email` and requires provider secrets. It preserves the same Compose project, persistent paths and migration lineage. Do not start two stacks against one PostgreSQL data directory.
+Use a GitHub App with callback `https://api.tryorka.ai/auth/callback` and Email addresses read; use a separate registration for staging. The same app handles repository access through selected-repository installation consent. Existing OAuth registrations remain during the documented migration. Verify the sender domain in Resend and disable link tracking for auth mail. Generate the shared hook secret with `printf 'v1,whsec_'; openssl rand -base64 32`. The overlay enables the signed hook at `https://<DOMAIN>/auth/hooks/send-email` and requires provider secrets. It preserves the same Compose project, persistent paths and migration lineage. Do not start two stacks against one PostgreSQL data directory.
 
 Run `npm run deploy:check -- deploy/ec2/.env --cloud`, then the deployment runbook. `DISABLE_SIGNUP=true` requires operator-provisioned accounts; set it to false only when registration is intended. `PASSWORD_ENABLED=false` blocks password grants in the API and removes the advertised capability; refresh remains available to existing sessions.
 

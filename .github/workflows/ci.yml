@@ -81,3 +81,4 @@ jobs:
         working-directory: apps/mac/src-tauri
       - run: npm run tauri -w @portable/mac -- build --debug --bundles app
       - run: npm run test:profiles
+      - run: npm run test:repository-access

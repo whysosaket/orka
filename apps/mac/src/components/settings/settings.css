@@ -1,4 +1,167 @@
 @layer components {
+  .repository-panel {
+    @apply flex min-w-0 flex-col gap-4 border-b border-line pb-4;
+  }
+  .repository-onboarding {
+    @apply mx-auto flex min-w-0 flex-col gap-5 overflow-y-auto p-8;
+    max-width: 900px;
+    height: 100vh;
+  }
+  .repository-onboarding form {
+    @apply flex flex-col gap-4;
+  }
+  .repository-onboarding .actions {
+    @apply flex flex-wrap gap-2;
+  }
+  .repository-panel .actions {
+    @apply flex flex-wrap gap-2;
+  }
+  .repository-panel p {
+    overflow-wrap: anywhere;
+  }
+  .repository-panel .settings-row > div:first-child {
+    min-width: 0;
+  }
+  .repository-source {
+    @apply flex min-w-0 flex-col gap-2 border-t border-line pt-3;
+  }
+  .repository-browser {
+    @apply flex min-w-0 flex-col gap-3;
+  }
+  .repository-browser label {
+    @apply flex flex-col gap-2 text-label-sm;
+  }
+  .repository-browser select {
+    @apply min-h-9 w-full border border-line bg-raised px-2 text-body-xs;
+    border-radius: var(--radius-control);
+  }
+  .repository-panel .settings-row {
+    @apply flex min-w-0 flex-wrap items-center justify-between gap-3;
+  }
+
+  .repository-connections {
+    @apply flex min-w-0 flex-col gap-3;
+  }
+  .repository-local-folders {
+    display: contents;
+  }
+  .repository-card-row + .repository-card-row {
+    @apply border-t border-line;
+  }
+  .repository-card-main {
+    @apply flex min-w-0 items-center gap-3 px-4 py-4;
+  }
+  .repository-card-main > svg {
+    @apply shrink-0 text-muted;
+  }
+  .repository-card-identity {
+    @apply flex min-w-0 flex-1 flex-col gap-1;
+  }
+  .repository-card-identity strong {
+    @apply truncate text-label-item font-medium;
+  }
+  .repository-card-meta {
+    @apply text-label-caption text-muted;
+  }
+  .repository-access-icon {
+    @apply flex shrink-0 text-muted;
+  }
+  .repository-access-icon[data-state="ready"] {
+    color: var(--status-connected);
+  }
+  .repository-access-icon[data-state="warning"] {
+    color: var(--status-error);
+  }
+  .repository-card-actions {
+    @apply flex shrink-0 items-center gap-1;
+  }
+  .repository-job-feedback {
+    @apply m-0 px-4 pb-4 text-body-xs text-muted;
+  }
+  .repository-dialog {
+    @apply flex flex-col gap-5 overflow-y-auto p-6;
+    width: min(520px, calc(100vw - 32px));
+    max-height: calc(100vh - 48px);
+  }
+  .repository-dialog-heading {
+    @apply flex items-center justify-between gap-3;
+  }
+  .repository-dialog-heading h2 {
+    @apply m-0 text-heading-sm;
+  }
+  .repository-dialog p {
+    @apply m-0 text-body-xs text-muted;
+    overflow-wrap: anywhere;
+  }
+  .repository-picker-fields {
+    @apply flex min-w-0 flex-col gap-4;
+  }
+  .repository-picker-fields > label {
+    @apply flex min-w-0 flex-col gap-2 text-label-sm;
+  }
+  .repository-picker-fields select,
+  .repository-onboarding select {
+    @apply min-h-10 w-full min-w-0 border border-line bg-raised px-3 text-body-xs;
+    border-radius: var(--radius-control);
+  }
+  .repository-dialog-footer {
+    @apply flex items-center justify-between gap-3 border-t border-line pt-4;
+  }
+  .repository-account {
+    @apply flex min-w-0 items-center gap-2 text-label-caption text-muted;
+  }
+  .repository-location {
+    @apply flex flex-col gap-2;
+  }
+  .repository-location span {
+    @apply text-foreground;
+  }
+  .repository-location details[open] {
+    @apply flex flex-col gap-3;
+  }
+  .repository-dialog summary {
+    @apply cursor-pointer text-label-caption text-muted;
+  }
+  .repository-help[open] {
+    @apply flex flex-col gap-3;
+  }
+  .repository-authorization {
+    @apply flex flex-col gap-3;
+  }
+  .repository-authorization > strong {
+    @apply text-heading-md tracking-widest;
+  }
+  .repository-local-option {
+    @apply self-start px-0 text-muted;
+    --button-tertiary-bg: transparent;
+    --button-tertiary-bg-hover: transparent;
+  }
+  .repository-source-choice {
+    @apply flex flex-wrap gap-4 border-0 p-0 text-body-xs;
+  }
+  .repository-source-choice legend {
+    @apply mb-2 text-label-sm;
+  }
+  .repository-source-choice label {
+    @apply flex items-center gap-2;
+  }
+  .repository-source-choice input {
+    width: auto;
+  }
+  .create-project-source-hint {
+    @apply m-0 text-body-xs text-muted;
+  }
+  @media (max-width: 1000px) {
+    .repository-card-main {
+      @apply grid;
+      grid-template-columns: 18px minmax(0, 1fr) 16px;
+    }
+    .repository-card-actions {
+      grid-column: 2 / 4;
+      justify-self: end;
+    }
+  }
+
   .sidebar .navigation-action[aria-current="page"] {
     background: var(--surface-tertiary);
     color: var(--text-primary);

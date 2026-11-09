@@ -6,6 +6,7 @@ import { createApi, type Authenticate } from "./main.js";
 import { createEmailHook, type AuthSettings } from "./auth.js";
 import { cleanupProjectBlobs } from "./projects.js";
 import { migrate } from "./migrations.js";
+import { GitHubRepositories, githubSettings } from "./github.js";
 
 export function accountAuthenticator(
   store: Store,
@@ -82,6 +83,7 @@ export async function startServer(settings: AuthSettings) {
     settings,
     settings.emailProvider === "resend" ? createEmailHook(settings) : undefined,
     process.env.MCP_ENABLED === "true",
+    new GitHubRepositories(store, githubSettings(process.env)),
   );
   server.listen(Number(process.env.PORT ?? 8080), "0.0.0.0");
   for (const signal of ["SIGTERM", "SIGINT"])
