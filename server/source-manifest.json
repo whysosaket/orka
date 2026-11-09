@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "d0b3ce14cf5bfa46497f409504c8bb078f4916ec",
+  "commit": "9350d3189b9325ecccfb6b8d21cec82befab22a1",
   "candidate": false,
-  "sourceTreeSha256": "f3dd8f1959fcb57f8bd884e9172b1454314e9c5d62ad401924b5a06bf6311d84",
+  "sourceTreeSha256": "62e89e1ecd853344354a59124d8fa9501d70237b3af76251c263db99e6853994",
   "files": [
     {
       "path": ".dockerignore",
@@ -16,7 +16,7 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "53ddc2f095cae2e87c38814213f5f5054d7e389bbfb4b40be4dcf8bc02a7db7f",
+      "sha256": "77197948fbc8730b5e131983a2751019623cd160a4e25874d327ce1f35ba5659",
       "mode": 420
     },
     {
@@ -50,13 +50,18 @@
       "mode": 420
     },
     {
+      "path": "compose.image.yml",
+      "sha256": "d099d7f8ff0e18b212418c5429ae404f0dfe9a9195d6729fa5d32596092bf472",
+      "mode": 420
+    },
+    {
       "path": "compose.yml",
       "sha256": "90a64aa4bead88e27c1cc34f1f30df593e60468ab42220155b466ddba5b1ba14",
       "mode": 420
     },
     {
       "path": "configure.sh",
-      "sha256": "0dfdfce2131be90e964dd9fb1511f7c8e8c4b2e49f0f6f28092b66ee9ee997c2",
+      "sha256": "115d728b2d37c27aa59ccfb60034229ac14e68a34a951d1295bb885c12b503f4",
       "mode": 420
     },
     {
@@ -71,7 +76,7 @@
     },
     {
       "path": "deploy/Dockerfile",
-      "sha256": "b39b967137fb74a9281071d453325c36cbc245d7be989788ebc208d233d636ed",
+      "sha256": "6625b48601c946df10adeeefe994563e9c2efc07e6e0023e3e4ac877d0171b74",
       "mode": 420
     },
     {
@@ -106,7 +111,7 @@
     },
     {
       "path": "deploy/ec2/compose.yml",
-      "sha256": "c49e56c604b0f1d4930bd7c4d4b27f8a28c36d5b5306614118b52e9d68316b8e",
+      "sha256": "f0e97853249db2d6060a3bb38ec31f38dbe1fd1f3512224ef2b997274d50210d",
       "mode": 420
     },
     {
@@ -136,7 +141,12 @@
     },
     {
       "path": "deploy/self-hosted/.env.example",
-      "sha256": "9d1561c8d962d9b3143012333ad15ccd234f2265d4d834f3d67add70782e7ead",
+      "sha256": "60a9d4d47223ca055832d7b7192769bc90ac3bb8bf4c2ad684f8274a683c7927",
+      "mode": 420
+    },
+    {
+      "path": "deploy/self-hosted/restore.sh",
+      "sha256": "e9702d2495716b27fc3c3a389f607f9569e8963aa2d533ecb76a79af981e5189",
       "mode": 420
     },
     {
@@ -166,7 +176,7 @@
     },
     {
       "path": "docs/github-repositories.md",
-      "sha256": "0f110853570c28563432a6c4b0ccf033048cd7b0f357a30e479de44405b52759",
+      "sha256": "e9b2c172c3ad2a56a539be159d4961d52dbbaa4a03c94ddf57688c77b7796ea8",
       "mode": 420
     },
     {
@@ -176,12 +186,12 @@
     },
     {
       "path": "docs/memory-consolidation.md",
-      "sha256": "f9d26715de674e56defb77bfb4cea2e4c4d42f444ee2c4a0c9d463407f5230f6",
+      "sha256": "4f59833ac3cc9ff67806a26ad72e0fb5e766777cb7f6942cd0bfa5b6cbdcae39",
       "mode": 420
     },
     {
       "path": "docs/orka-plugin.md",
-      "sha256": "6984f92abb4a1f72c6316ddadcf8965bb37649fa71493dc219aae5357b9ef363",
+      "sha256": "8f94b39bf90fd3f23ed14b6d92cd75763b1114c1a0e9a7b35d940398b9f567e5",
       "mode": 420
     },
     {
@@ -216,7 +226,7 @@
     },
     {
       "path": "orka-server",
-      "sha256": "42201549be6630e28dacb9ea5bfbeb9c907c9eecd3b92f7a98d3168586e28e24",
+      "sha256": "f1b344fb6e2d5b081daf4965340db59a6210a2502edcdc3b4f2b9e0651f02c96",
       "mode": 420
     },
     {
@@ -226,7 +236,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "da161fae850bae3a195b8f304525f702e5ca99a73d6b1dbdef54a34c523d1323",
+      "sha256": "54b46cec0c0a27983a7623db4d5a6bc2112a5da8652c877e3c0dff8175e1d47e",
       "mode": 420
     },
     {
@@ -481,7 +491,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "f7de33e56b1c7b636ceedadf1ddb2955e8d406230ff358872926851fcbaebd04",
+      "sha256": "d937a2599e2209940551a517033c6849da16cbc1de7bf365205e92060f97f46f",
       "mode": 420
     },
     {
@@ -500,78 +510,83 @@
       "mode": 420
     },
     {
-      "path": "scripts/deploy-managed.sh",
+      "path": "scripts/managed/deploy-managed.sh",
       "sha256": "58733f0ba42ec6f7641336566fe496fd26f165102d930351601ae69657be99d7",
       "mode": 420
     },
     {
-      "path": "scripts/deploy-network.sh",
+      "path": "scripts/managed/deploy-network.sh",
       "sha256": "8b5094436a971fa43f7241ffac18a10d7d270ebf95dd9c37abdb70f7645c7715",
       "mode": 420
     },
     {
-      "path": "scripts/deploy-ssh.sh",
-      "sha256": "95e13f71f7eb63c783a191038abea013b884f936f392f2a530e926087ef114a1",
+      "path": "scripts/managed/deploy-ssh.sh",
+      "sha256": "a974e6be418f111bef3058b6a41cc35463a73dbb638c653371643308b799b454",
       "mode": 420
     },
     {
-      "path": "scripts/github-auth-live-e2e.ts",
-      "sha256": "2acfb48183801dee115f1298c298f8f8ae8464b706451907b96ea54b81721e46",
-      "mode": 420
-    },
-    {
-      "path": "scripts/github-live-e2e.ts",
-      "sha256": "37a9f30fdd3a8f1eea9b9eeba91609d055bdd90b7922c3acc407a6b79079153b",
-      "mode": 420
-    },
-    {
-      "path": "scripts/image-e2e.ts",
-      "sha256": "b330bebf9103d90a784b19e4de807356e00c2dbaaa1cc02e6f66ee9b175ed6b5",
-      "mode": 420
-    },
-    {
-      "path": "scripts/integration.ts",
-      "sha256": "344019c6a50dd5884e683b0685855c2790a79cbc66f20a45c1bcc4b081c27d09",
-      "mode": 420
-    },
-    {
-      "path": "scripts/mcp-image-check.ts",
-      "sha256": "2a21c7a704f32c99acb2187a27fa9167ef5eb8dc1004268ca34de8a448597354",
-      "mode": 420
-    },
-    {
-      "path": "scripts/mcp-preview.ts",
-      "sha256": "6e509f96809e45dfc046edfb1c856be8cd689190d1fe9c62127b7b89f6325abd",
-      "mode": 420
-    },
-    {
-      "path": "scripts/onboarding-native-e2e.ts",
-      "sha256": "544bc55b36f8ae152ada7778bfbcf8d584b583d80d804923ff2d96a527d3e975",
-      "mode": 420
-    },
-    {
-      "path": "scripts/package-release.mjs",
-      "sha256": "b12686164e2e0313539354c887ba8becc6563350252010b8d7b0ae80fc03603f",
-      "mode": 420
-    },
-    {
-      "path": "scripts/package-source.mjs",
-      "sha256": "efadbffa80164ff825b08bf9392b33119499d87a75cf850a1df62bbce3b0e9ba",
-      "mode": 420
-    },
-    {
-      "path": "scripts/prepare-deployment.ts",
+      "path": "scripts/managed/prepare-deployment.ts",
       "sha256": "26645f74b8c8d122660509c5ca4ee3b757f702917701b2c052ab25ee64a278d1",
       "mode": 420
     },
     {
-      "path": "scripts/self-hosted-e2e.ts",
-      "sha256": "c62398427b1d2c410815a8a67ce220c31c04285f07d7ffd08ba4b636df57c0e1",
+      "path": "scripts/managed/verify-deployment.ts",
+      "sha256": "b70550ed9ed524bb090772e49aa2fa6f47d47b4256c9c2d47bf4ad971a296ca1",
       "mode": 420
     },
     {
-      "path": "scripts/verify-deployment.ts",
-      "sha256": "b70550ed9ed524bb090772e49aa2fa6f47d47b4256c9c2d47bf4ad971a296ca1",
+      "path": "scripts/release/package-operator.mjs",
+      "sha256": "74cf2662e415b6a9050daeca310d726bf54fd83a163b13153e469266edc4359c",
+      "mode": 420
+    },
+    {
+      "path": "scripts/release/package-release.mjs",
+      "sha256": "b12686164e2e0313539354c887ba8becc6563350252010b8d7b0ae80fc03603f",
+      "mode": 420
+    },
+    {
+      "path": "scripts/release/package-source.mjs",
+      "sha256": "efadbffa80164ff825b08bf9392b33119499d87a75cf850a1df62bbce3b0e9ba",
+      "mode": 420
+    },
+    {
+      "path": "tests/acceptance/github-auth-live-e2e.ts",
+      "sha256": "8bafb3f866f5474eaab7866a03da043b1a46c4167bd9bb11e04cd94ee7ce85bd",
+      "mode": 420
+    },
+    {
+      "path": "tests/acceptance/github-live-e2e.ts",
+      "sha256": "8ac6e30a303df30b72974a25472dcfd732c0ed469a67f2dd6ad59063789db708",
+      "mode": 420
+    },
+    {
+      "path": "tests/acceptance/image-e2e.ts",
+      "sha256": "b330bebf9103d90a784b19e4de807356e00c2dbaaa1cc02e6f66ee9b175ed6b5",
+      "mode": 420
+    },
+    {
+      "path": "tests/acceptance/integration.ts",
+      "sha256": "3189df5d539c7a4ef6e1488bd6af36d42d9c946991c013005b7e71346ad4b0e7",
+      "mode": 420
+    },
+    {
+      "path": "tests/acceptance/mcp-image-check.ts",
+      "sha256": "2a21c7a704f32c99acb2187a27fa9167ef5eb8dc1004268ca34de8a448597354",
+      "mode": 420
+    },
+    {
+      "path": "tests/acceptance/mcp-preview.ts",
+      "sha256": "aa68e5505982cc779acb358d23ade71d10ea52cc55c7b9a26da0b1c9ce48e25d",
+      "mode": 420
+    },
+    {
+      "path": "tests/acceptance/onboarding-native-e2e.ts",
+      "sha256": "c9c14f82c4d04ea08c2b364498dc430cd023fe9fcf25c049b5cdfa95831509b1",
+      "mode": 420
+    },
+    {
+      "path": "tests/acceptance/self-hosted-e2e.ts",
+      "sha256": "01660862b4dfc85bdf9d45eda5739b5e16d8a1e6a599db08857fc940523cbad2",
       "mode": 420
     },
     {
@@ -596,22 +611,22 @@
     },
     {
       "path": "tests/deploy-host.sh",
-      "sha256": "fe9725a2c296664fda11ee7353e12aae7c68853a1306cbcf6235ebbdeeece434",
+      "sha256": "7b25d43e3b3f60140e20dc3246f7b576c951df31fbbfb216fa15220bb293cda6",
       "mode": 420
     },
     {
       "path": "tests/deploy-network.sh",
-      "sha256": "6bb021d0ad4f7b6a7b57f08064da9f7f12ce95d7b422e5853ddce84293a48536",
+      "sha256": "7fadfddae4e666db9fdc173be054561f1d8aedcf24d8c00498bad55a61fa4b05",
       "mode": 420
     },
     {
       "path": "tests/deploy-ssh.sh",
-      "sha256": "aad11693f32f6059e2daed7acc726fe149e689af7be24c5106fafcce9725785f",
+      "sha256": "26ec3862ff7f1ca8e78e8d25ea3c27cf879b7c7965ada6fa9490fa5891543131",
       "mode": 420
     },
     {
       "path": "tests/deployment-ci.test.ts",
-      "sha256": "4b42f33ba655d64baa245c83378e07e29f4e111bfe911fd7f8507e54b4d8a523",
+      "sha256": "3296323f4f8b2c576d106e2f29d2bdd3da22aa0930991ca8b261b0dd13157fdc",
       "mode": 420
     },
     {
@@ -687,6 +702,11 @@
     {
       "path": "tests/onboarding.integration.ts",
       "sha256": "46e5b1ad96258f6b64cf16cab7cab5afa14664b185d48df24b4c7f13d5f219c7",
+      "mode": 420
+    },
+    {
+      "path": "tests/operator.test.ts",
+      "sha256": "4e5090f62bf8381e330daa9663d915e4f896a4b1fa5196207725b3b22ea55b9f",
       "mode": 420
     },
     {

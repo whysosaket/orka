@@ -31,6 +31,10 @@ New projects default to automatic context sharing, with sessions shared only on 
 
 ## Self-host with Docker Compose
 
+For image-based installation without Git or a source build, see the
+[operator release instructions](server/README.md#operator-releases). Source
+checkout setup remains available below.
+
 Install and start [Docker Desktop](https://docs.docker.com/desktop/) or
 [Docker Engine with Compose](https://docs.docker.com/engine/install/), plus Git and
 OpenSSL (plus Bash/Python 3 for backups). The server runs on Linux, macOS, or Windows with WSL2. You do not need
@@ -86,7 +90,7 @@ The teammate command prints the private file containing their login; then invite
 that account to a project from Orka. `stop` keeps all data. `backup` verifies a
 restore and includes private server configuration; keep encrypted off-host copies.
 After selecting a new source revision, `sh ./orka-server upgrade` verifies a backup
-before rebuilding. Keep the same directory and `.env` for this installation.
+before rebuilding. Ordinary `start` reuses installed images without rebuilding. Keep the same directory and `.env` for this installation.
 See the [server README](server/README.md) for recovery, optional providers,
 troubleshooting and direct Compose commands.
 

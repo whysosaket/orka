@@ -27,13 +27,14 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
       - run: npm ci
-      - run: shellcheck configure.sh orka-server
+      - run: shellcheck configure.sh orka-server deploy/self-hosted/restore.sh
       - run: npm run build && npm run typecheck && npm run lint && npm run format:check && npm test
       - run: npm run licenses:check
       - run: PG_BIN=/usr/lib/postgresql/16/bin npm run test:integration
       - run: docker build --target oss -f deploy/Dockerfile -t orka-test:oss .
       - run: npm run test:images -- oss orka-test:oss compose.yml
       - run: npm run test:self-hosted
+      - run: ORKA_TEST_OPERATOR_IMAGE=orka-test:oss npm run test:self-hosted
   frontend:
     runs-on: ubuntu-24.04
     timeout-minutes: 20

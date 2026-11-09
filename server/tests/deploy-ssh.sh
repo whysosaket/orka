@@ -45,7 +45,7 @@ chmod +x "$workspace/bin/"*
 deploy() {
   : > "$TEST_LOG"
   : > "$GITHUB_STEP_SUMMARY"
-  bash scripts/deploy-ssh.sh "$workspace/bundle" > "$workspace/output" 2>&1
+  bash scripts/managed/deploy-ssh.sh "$workspace/bundle" > "$workspace/output" 2>&1
 }
 deploy
 [[ $(cat "$TEST_LOG") = $'connect\nupload\ndeploy\ncleanup' ]]

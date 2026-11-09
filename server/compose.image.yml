@@ -1,0 +1,8 @@
+# Source checkouts opt into an installed image; operator archives use this too.
+services:
+  api:
+    build: !reset null
+    image: ${ORKA_IMAGE:?Choose a released Orka server image}
+    pull_policy: missing
+  admin:
+    image: ${ORKA_IMAGE:?Choose a released Orka server image}

@@ -34,7 +34,7 @@ destination="$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST"
 candidate_stage=$(ssh "${options[@]}" "$destination" 'umask 077; mktemp -d /tmp/orka-deploy.XXXXXXXX')
 [[ "$candidate_stage" =~ ^/tmp/orka-deploy\.[a-zA-Z0-9]{8}$ ]]
 remote_stage=$candidate_stage
-scp "${options[@]}" "$bundle/deploy.tar" scripts/deploy-managed.sh scripts/verify-deployment.ts \
+scp "${options[@]}" "$bundle/deploy.tar" scripts/managed/deploy-managed.sh scripts/managed/verify-deployment.ts \
   deploy/ec2/backup.sh deploy/ec2/restore-check.sh deploy/ec2/verify-blobs.py "$destination:$remote_stage/"
 # shellcheck disable=SC2029
 printf '%s' "$GH_TOKEN" | ssh "${options[@]}" "$destination" \

@@ -27,7 +27,7 @@ jobs:
       - run: npm run check:repository && npm run licenses:check
       - name: Check deployment lifecycle and shell scripts
         run: |
-          shellcheck configure.sh orka-server scripts/deploy-*.sh tests/deploy-*.sh deploy/ec2/backup.sh deploy/ec2/restore-check.sh
+          shellcheck configure.sh orka-server deploy/self-hosted/restore.sh scripts/managed/deploy-*.sh tests/deploy-*.sh deploy/ec2/backup.sh deploy/ec2/restore-check.sh
           bash tests/deploy-host.sh
           bash tests/deploy-ssh.sh
           bash tests/deploy-network.sh
@@ -62,6 +62,8 @@ jobs:
         run: npm run test:images -- oss orka-test:oss compose.yml
       - if: matrix.edition == 'oss'
         run: npm run test:self-hosted
+      - if: matrix.edition == 'oss'
+        run: ORKA_TEST_OPERATOR_IMAGE=orka-test:oss npm run test:self-hosted
       - if: matrix.edition == 'oss'
         run: ORKA_IMAGE=orka-test:oss node packages/server-core/dist/tools/local-dev.js up
       - if: matrix.edition == 'oss'

@@ -6,11 +6,11 @@ import { cp, mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { Pool } from "pg";
-import { migrate } from "../packages/server-core/src/migrations.js";
-import { Store } from "../packages/server-core/src/store.js";
-import { Blobs } from "../packages/server-core/src/blobs.js";
-import { createApi } from "../packages/server-core/src/main.js";
-import { authSettings } from "../packages/server-core/src/auth.js";
+import { migrate } from "../../packages/server-core/src/migrations.js";
+import { Store } from "../../packages/server-core/src/store.js";
+import { Blobs } from "../../packages/server-core/src/blobs.js";
+import { createApi } from "../../packages/server-core/src/main.js";
+import { authSettings } from "../../packages/server-core/src/auth.js";
 
 interface NativeSnapshot {
   background: boolean;
