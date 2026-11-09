@@ -100,7 +100,7 @@ export const orkaTools = [
             branch: z.string().max(256).optional(),
             commit: z
               .string()
-              .regex(/^[a-f0-9]{7,64}$/i)
+              .regex(/^[a-fA-F0-9]{7,64}$/)
               .optional(),
             folder: z.string().max(1024).optional(),
           })

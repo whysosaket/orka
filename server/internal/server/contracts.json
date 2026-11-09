@@ -72,7 +72,8 @@
       "projectId",
       "sources"
     ],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "x-orka-refinement": "addProjectSources"
   },
   "categoryAccess": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -194,7 +195,8 @@
           "logicalPath": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 1024
+            "maxLength": 1024,
+            "x-orka-refinement": "relativePath"
           },
           "title": {
             "type": "string",
@@ -210,7 +212,8 @@
                 "path": {
                   "type": "string",
                   "minLength": 1,
-                  "maxLength": 1024
+                  "maxLength": 1024,
+                  "x-orka-refinement": "relativePath"
                 },
                 "hash": {
                   "type": "string",
@@ -274,7 +277,8 @@
               "scope",
               "provider"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "x-orka-refinement": "memoryMetadata"
           },
           "contextSources": {
             "maxItems": 100,
@@ -295,7 +299,8 @@
           "files",
           "deleted"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "x-orka-refinement": "resourceInput"
       }
     },
     "required": [
@@ -751,7 +756,8 @@
           "ciphertextHash",
           "deleted"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "x-orka-refinement": "envManifest"
       },
       "signature": {
         "type": "string",
@@ -994,7 +1000,8 @@
       "ciphertextHash",
       "deleted"
     ],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "x-orka-refinement": "envManifest"
   },
   "envMutation": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1247,7 +1254,8 @@
               "ciphertextHash",
               "deleted"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "x-orka-refinement": "envManifest"
           },
           "signature": {
             "type": "string",
@@ -1643,7 +1651,8 @@
           "ciphertextHash",
           "deleted"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "x-orka-refinement": "envManifest"
       },
       "signature": {
         "type": "string",
@@ -1669,7 +1678,8 @@
       "path": {
         "type": "string",
         "minLength": 1,
-        "maxLength": 1024
+        "maxLength": 1024,
+        "x-orka-refinement": "relativePath"
       },
       "hash": {
         "type": "string",
@@ -1706,7 +1716,8 @@
       },
       "cloneUrl": {
         "type": "string",
-        "format": "uri"
+        "format": "uri",
+        "x-orka-refinement": "repositoryCloneURL"
       },
       "defaultBranch": {
         "anyOf": [
@@ -1774,7 +1785,8 @@
       "scope",
       "provider"
     ],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "x-orka-refinement": "memoryMetadata"
   },
   "policyClassSchema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2015,7 +2027,8 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "string",
     "minLength": 1,
-    "maxLength": 1024
+    "maxLength": 1024,
+    "x-orka-refinement": "relativePath"
   },
   "repositoryAccessRequest": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2119,7 +2132,8 @@
       },
       "cloneUrl": {
         "type": "string",
-        "format": "uri"
+        "format": "uri",
+        "x-orka-refinement": "repositoryCloneURL"
       },
       "defaultBranch": {
         "anyOf": [
@@ -2145,7 +2159,8 @@
         "type": "array",
         "items": {
           "type": "string",
-          "format": "uri"
+          "format": "uri",
+          "x-orka-refinement": "repositoryCloneURL"
         }
       }
     },
@@ -2272,7 +2287,8 @@
       "logicalPath": {
         "type": "string",
         "minLength": 1,
-        "maxLength": 1024
+        "maxLength": 1024,
+        "x-orka-refinement": "relativePath"
       },
       "title": {
         "type": "string",
@@ -2288,7 +2304,8 @@
             "path": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 1024
+              "maxLength": 1024,
+              "x-orka-refinement": "relativePath"
             },
             "hash": {
               "type": "string",
@@ -2352,7 +2369,8 @@
           "scope",
           "provider"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "x-orka-refinement": "memoryMetadata"
       },
       "contextSources": {
         "maxItems": 100,
@@ -2373,7 +2391,8 @@
       "files",
       "deleted"
     ],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "x-orka-refinement": "resourceInput"
   },
   "rolePolicies": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2560,7 +2579,8 @@
       },
       "scope": {
         "type": "string",
-        "maxLength": 1024
+        "maxLength": 1024,
+        "x-orka-refinement": "mcpScope"
       },
       "cursor": {
         "anyOf": [
@@ -2787,7 +2807,7 @@
           },
           "commit": {
             "type": "string",
-            "pattern": "^[a-f0-9]{7,64}$"
+            "pattern": "^[a-fA-F0-9]{7,64}$"
           },
           "folder": {
             "type": "string",
@@ -2808,5 +2828,698 @@
     "type": "object",
     "properties": {},
     "additionalProperties": false
+  },
+  "rpc:message": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "type": "object",
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "const": "2.0"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object",
+            "properties": {
+              "_meta": {
+                "type": "object",
+                "properties": {
+                  "progressToken": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      }
+                    ]
+                  },
+                  "io.modelcontextprotocol/related-task": {
+                    "type": "object",
+                    "properties": {
+                      "taskId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "taskId"
+                    ]
+                  }
+                },
+                "additionalProperties": {}
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "jsonrpc",
+          "id",
+          "method"
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "const": "2.0"
+          },
+          "method": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object",
+            "properties": {
+              "_meta": {
+                "type": "object",
+                "properties": {
+                  "progressToken": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      }
+                    ]
+                  },
+                  "io.modelcontextprotocol/related-task": {
+                    "type": "object",
+                    "properties": {
+                      "taskId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "taskId"
+                    ]
+                  }
+                },
+                "additionalProperties": {}
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "jsonrpc",
+          "method"
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "const": "2.0"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            ]
+          },
+          "result": {
+            "type": "object",
+            "properties": {
+              "_meta": {
+                "type": "object",
+                "properties": {
+                  "progressToken": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      }
+                    ]
+                  },
+                  "io.modelcontextprotocol/related-task": {
+                    "type": "object",
+                    "properties": {
+                      "taskId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "taskId"
+                    ]
+                  }
+                },
+                "additionalProperties": {}
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "jsonrpc",
+          "id",
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "const": "2.0"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "message": {
+                "type": "string"
+              },
+              "data": {}
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "jsonrpc",
+          "error"
+        ],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "rpc:initialize": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "method": {
+        "type": "string",
+        "const": "initialize"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "_meta": {
+            "type": "object",
+            "properties": {
+              "progressToken": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                ]
+              },
+              "io.modelcontextprotocol/related-task": {
+                "type": "object",
+                "properties": {
+                  "taskId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "taskId"
+                ]
+              }
+            },
+            "additionalProperties": {}
+          },
+          "protocolVersion": {
+            "type": "string"
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "experimental": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "array"
+                    }
+                  ]
+                }
+              },
+              "sampling": {
+                "type": "object",
+                "properties": {
+                  "context": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "tools": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "array"
+                      }
+                    ]
+                  }
+                }
+              },
+              "elicitation": {
+                "allOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "form": {
+                        "allOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "applyDefaults": {
+                                "type": "boolean"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        ]
+                      },
+                      "url": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": true
+                          },
+                          {
+                            "type": "array"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                ],
+                "x-orka-empty-form": true
+              },
+              "roots": {
+                "type": "object",
+                "properties": {
+                  "listChanged": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "tasks": {
+                "type": "object",
+                "properties": {
+                  "list": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "cancel": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "requests": {
+                    "type": "object",
+                    "properties": {
+                      "sampling": {
+                        "type": "object",
+                        "properties": {
+                          "createMessage": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": true
+                              },
+                              {
+                                "type": "array"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": {}
+                      },
+                      "elicitation": {
+                        "type": "object",
+                        "properties": {
+                          "create": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": true
+                              },
+                              {
+                                "type": "array"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "additionalProperties": {}
+              },
+              "extensions": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "array"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "clientInfo": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "icons": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "src": {
+                      "type": "string"
+                    },
+                    "mimeType": {
+                      "type": "string"
+                    },
+                    "sizes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "theme": {
+                      "type": "string",
+                      "enum": [
+                        "light",
+                        "dark"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "src"
+                  ]
+                }
+              },
+              "version": {
+                "type": "string"
+              },
+              "websiteUrl": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "version"
+            ]
+          }
+        },
+        "required": [
+          "protocolVersion",
+          "capabilities",
+          "clientInfo"
+        ]
+      }
+    },
+    "required": [
+      "method",
+      "params"
+    ]
+  },
+  "rpc:tools/call": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "method": {
+        "type": "string",
+        "const": "tools/call"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "_meta": {
+            "type": "object",
+            "properties": {
+              "progressToken": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                ]
+              },
+              "io.modelcontextprotocol/related-task": {
+                "type": "object",
+                "properties": {
+                  "taskId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "taskId"
+                ]
+              }
+            },
+            "additionalProperties": {}
+          },
+          "task": {
+            "type": "object",
+            "properties": {
+              "ttl": {
+                "type": "number"
+              }
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "arguments": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "required": [
+      "method",
+      "params"
+    ]
+  },
+  "rpc:tools/list": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "method": {
+        "type": "string",
+        "const": "tools/list"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "_meta": {
+            "type": "object",
+            "properties": {
+              "progressToken": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                ]
+              },
+              "io.modelcontextprotocol/related-task": {
+                "type": "object",
+                "properties": {
+                  "taskId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "taskId"
+                ]
+              }
+            },
+            "additionalProperties": {}
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "required": [
+      "method"
+    ]
+  },
+  "rpc:ping": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "method": {
+        "type": "string",
+        "const": "ping"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "_meta": {
+            "type": "object",
+            "properties": {
+              "progressToken": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                ]
+              },
+              "io.modelcontextprotocol/related-task": {
+                "type": "object",
+                "properties": {
+                  "taskId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "taskId"
+                ]
+              }
+            },
+            "additionalProperties": {}
+          }
+        }
+      }
+    },
+    "required": [
+      "method"
+    ]
   }
 }

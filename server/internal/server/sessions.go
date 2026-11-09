@@ -221,7 +221,7 @@ func (s *Store) readSession(q *Queries, resource Object) []SessionMessage {
 		if mode == "paginated" {
 			start := number(base["end_ordinal_exclusive"])
 			for i, r := range records {
-				if !q.Require(r["ordinal"] != nil && number(r["ordinal"]) == start+int64(i), 422, "Invalid history ordinals") {
+				if !q.Require(nonnegativeInteger(r["ordinal"]) && number(r["ordinal"]) == start+int64(i), 422, "Invalid history ordinals") {
 					return nil
 				}
 			}

@@ -276,7 +276,7 @@
             },
             "commit": {
               "type": "string",
-              "pattern": "^[a-f0-9]{7,64}$"
+              "pattern": "^[a-fA-F0-9]{7,64}$"
             },
             "folder": {
               "type": "string",

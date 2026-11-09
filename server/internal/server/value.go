@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -130,7 +131,7 @@ func choose(condition bool, a, b any) any {
 }
 func stamp() string { return time.Now().UTC().Format("2006-01-02T15:04:05.000Z") }
 func trim(s string) string {
-	return strings.TrimFunc(s, func(r rune) bool { return unicode.IsSpace(r) || r == '\ufeff' })
+	return strings.TrimFunc(s, func(r rune) bool { return r != '\u0085' && (unicode.IsSpace(r) || r == '\ufeff') })
 }
 func jsLength(s string) int { return len(utf16.Encode([]rune(s))) }
 func decode(data []byte) (any, error) {
@@ -163,7 +164,9 @@ func Canonical(v any) string {
 		for k := range x {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
+		sort.Slice(keys, func(i, j int) bool {
+			return slices.Compare(utf16.Encode([]rune(keys[i])), utf16.Encode([]rune(keys[j]))) < 0
+		})
 		parts := make([]string, 0, len(keys))
 		for _, k := range keys {
 			parts = append(parts, Canonical(k)+":"+Canonical(x[k]))

@@ -166,6 +166,16 @@ for (const mode of ["cloud", "self-hosted"] as const)
         "GitHub integration",
         true,
       );
+      const legacyClient = await fetch(`${base}/v2/github/action`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${owner}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "requests", input: { projectId } }),
+      });
+      assert.equal(legacyClient.status, 409);
+      assert.match((await legacyClient.json()).error, /Update Orka/);
       await pool.query("insert into orka.members values($1,$2,'member')", [
         projectId,
         member,

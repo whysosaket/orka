@@ -18649,6 +18649,14 @@
       },
       "canonical": "{\"a\":\"quoted\\\"\\n\\\\\",\"z\":[1,\"a\",{\"a\":null,\"b\":false}]}",
       "hash": "1bdd7d72236280f8c9dd2cbcd8c3fd094aeb2324680b139692e25ad1816c3141"
+    },
+    {
+      "value": {
+        "": "BMP key",
+        "😀": "astral key"
+      },
+      "canonical": "{\"😀\":\"astral key\",\"\":\"BMP key\"}",
+      "hash": "449ed17e98f2e284f480706bc4f4034fa2af5b2170a5ab93aed81955385d4db7"
     }
   ],
   "cases": [
@@ -18983,6 +18991,64 @@
         "deleted": false
       },
       "valid": false
+    }
+  ],
+  "origins": [
+    {
+      "input": "https://EXAMPLE.COM:443",
+      "origin": "https://example.com"
+    },
+    {
+      "input": "http://LOCALHOST:080",
+      "origin": "http://localhost"
+    },
+    {
+      "input": "https://BÜCHER.example:8443",
+      "origin": "https://xn--bcher-kva.example:8443"
+    },
+    {
+      "input": "https://%65xample.com",
+      "origin": "https://example.com"
+    },
+    {
+      "input": "https://[0:0:0:0:0:0:0:1]:443",
+      "origin": "https://[::1]"
+    },
+    {
+      "input": "https://[::ffff:192.0.2.128]:8080",
+      "origin": "https://[::ffff:c000:280]:8080"
+    },
+    {
+      "input": "https://127.1:8080",
+      "origin": "https://127.0.0.1:8080"
+    },
+    {
+      "input": "https://2130706433:8080",
+      "origin": "https://127.0.0.1:8080"
+    },
+    {
+      "input": "https://0x7f000001:8080",
+      "origin": "https://127.0.0.1:8080"
+    },
+    {
+      "input": "http://127.1",
+      "origin": "http://127.0.0.1"
+    },
+    {
+      "input": "http://2130706433",
+      "origin": "http://127.0.0.1"
+    },
+    {
+      "input": "http://0x7f000001",
+      "origin": "http://127.0.0.1"
+    },
+    {
+      "input": "http://0177.0.0.1",
+      "origin": "http://127.0.0.1"
+    },
+    {
+      "input": "https://github.com:000443/path?query#fragment",
+      "origin": "https://github.com"
     }
   ]
 }

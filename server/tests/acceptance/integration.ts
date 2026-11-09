@@ -60,6 +60,7 @@ try {
         ? process.argv.slice(2)
         : [
             "tests/migrations.integration.ts",
+            "tests/shutdown.integration.ts",
             "tests/cloud.integration.ts",
             "tests/onboarding.integration.ts",
             "tests/member-emails.integration.ts",

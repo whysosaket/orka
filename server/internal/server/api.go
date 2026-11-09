@@ -149,7 +149,7 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 		}
 		return parsed, nil
 	}
-	scoped := []string{"/v2/sync/push", "/v2/sharing/selected", "/v2/sessions/resolve", "/v2/sessions/copy", "/v2/presence", "/v2/env/action", "/v2/governance/action", "/v2/projects/action", "/v2/projects/sources", "/v2/invites"}
+	scoped := []string{"/v2/sync/push", "/v2/sharing/selected", "/v2/sessions/resolve", "/v2/sessions/copy", "/v2/presence", "/v2/env/action", "/v2/governance/action", "/v2/projects/action", "/v2/projects/sources", "/v2/invites", "/v2/github/action"}
 	project := r.URL.Query().Get("projectId")
 	if strings.HasPrefix(path, "/v2/blobs/") {
 		parts := strings.Split(path, "/")

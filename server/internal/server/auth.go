@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const desktopRedirect = "orka://auth/callback"
@@ -49,8 +50,8 @@ func SettingsFromEnv(env map[string]string, managed bool) (AuthSettings, error) 
 		return settings, fmt.Errorf("invalid deployment or email provider")
 	}
 	if settings.PublicURL != "" {
-		u, err := url.Parse(settings.PublicURL)
-		if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || u.Scheme != "https" && !(u.Scheme == "http" && includes([]string{"localhost", "127.0.0.1"}, u.Hostname())) {
+		u, err := parseHTTPURL(settings.PublicURL)
+		if err != nil || u.Username() != "" || u.Password() != "" || u.Search() != "" || u.Hash() != "" || u.Pathname() != "/" || u.Scheme() != "https" && !(u.Scheme() == "http" && includes([]string{"localhost", "127.0.0.1"}, u.Hostname())) {
 			return settings, fmt.Errorf("PUBLIC_URL must be an HTTPS origin (localhost HTTP is allowed)")
 		}
 	}
@@ -279,7 +280,7 @@ func (a *API) confirmEmail(w http.ResponseWriter, r *http.Request) error {
 			return bad("Invalid sign-in link")
 		}
 	}
-	if !tokenPattern.MatchString(params.Get("token")) || !includes([]string{"signup", "magiclink", "recovery", "invite"}, params.Get("type")) || jsLength(params.Get("redirect_to")) > 256 {
+	if !tokenPattern.MatchString(params.Get("token")) || !includes([]string{"signup", "magiclink", "recovery", "invite"}, params.Get("type")) || utf8.RuneCountInString(params.Get("redirect_to")) > 256 {
 		return bad("Invalid request")
 	}
 	redirect := SafeDesktopRedirect(params.Get("redirect_to"))

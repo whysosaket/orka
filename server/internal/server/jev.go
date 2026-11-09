@@ -35,7 +35,7 @@ func realNumber(v any) float64 {
 }
 func nonnegativeInteger(v any) bool {
 	n := realNumber(v)
-	return !math.IsNaN(n) && !math.IsInf(n, 0) && n >= 0 && math.Trunc(n) == n
+	return !math.IsNaN(n) && !math.IsInf(n, 0) && n >= 0 && n <= 9007199254740991 && math.Trunc(n) == n
 }
 func (r *JevResolver) Resolve(ctx context.Context, state Object) ([]Object, error) {
 	if !r.Enabled {

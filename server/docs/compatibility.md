@@ -1,5 +1,22 @@
 # Release compatibility
 
+## Go runtime contract checks
+
+The Go runtime retains the TypeScript protocol package as its contract source.
+After changing protocol or MCP schemas, run `npm run build` followed by
+`npm run contracts:check`. The latter checks generated schema/transport drift
+and replays parser inputs through both the installed Zod/MCP SDK schemas and
+the Go validators, comparing acceptance and normalized output. Cases cover
+required and unknown fields, defaults, trimming, Unicode length boundaries,
+safe integers, nested resource refinements and MCP request envelopes.
+
+Go regression tests also cover MCP batches, version negotiation and canonical
+OAuth origins. PostgreSQL integration starts the production executable and
+verifies that SIGTERM drains an authenticated request before closing the pool
+and exiting. These checks supplement the HTTP, authorization, migration,
+encrypted ENV, sync and final-image suites; credential-dependent provider and
+native multi-Mac acceptance still require their configured environments.
+
 ## GitHub repository connections
 
 The 0.6.0 candidate adds optional repository bindings, native clone support and

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -26,11 +27,7 @@ func init() {
 		compiler := jsonschema.NewCompiler()
 		compiler.AssertFormat()
 		loc := "https://orka.invalid/contracts/" + name
-		// Zod string limits count UTF-16 units. JSON Schema counts Unicode
-		// points, so enforce these limits below using the protocol's semantics.
-		compiled, _ := decode(jsonBytes(doc))
-		removeStringBounds(compiled)
-		if err := compiler.AddResource(loc, compiled); err != nil {
+		if err := compiler.AddResource(loc, doc); err != nil {
 			panic(err)
 		}
 		schema, err := compiler.Compile(loc)
@@ -43,27 +40,62 @@ func init() {
 func validUUID(v string) bool   { return contracts["uuid"].Validate(v) == nil }
 func validDigest(v string) bool { return contracts["digest"].Validate(v) == nil }
 
-func normalize(doc Object, value any) any {
-	if flag(doc["x-orka-trim"]) {
-		value = trim(text(value))
+func normalize(doc Object, compiled *jsonschema.Schema, value any) any {
+	if compiled == nil {
+		return value
+	}
+	if m := object(value); m != nil && len(m) == 0 && flag(doc["x-orka-empty-form"]) {
+		value = Object{"form": Object{}}
+	}
+	for _, kind := range []string{"anyOf", "oneOf"} {
+		branches := compiled.AnyOf
+		if kind == "oneOf" {
+			branches = compiled.OneOf
+		}
+		for i, raw := range array(doc[kind]) {
+			if i >= len(branches) {
+				break
+			}
+			copy, _ := decode(jsonBytes(value))
+			candidate := normalize(object(raw), branches[i], copy)
+			if branches[i].Validate(candidate) == nil {
+				return candidate
+			}
+		}
+	}
+	if s, ok := value.(string); ok && flag(doc["x-orka-trim"]) {
+		value = trim(s)
 	}
 	if m := object(value); m != nil {
-		for key, raw := range object(doc["properties"]) {
+		properties := object(doc["properties"])
+		for key, raw := range properties {
 			schema := object(raw)
 			v, present := m[key]
 			if !present {
 				if d, ok := schema["default"]; ok {
-					data, _ := decode(jsonBytes(d))
-					m[key] = data
+					m[key], _ = decode(jsonBytes(d))
 				}
 				continue
 			}
-			m[key] = normalize(schema, v)
+			m[key] = normalize(schema, compiled.Properties[key], v)
+		}
+		if text(doc["type"]) == "object" {
+			additional, explicit := doc["additionalProperties"]
+			for key, v := range m {
+				if _, known := properties[key]; known {
+					continue
+				}
+				if !explicit {
+					delete(m, key)
+				} else if schema, ok := compiled.AdditionalProperties.(*jsonschema.Schema); ok {
+					m[key] = normalize(object(additional), schema, v)
+				}
+			}
 		}
 	}
 	if a := array(value); a != nil {
 		for i, v := range a {
-			a[i] = normalize(object(doc["items"]), v)
+			a[i] = normalize(object(doc["items"]), compiled.Items2020, v)
 		}
 	}
 	return value
@@ -77,62 +109,43 @@ func ValidateContract(name string, value any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	value = normalize(contractDocs[name], copy)
+	value = normalize(contractDocs[name], schema, copy)
 	if err := schema.Validate(value); err != nil {
 		return nil, bad("Invalid request")
 	}
-	if !validStringBounds(contractDocs[name], value) {
-		return nil, bad("Invalid request")
+	if err := validateRefinements(contractDocs[name], value); err != nil {
+		return nil, err
 	}
 	if err := validateResourceContract(name, value); err != nil {
 		return nil, err
 	}
 	return value, nil
 }
-func removeStringBounds(value any) {
-	if doc := object(value); doc != nil {
-		delete(doc, "minLength")
-		delete(doc, "maxLength")
-		for _, child := range doc {
-			removeStringBounds(child)
-		}
-	}
-	for _, child := range array(value) {
-		removeStringBounds(child)
-	}
-}
-func validStringBounds(doc Object, value any) bool {
-	if s, ok := value.(string); ok {
-		n := int64(jsLength(s))
-		if min, exists := doc["minLength"]; exists && n < number(min) {
-			return false
-		}
-		if max, exists := doc["maxLength"]; exists && n > number(max) {
-			return false
+func validateRefinements(doc Object, value any) error {
+	if name := text(doc["x-orka-refinement"]); name != "" {
+		if err := validateResourceContract(name, value); err != nil {
+			return err
 		}
 	}
 	if m := object(value); m != nil {
 		for key, child := range m {
 			if schema := object(field(doc["properties"], key)); schema != nil {
-				if !validStringBounds(schema, child) {
-					return false
+				if err := validateRefinements(schema, child); err != nil {
+					return err
 				}
-			} else if schema := object(doc["additionalProperties"]); schema != nil && !validStringBounds(schema, child) {
-				return false
 			}
 		}
 	}
 	if schema := object(doc["items"]); schema != nil {
 		for _, child := range array(value) {
-			if !validStringBounds(schema, child) {
-				return false
+			if err := validateRefinements(schema, child); err != nil {
+				return err
 			}
 		}
 	}
 	for _, key := range []string{"anyOf", "oneOf"} {
 		choices := array(doc[key])
 		if len(choices) > 0 {
-			valid := false
 			for _, raw := range choices {
 				schema := object(raw)
 				kind := text(schema["type"])
@@ -149,20 +162,27 @@ func validStringBounds(doc Object, value any) bool {
 				default:
 					matches = true
 				}
-				if matches && validStringBounds(schema, value) {
-					valid = true
-					break
+				if matches {
+					if err := validateRefinements(schema, value); err != nil {
+						return err
+					}
 				}
-			}
-			if !valid {
-				return false
 			}
 		}
 	}
-	return true
+	return nil
 }
 func validateResourceContract(name string, value any) error {
 	switch name {
+	case "repositoryCloneURL":
+		u, err := parseHTTPURL(text(value))
+		if err != nil || u.Scheme() != "https" || u.Host() != "github.com" || u.Username() != "" || u.Password() != "" || u.Search() != "" || u.Hash() != "" {
+			return bad("Invalid request")
+		}
+	case "mcpScope":
+		if !validMCPScope(text(value)) {
+			return bad("Invalid request")
+		}
 	case "envManifest":
 		if number(field(value, "revision")) < 1 || number(field(value, "accessRevision")) < 1 {
 			return bad("Invalid request")
@@ -172,7 +192,7 @@ func validateResourceContract(name string, value any) error {
 	case "envMutation":
 		return validateResourceContract("envManifest", field(field(value, "version"), "manifest"))
 	case "memoryMetadata":
-		if !safePath(text(field(value, "scope")), true) || jsLength(text(field(value, "scope"))) > 512 || jsLength(text(field(value, "topic"))) > 160 {
+		if !safePath(text(field(value, "scope")), true) {
 			return bad("Invalid request")
 		}
 	case "relativePath":
@@ -228,7 +248,7 @@ var knowledgePath = regexp.MustCompile(`^knowledge/[0-9a-f-]{36}\.md$`)
 func validateResource(r Object) error {
 	fail := func() error { return bad("Invalid request") }
 	path, kind, source := text(r["logicalPath"]), text(r["kind"]), text(r["source"])
-	if !safePath(path, false) || jsLength(path) > 1024 || jsLength(text(r["title"])) > 256 {
+	if !safePath(path, false) {
 		return fail()
 	}
 	files := array(r["files"])
@@ -238,7 +258,7 @@ func validateResource(r Object) error {
 	for _, raw := range files {
 		f := object(raw)
 		p := text(f["path"])
-		if !safePath(p, false) || jsLength(p) > 1024 || seen[p] {
+		if !safePath(p, false) || seen[p] {
 			return fail()
 		}
 		seen[p] = true
@@ -287,7 +307,7 @@ func validateResource(r Object) error {
 		}
 	}
 	if metadata := object(r["memory"]); metadata != nil {
-		if kind != "memory" || !strings.HasPrefix(path, "knowledge/") || !safePath(text(metadata["scope"]), true) || jsLength(text(metadata["scope"])) > 512 || jsLength(text(metadata["topic"])) > 160 {
+		if kind != "memory" || !strings.HasPrefix(path, "knowledge/") || !safePath(text(metadata["scope"]), true) {
 			return fail()
 		}
 	}
@@ -362,7 +382,7 @@ func parseField(raw any, f Field) (any, error) {
 		if f.Trim {
 			s = trim(s)
 		}
-		if jsLength(s) < f.Min || (f.Max > 0 && jsLength(s) > f.Max) || len(f.Choices) > 0 && !includes(f.Choices, s) {
+		if utf8.RuneCountInString(s) < f.Min || (f.Max > 0 && utf8.RuneCountInString(s) > f.Max) || len(f.Choices) > 0 && !includes(f.Choices, s) {
 			return fail()
 		}
 		return s, nil

@@ -15,6 +15,12 @@ func TestCanonicalProtocolFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixture := object(v)
+	for _, raw := range array(fixture["origins"]) {
+		row := object(raw)
+		if origin, err := canonicalOrigin(text(row["input"])); err != nil || origin != text(row["origin"]) {
+			t.Errorf("browser origin %q: %q != %q (%v)", row["input"], origin, row["origin"], err)
+		}
+	}
 	for i, raw := range array(fixture["canonicals"]) {
 		row := object(raw)
 		if got := Canonical(row["value"]); got != text(row["canonical"]) {

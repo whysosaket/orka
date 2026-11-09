@@ -27,7 +27,7 @@
     "package:operator": "node scripts/release/package-operator.mjs",
     "build:protocol": "npm run build -w @portable/protocol",
     "contracts:go": "node scripts/generate-go-contracts.mjs",
-    "contracts:check": "node scripts/generate-go-contracts.mjs --check && node scripts/generate-go-fixtures.mjs --check",
+    "contracts:check": "node scripts/generate-go-contracts.mjs --check && node scripts/generate-go-fixtures.mjs --check && node scripts/check-go-contracts.mjs",
     "build:go": "go build -trimpath -o artifacts/bin/orka-server ./cmd/orka-server && go build -tags orkatest -o artifacts/bin/orka-test-server ./cmd/orka-test-server",
     "test:go": "go test -race ./internal/... ./cmd/... ./packages/server-core/migrations/...",
     "licenses:go": "node scripts/go-licenses.mjs"

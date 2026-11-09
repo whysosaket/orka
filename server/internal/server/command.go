@@ -187,7 +187,9 @@ func run(parent context.Context, env map[string]string) error {
 			}
 		}
 	}()
+	shutdownDone := make(chan struct{})
 	go func() {
+		defer close(shutdownDone)
 		<-ctx.Done()
 		shutdown, c := context.WithTimeout(context.Background(), 30*time.Second)
 		defer c()
@@ -198,6 +200,7 @@ func run(parent context.Context, env map[string]string) error {
 	log.Printf("orka_server_ready edition=%s port=%d", Edition, port)
 	err = server.Serve(listener)
 	cancel()
+	<-shutdownDone
 	<-stopped
 	if err == http.ErrServerClosed {
 		return nil

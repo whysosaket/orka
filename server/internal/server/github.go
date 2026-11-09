@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type GitHubSettings struct {
@@ -205,7 +206,7 @@ func (g *GitHub) normalize(q *Queries, raw any) Object {
 	_, full := v["full_name"].(string)
 	_, private := v["private"].(bool)
 	branch, branchString := v["default_branch"].(string)
-	if !q.Require(safePositiveInteger(v["id"]) && full && private && (v["default_branch"] == nil || branchString && jsLength(branch) <= 255), 400, "Invalid GitHub repository") {
+	if !q.Require(safePositiveInteger(v["id"]) && full && private && (v["default_branch"] == nil || branchString && utf8.RuneCountInString(branch) <= 255), 400, "Invalid GitHub repository") {
 		return nil
 	}
 	name := text(v["full_name"])
@@ -326,7 +327,7 @@ func (g *GitHub) action(q *Queries, user, action string, raw any) any {
 			}
 			value := githubCredentials(db, result)
 			identity := object(g.call(db, "/user", text(value["access_token"]), nil, "", false))
-			if !db.Require(safePositiveInteger(identity["id"]) && jsLength(text(identity["login"])) >= 1 && jsLength(text(identity["login"])) <= 100, 400, "Invalid GitHub identity") {
+			if !db.Require(safePositiveInteger(identity["id"]) && utf8.RuneCountInString(text(identity["login"])) >= 1 && utf8.RuneCountInString(text(identity["login"])) <= 100, 400, "Invalid GitHub identity") {
 				return nil
 			}
 			github := strconv.FormatInt(number(identity["id"]), 10)

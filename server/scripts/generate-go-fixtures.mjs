@@ -41,6 +41,7 @@ const values = [
   1e21,
   "<script>\u2028&\u2029",
   { z: [1, "a", { b: false, a: null }], a: 'quoted"\n\\' },
+  { "\ue000": "BMP key", "😀": "astral key" },
 ];
 const canonicals = values.map((value) => ({
   value,
@@ -110,7 +111,24 @@ for (const change of [
 ])
   check("resourceInput", resourceInput, { ...resource, ...change });
 const output = "internal/server/testdata/protocol.json";
-const bytes = JSON.stringify({ merges, canonicals, cases }, null, 2) + "\n";
+const origins = [
+  "https://EXAMPLE.COM:443",
+  "http://LOCALHOST:080",
+  "https://BÜCHER.example:8443",
+  "https://%65xample.com",
+  "https://[0:0:0:0:0:0:0:1]:443",
+  "https://[::ffff:192.0.2.128]:8080",
+  "https://127.1:8080",
+  "https://2130706433:8080",
+  "https://0x7f000001:8080",
+  "http://127.1",
+  "http://2130706433",
+  "http://0x7f000001",
+  "http://0177.0.0.1",
+  "https://github.com:000443/path?query#fragment",
+].map((input) => ({ input, origin: new URL(input).origin }));
+const bytes =
+  JSON.stringify({ merges, canonicals, cases, origins }, null, 2) + "\n";
 if (process.argv.includes("--check")) {
   if (readFileSync(output, "utf8") !== bytes)
     throw new Error("Regenerate the Go protocol fixtures.");

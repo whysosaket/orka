@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
@@ -274,7 +275,7 @@ func (o *OAuth) connect(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 	tx, action, email := v.Get("transaction"), v.Get("action"), v.Get("email")
-	if !regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`).MatchString(tx) || !includes([]string{"connect", "send-code", "cancel"}, action) || jsLength(email) > 320 || jsLength(v.Get("password")) > 1024 || jsLength(v.Get("code")) > 10 {
+	if !regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`).MatchString(tx) || !includes([]string{"connect", "send-code", "cancel"}, action) || utf8.RuneCountInString(email) > 320 || utf8.RuneCountInString(v.Get("password")) > 1024 || utf8.RuneCountInString(v.Get("code")) > 10 {
 		return bad("Invalid connection request")
 	}
 	var row Object

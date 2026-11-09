@@ -137,3 +137,82 @@ await test("ordinary start never builds or pulls, and restore refuses an existin
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+for (const mode of ["local", "public"])
+  await test(`restore prepares an empty Docker image cache for ${mode} installations`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "orka-restore-cold-cache-"));
+    try {
+      for (const name of [
+        "bin",
+        "cache",
+        "backup",
+        "deploy/self-hosted",
+        "deploy/ec2",
+      ])
+        await mkdir(join(directory, name), { recursive: true });
+      for (const file of ["orka-server", "deploy/self-hosted/restore.sh"])
+        await copyFile(file, join(directory, file));
+      await writeFile(
+        join(directory, "deploy/ec2/restore-check.sh"),
+        "#!/bin/sh\nexit 0\n",
+      );
+      await writeFile(
+        join(directory, "backup/operator.env"),
+        `COMPOSE_PROJECT_NAME=orka-recovery-fixture\nORKA_SERVER_MODE=${mode}\nDOMAIN=${mode === "local" ? "localhost" : "sync.example.test"}\nORKA_IMAGE=fixture/server:1\n`,
+      );
+      await writeFile(
+        join(directory, "backup/database.dump"),
+        "fixture database",
+      );
+      await writeFile(join(directory, "backup/blobs.tar"), "fixture blobs");
+      await writeFile(
+        join(directory, "bin/docker"),
+        `#!/bin/sh
+set -eu
+case "$1" in
+  ps|volume|info) exit 0 ;;
+  image) test -f "$ORKA_TEST_CACHE/api" ;;
+  pull) touch "$ORKA_TEST_CACHE/api" ;;
+  compose)
+    shift
+    case "$1" in
+      pull) shift; [ "$1" != --policy ] || shift 2; for service in "$@"; do touch "$ORKA_TEST_CACHE/$service"; done ;;
+      up)
+        db_only=false
+        for argument in "$@"; do if [ "$argument" = db ]; then db_only=true; fi; done
+        required=db
+        if [ "$db_only" = false ]; then required="db auth api"; if [ "$ORKA_TEST_MODE" = public ]; then required="$required caddy"; fi; fi
+        for service in $required; do test -f "$ORKA_TEST_CACHE/$service" || { echo "Missing $service image on replacement host" >&2; exit 1; }; done ;;
+      exec|run) cat >/dev/null ;;
+      version|config) exit 0 ;;
+    esac ;;
+esac
+`,
+      );
+      await chmod(join(directory, "bin/docker"), 0o755);
+      const result = spawnSync(
+        "sh",
+        ["deploy/self-hosted/restore.sh", join(directory, "backup")],
+        {
+          cwd: directory,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${join(directory, "bin")}:${process.env.PATH}`,
+            ORKA_TEST_CACHE: join(directory, "cache"),
+            ORKA_TEST_MODE: mode,
+          },
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Recovery completed/);
+      assert.deepEqual(
+        (await readdir(join(directory, "cache"))).sort(),
+        mode === "local"
+          ? ["api", "auth", "db"]
+          : ["api", "auth", "caddy", "db"],
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
