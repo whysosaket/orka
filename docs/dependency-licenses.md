@@ -819,7 +819,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [libdbus-sys](https://crates.io/crates/libdbus-sys/0.2.7) | 0.2.7 | Apache-2.0/MIT |
 | [libloading](https://crates.io/crates/libloading/0.7.4) | 0.7.4 | ISC |
 | [libredox](https://crates.io/crates/libredox/0.1.25) | 0.1.25 | MIT |
-| [libsqlite3-sys](https://crates.io/crates/libsqlite3-sys/0.38.2) | 0.38.2 | MIT |
+| [libsqlite3-sys](https://crates.io/crates/libsqlite3-sys/0.39.1) | 0.39.1 | MIT |
 | [linux-raw-sys](https://crates.io/crates/linux-raw-sys/0.12.1) | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | [litemap](https://crates.io/crates/litemap/0.8.3) | 0.8.3 | Unicode-3.0 |
 | [lock_api](https://crates.io/crates/lock_api/0.4.14) | 0.4.14 | MIT OR Apache-2.0 |
@@ -929,7 +929,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [rfd](https://crates.io/crates/rfd/0.16.0) | 0.16.0 | MIT |
 | [ring](https://crates.io/crates/ring/0.17.14) | 0.17.14 | Apache-2.0 AND ISC |
 | [rsqlite-vfs](https://crates.io/crates/rsqlite-vfs/0.1.1) | 0.1.1 | MIT |
-| [rusqlite](https://crates.io/crates/rusqlite/0.40.2) | 0.40.2 | MIT |
+| [rusqlite](https://crates.io/crates/rusqlite/0.41.1) | 0.41.1 | MIT |
 | [rust-embed](https://crates.io/crates/rust-embed/8.12.0) | 8.12.0 | MIT |
 | [rust-embed-impl](https://crates.io/crates/rust-embed-impl/8.12.0) | 8.12.0 | MIT |
 | [rust-embed-utils](https://crates.io/crates/rust-embed-utils/8.12.0) | 8.12.0 | MIT |
