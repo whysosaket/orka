@@ -1,0 +1,6 @@
+Built-in image_gen edit.
+Source: apps/mac/src-tauri/icons/icon.png
+
+Use case: precise-object-edit. Edit target: the attached official 512x512 Orka app icon. Produce exactly one full square flat logo asset for a GitHub App avatar. Preserve the existing white bracket-shaped Orka symbol exactly: same shape, proportions, size, position and crisp edges. Preserve the existing blue/purple to teal/muted warm red to black gradient artwork and fine subtle texture. Change ONLY the transparent rounded corner cutouts: extend the adjacent existing gradient smoothly into those four corner cutouts so the artwork becomes a completely filled opaque square with sharp 90-degree corners. Full bleed edge to edge, no padding, no border, no transparent or white corner pixels, no shadows, no rounded-rectangle silhouette, no circle, no extra framing, no new text, no added elements. This is the final flat asset itself, not a mockup or presentation. The original central artwork and white mark must remain unchanged.
+
+Export: resized to 512x512 PNG with macOS sips for GitHub upload.
