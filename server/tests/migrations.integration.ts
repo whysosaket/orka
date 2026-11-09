@@ -22,8 +22,11 @@ async function database(run: (pool: Pool) => Promise<void>) {
     await run(pool);
   } finally {
     await pool?.end();
-    await admin.query(`drop database if exists "${name}" with (force)`);
-    await admin.end();
+    try {
+      await admin.query(`drop database if exists "${name}"`);
+    } finally {
+      await admin.end();
+    }
   }
 }
 
