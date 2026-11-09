@@ -11,6 +11,7 @@ import {
   type EmailHook,
 } from "../reference/auth.js";
 import type { Authenticate } from "../reference/main.js";
+import type { GitHubRepositories } from "./github.js";
 
 export function createApi(
   store: Store,
@@ -19,13 +20,21 @@ export function createApi(
   settings: AuthSettings = authSettings({}),
   _emailHook?: EmailHook,
   mcpEnabled = false,
+  repositories?: GitHubRepositories,
 ) {
   store.authenticate = authenticate;
+  if (repositories) store.githubFetcher = repositories.fetcher;
   const configured = store.invoke("configure", {
     settings,
     authUrl,
     environment: process.env,
     mcpEnabled,
+    github: repositories
+      ? {
+          ...repositories.settings,
+          encryptionKey: repositories.settings.encryptionKey.toString("base64"),
+        }
+      : undefined,
   });
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
     try {

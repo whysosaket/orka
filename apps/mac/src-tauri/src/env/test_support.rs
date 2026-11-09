@@ -152,6 +152,12 @@ pub fn run() {
                     crate::db::upsert(&db, "projects", id, id, &project)?;
                     Ok(json!({}))
                 }
+                "repository" => runtime.block_on(crate::repositories::repository_command(
+                    super::field(&input, "operation")?.into(),
+                    input["input"].clone(),
+                    serde_json::from_value(input["context"].clone())
+                        .map_err(|error| error.to_string())?,
+                )),
                 "governance" => runtime.block_on(crate::governance::governance_command(
                     input["operation"]
                         .as_str()

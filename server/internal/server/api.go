@@ -19,11 +19,13 @@ type API struct {
 	Environment  map[string]string
 	Authenticate Authenticate
 	MCP          http.Handler
+	Repositories *GitHub
 }
 
 func NewAPI(store *Store, settings AuthSettings, authURL string) *API {
 	a := &API{Store: store, Settings: settings, AuthURL: authURL, Environment: processEnv()}
 	a.Authenticate = a.accountAuthenticate
+	a.Repositories = &GitHub{Store: store}
 	return a
 }
 func readBytes(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, error) {
@@ -83,7 +85,15 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 		return nil, true, nil
 	}
 	if path == "/v2/instance" && method == http.MethodGet {
-		return Object{"version": 1, "onboarding": 1, "profile": Object{"version": 2, "jobRole": true, "avatarUpload": true, "conditionalSave": 1}, "mode": a.Settings.Mode, "auth": Object{"password": a.Settings.Password, "github": a.Settings.GitHub, "magicLink": a.Settings.MagicLink, "profileRedirect": true}}, false, nil
+		return Object{"version": 1, "onboarding": 1, "profile": Object{"version": 2, "jobRole": true, "avatarUpload": true, "conditionalSave": 1}, "mode": a.Settings.Mode, "repositories": Object{"github": choose(a.Repositories.Settings.Enabled, 1, 0)}, "auth": Object{"password": a.Settings.Password, "github": a.Settings.GitHub, "magicLink": a.Settings.MagicLink, "profileRedirect": true}}, false, nil
+	}
+	if path == "/integrations/github/webhook" && method == http.MethodPost {
+		raw, err := readBytes(w, r, 1_000_000)
+		if err != nil {
+			return nil, false, err
+		}
+		result, err := a.Repositories.Webhook(r.Context(), raw, r.Header.Get("X-Hub-Signature-256"), r.Header.Get("X-GitHub-Delivery"), r.Header.Get("X-GitHub-Event"))
+		return result, false, err
 	}
 	if path == "/auth/hooks/send-email" && method == http.MethodPost && a.Settings.EmailProvider == "resend" {
 		data, err := readBytes(w, r, 64000)
@@ -200,6 +210,13 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 		return object(parsed), err
 	}
 	switch {
+	case path == "/v2/github/action" && method == http.MethodPost:
+		raw, err := body()
+		if err != nil {
+			return nil, false, err
+		}
+		result, err := a.Repositories.Action(r.Context(), user, raw)
+		return result, false, err
 	case path == "/v2/env/capabilities" && method == http.MethodGet:
 		return Object{"format": 1, "maxPlaintextBytes": 1000000}, false, nil
 	case path == "/v2/env/action" && method == http.MethodPost:

@@ -93,6 +93,12 @@ await writeFile(
           PUBLIC_URL: base,
           TRUST_PROXY: "false",
           GITHUB_ENABLED: "true",
+          GITHUB_CLIENT_ID: "Iv1fixture",
+          GITHUB_CLIENT_SECRET: "fixture-secret",
+          GITHUB_REPOS_ENABLED: "true",
+          GITHUB_REPOS_APP_SLUG: "orka-fixture",
+          GITHUB_REPOS_TOKEN_KEY: randomBytes(32).toString("hex"),
+          GITHUB_REPOS_WEBHOOK_SECRET: "fixture-github-webhook-".repeat(3),
           MAGIC_LINK_ENABLED: "true",
           MCP_ENABLED: "true",
           ...(managed
@@ -111,7 +117,7 @@ await writeFile(
           API_EXTERNAL_URL: base + "/auth",
           GOTRUE_SITE_URL: base,
           GOTRUE_EXTERNAL_GITHUB_ENABLED: "true",
-          GOTRUE_EXTERNAL_GITHUB_CLIENT_ID: "fixture-client",
+          GOTRUE_EXTERNAL_GITHUB_CLIENT_ID: "Iv1fixture",
           GOTRUE_EXTERNAL_GITHUB_SECRET: "fixture-secret",
           GOTRUE_DISABLE_SIGNUP: "false",
           GOTRUE_SMTP_HOST: "mail",
@@ -214,6 +220,7 @@ try {
   const instance = await (await fetch(base + "/v2/instance")).json();
   assert.equal(instance.mode, managed ? "cloud" : "self-hosted");
   assert.equal(instance.auth.github, true);
+  assert.equal(instance.repositories.github, 1);
   assert.equal(instance.auth.magicLink, true);
   assert.equal((await fetch(base + "/v2/projects")).status, 401);
   for (const route of ["/auth/admin/users", "/auth/signup", "/auth/user"])
@@ -293,6 +300,13 @@ try {
     refresh_token: string;
     user: { id: string };
   };
+  const githubStatus = await post(
+    "/v2/github/action",
+    { action: "status", input: {} },
+    session.access_token,
+  );
+  assert.equal(githubStatus.status, 200);
+  assert.equal((await githubStatus.json()).connected, false);
   assert.match((await confirm()).headers.get("location") ?? "", /error/);
   assert.equal(
     (

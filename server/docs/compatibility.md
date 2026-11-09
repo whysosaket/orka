@@ -1,10 +1,20 @@
 # Release compatibility
 
+## GitHub repository connections
+
+The 0.6.0 candidate adds optional repository bindings, native clone support and
+user-scoped GitHub access requests. It builds on the initial schema baseline,
+adding migration `002_github_repositories.sql`. Older services retain local-folder
+setup. Both editions share the implementation; see [configuration and the
+single-app migration guide](github-repositories.md). This candidate is not a
+published release or production OAuth migration.
+
 ## Initial schema baseline
 
-The server now installs one migration, `001_initial.sql`, containing the complete
-current Orka schema. A fresh database records one row in
-`orka.schema_migrations`; repeated startup does not replay historical upgrades.
+The server starts from `001_initial.sql`, containing the complete baseline
+Orka schema, then applies the incremental migrations shipped after it. A fresh
+database records each completed migration in `orka.schema_migrations`; repeated
+startup does not replay historical upgrades.
 GoTrue maintains its own authentication schema and migration ledger separately.
 
 A database that completed the previous eleven Orka migrations can preserve its

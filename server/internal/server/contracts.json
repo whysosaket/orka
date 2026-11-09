@@ -1692,6 +1692,50 @@
     ],
     "additionalProperties": false
   },
+  "githubRepository": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[1-9][0-9]{0,23}$"
+      },
+      "fullName": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+      },
+      "cloneUrl": {
+        "type": "string",
+        "format": "uri"
+      },
+      "defaultBranch": {
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 255
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "private": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "fullName",
+      "cloneUrl",
+      "defaultBranch",
+      "private"
+    ]
+  },
+  "githubRepositoryId": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "string",
+    "pattern": "^[1-9][0-9]{0,23}$"
+  },
   "memoryMetadata": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -1972,6 +2016,160 @@
     "type": "string",
     "minLength": 1,
     "maxLength": 1024
+  },
+  "repositoryAccessRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "sourceId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "requester": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "githubId": {
+        "type": "string"
+      },
+      "githubLogin": {
+        "type": "string"
+      },
+      "repositoryId": {
+        "type": "string",
+        "pattern": "^[1-9][0-9]{0,23}$"
+      },
+      "fullName": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "requested",
+          "waiting_on_github",
+          "invitation_pending",
+          "verified",
+          "rejected",
+          "canceled",
+          "expired"
+        ]
+      },
+      "revision": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "note": {
+        "type": "string"
+      },
+      "createdAt": {
+        "type": "string"
+      },
+      "updatedAt": {
+        "type": "string"
+      },
+      "canReview": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "projectId",
+      "sourceId",
+      "requester",
+      "githubId",
+      "githubLogin",
+      "repositoryId",
+      "fullName",
+      "reason",
+      "status",
+      "revision",
+      "note",
+      "createdAt",
+      "updatedAt",
+      "canReview"
+    ]
+  },
+  "repositoryBinding": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[1-9][0-9]{0,23}$"
+      },
+      "fullName": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+      },
+      "cloneUrl": {
+        "type": "string",
+        "format": "uri"
+      },
+      "defaultBranch": {
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 255
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "private": {
+        "type": "boolean"
+      },
+      "revision": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "previousCloneUrls": {
+        "maxItems": 10,
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "required": [
+      "id",
+      "fullName",
+      "cloneUrl",
+      "defaultBranch",
+      "private",
+      "revision"
+    ]
+  },
+  "repositoryRequestStatus": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "string",
+    "enum": [
+      "requested",
+      "waiting_on_github",
+      "invitation_pending",
+      "verified",
+      "rejected",
+      "canceled",
+      "expired"
+    ]
   },
   "resolution": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

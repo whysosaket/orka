@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +23,34 @@ import (
 // server has neither the control endpoint nor callback authentication.
 type bridgeResolver struct {
 	callback func(context.Context, string, Object) (any, error)
+}
+type bridgeTransport struct {
+	callback func(context.Context, string, Object) (any, error)
+}
+
+func (t bridgeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	headers := Object{}
+	for key := range req.Header {
+		headers[key] = req.Header.Get(key)
+	}
+	var body any
+	if req.Body != nil {
+		raw, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		body = string(raw)
+	}
+	result, err := t.callback(req.Context(), "github", Object{"url": req.URL.String(), "requestMethod": req.Method, "headers": headers, "body": body})
+	if err != nil {
+		return nil, err
+	}
+	value := object(result)
+	responseHeaders := http.Header{}
+	for k, v := range object(value["headers"]) {
+		responseHeaders.Set(k, text(v))
+	}
+	return &http.Response{StatusCode: int(number(value["status"])), Header: responseHeaders, Body: io.NopCloser(strings.NewReader(text(value["body"]))), Request: req}, nil
 }
 
 func (r bridgeResolver) Resolve(ctx context.Context, state Object) ([]Object, error) {
@@ -102,6 +131,11 @@ func RunTestBridge() error {
 		case "configure":
 			err = json.Unmarshal(jsonBytes(args["settings"]), &api.Settings)
 			api.AuthURL = text(args["authUrl"])
+			if github := object(args["github"]); github != nil {
+				var settings GitHubSettings
+				err = json.Unmarshal(jsonBytes(github), &settings)
+				api.Repositories = &GitHub{Store: store, Settings: settings, Client: &http.Client{Transport: bridgeTransport{callback}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+			}
 			if env := object(args["environment"]); env != nil {
 				api.Environment = map[string]string{}
 				for key, value := range env {

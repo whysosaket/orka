@@ -7,3 +7,7 @@ The selected service advertises its available authentication providers. GitHub a
 Switching services is not data migration. Memberships, invitations, remote-only content, and device trust do not transfer automatically. Connect projects and explicitly select the categories you want to share on the destination service.
 
 The public repository includes the source-built [Docker Compose server](../server/README.md), migrations, account-provisioning and backup/restore tools. No private registry or managed account is required. The default deployment is password-only with signup disabled; operators provision approved accounts privately. GitHub and SMTP/Resend magic links are optional server-side settings. Building the desktop and running fixture-based checks still needs no service account.
+
+Optional [GitHub repository connections](github-repositories.md) use the same GitHub App
+as sign-in in each environment. Email/password users can connect GitHub separately;
+repository consent and app installation do not change their Orka account identity.

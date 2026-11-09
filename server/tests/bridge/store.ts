@@ -19,6 +19,7 @@ import type { MemoryResolver, MemoryState } from "../reference/memory.js";
 // The existing acceptance fixtures still use pg and blob writers. Every operation
 // under test crosses the process boundary to the native Go implementation.
 export class Store extends ReferenceStore {
+  githubFetcher: typeof fetch = fetch;
   authenticate: (token: string) => Promise<string> = async (token) => token;
   readonly ready: Promise<string>;
   private readonly secret = randomBytes(32).toString("hex");
@@ -43,7 +44,28 @@ export class Store extends ReferenceStore {
           token: string;
           project: string;
           state: MemoryState;
+          url: string;
+          requestMethod: string;
+          headers: Record<string, string>;
+          body?: string;
         };
+        if (input.method === "github") {
+          const response = await this.githubFetcher(input.url, {
+            method: input.requestMethod,
+            headers: input.headers,
+            body: input.body ?? undefined,
+          });
+          res.end(
+            JSON.stringify({
+              result: {
+                status: response.status,
+                headers: Object.fromEntries(response.headers),
+                body: await response.text(),
+              },
+            }),
+          );
+          return;
+        }
         const result =
           input.method === "authenticate"
             ? await this.authenticate(input.token)

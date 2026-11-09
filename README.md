@@ -20,6 +20,7 @@ Share project memories, skills, and plans with teammates and their AI tools, and
 ## Features
 
 - Group repositories into projects and filter context by repository.
+- [Connect GitHub repositories](docs/github-repositories.md), clone onto this Mac, and request missing access when enabled by your service.
 - Share project instructions, attributable memories, complete skill folders, plans, and native session snapshots.
 - Review proposed knowledge and permissions while keeping personal learning local.
 - Resolve sync conflicts and retry changes after working offline.

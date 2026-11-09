@@ -35,6 +35,8 @@ import {
   ProjectSetupDialog,
 } from "./components/project-setup.js";
 import { ResourceIndex } from "./components/resource-index.js";
+import { RepositoryConnections } from "./components/repository-connections.js";
+import { useBackgroundRepositoryAccess } from "./components/use-repositories.js";
 import { RepositoryFilter } from "./components/repository-filter.js";
 import { GlobalSkillImport } from "./components/global-skill-import.js";
 import { useProjectSkillUsage } from "./components/skill-usage.js";
@@ -155,7 +157,14 @@ function WorkspaceApp({
     state.user,
     state.config?.apiUrl,
   ]);
-  const setup = useProjectSetup(setProject, setError, state.config?.apiUrl);
+  useBackgroundRepositoryAccess(state);
+  const [repositorySetup, setRepositorySetup] = useState("");
+  const setup = useProjectSetup(
+    setProject,
+    setError,
+    state.config?.apiUrl,
+    (id) => setRepositorySetup(id),
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const reducedMotion = useReducedMotion();
   const [sidebarInstant, setSidebarInstant] = useState(false);
@@ -226,6 +235,22 @@ function WorkspaceApp({
   }, [actionNotice, setNotice]);
   const index = useIndexFilters(JSON.stringify([workspaceScope, project]));
   const selectedProject = state.projects.find((p) => p.id === project);
+  const repositorySetupProject = state.projects.find(
+    (item) => item.id === repositorySetup,
+  );
+  const unconnectedRepositories =
+    repositorySetupProject?.sources?.filter(
+      (source) =>
+        source.repository &&
+        (!source.path || source.folderState === "reconnect"),
+    ) ?? [];
+  const alreadyConnectedRepositories = Boolean(
+    repositorySetupProject?.sources?.some((source) => source.repository) &&
+    unconnectedRepositories.length === 0,
+  );
+  useEffect(() => {
+    if (alreadyConnectedRepositories) setRepositorySetup("");
+  }, [alreadyConnectedRepositories]);
   const repositories = selectedProject?.sources ?? [];
   const repository = repositories.some(
     (source) => source.id === index.repository,
@@ -651,7 +676,14 @@ function WorkspaceApp({
               <FolderConnectionPrompt
                 projectName={projectLabel(selectedProject)}
                 busy={busy}
-                onConnect={() => void act(() => connectProject(project))}
+                repositories={selectedProject.sources?.some(
+                  (source) => source.repository,
+                )}
+                onConnect={() =>
+                  selectedProject.sources?.some((source) => source.repository)
+                    ? openSettings("general")
+                    : void act(() => connectProject(project))
+                }
               />
             )}
             <Suspense
@@ -779,9 +811,29 @@ function WorkspaceApp({
         )}
         <ToastViewport />
       </main>
+      {repositorySetupProject && !alreadyConnectedRepositories && (
+        <RepositoryConnections
+          key={`${workspaceScope}:${repositorySetup}`}
+          project={repositorySetupProject}
+          state={state}
+          refresh={refresh}
+          initiallyOpen
+          dialogOnly
+          initialSource={
+            unconnectedRepositories.length === 1
+              ? unconnectedRepositories[0]
+              : undefined
+          }
+          onClose={() => setRepositorySetup("")}
+          onConnecting={() => openSettings("general")}
+        />
+      )}
       {setup.dialog && (
         <ProjectSetupDialog
           mode={setup.dialog}
+          repositoryEnabled={setup.repositoryEnabled}
+          sourceMode={setup.sourceMode}
+          onSourceMode={setup.setSourceMode}
           value={setup.input}
           selection={setup.selection}
           run={(action) => void act(action)}

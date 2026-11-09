@@ -1,4 +1,9 @@
-import type { Resource, SessionConflict, Activity } from "@portable/protocol";
+import type {
+  Resource,
+  SessionConflict,
+  Activity,
+  RepositoryBinding,
+} from "@portable/protocol";
 import type {
   ReviewRequest,
   EffectiveAccess,
@@ -38,6 +43,8 @@ export interface Project {
     name: string;
     path?: string | null;
     folderState?: "connected" | "reconnect" | "locate";
+    repository?: RepositoryBinding | null;
+    repositoryRevision?: number;
   }[];
   folderState?: "connected" | "reconnect" | "locate";
   role: "owner" | "admin" | "member";

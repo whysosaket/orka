@@ -224,7 +224,9 @@ test("folder recovery states expose paths in name tooltips and reconnect the sel
     }),
   ).toHaveCount(0);
   await expect(button(folders, "Reconnect orka-website folder")).toBeEnabled();
-  await expect(button(folders, "Locate documentation folder")).toBeEnabled();
+  await expect(
+    button(folders, "Locate Folder for documentation"),
+  ).toBeEnabled();
   await expect(folders.locator(".settings-add-folder-row")).toHaveCSS(
     "border-top-width",
     "1px",
@@ -241,7 +243,7 @@ test("folder recovery states expose paths in name tooltips and reconnect the sel
   }
   await button(folders, "Reconnect orka-website folder").click();
   await expect(button(folders, "Reconnect orka-website folder")).toHaveCount(0);
-  await button(folders, "Locate documentation folder").click();
+  await button(folders, "Locate Folder for documentation").click();
   await expect(
     button(folders, "Disconnect documentation folder"),
   ).toBeEnabled();

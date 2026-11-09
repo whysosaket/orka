@@ -663,6 +663,7 @@ export const SettingsModal = forwardRef<
                       <h3>Source Folder</h3>
                       <SettingsFolder
                         project={project}
+                        state={state}
                         run={folderRun}
                         queued={queued}
                         busy={folderBusy || workspaceBusy}

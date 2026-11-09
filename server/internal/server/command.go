@@ -151,7 +151,12 @@ func run(parent context.Context, env map[string]string) error {
 	if err = store.Migrate(ctx, false); err != nil {
 		return err
 	}
+	github, err := GitHubSettingsFromEnv(env)
+	if err != nil {
+		return err
+	}
 	api := NewAPI(store, settings, env["AUTH_URL"])
+	api.Repositories = &GitHub{Store: store, Settings: github}
 	if settings.MCPEnabled {
 		api.MCP, err = NewMCP(api)
 		if err != nil {
