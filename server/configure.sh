@@ -25,11 +25,15 @@ auth_password=$(openssl rand -hex 32)
 api_password=$(openssl rand -hex 32)
 jwt_secret=$(openssl rand -hex 32)
 project_name=orka-$(openssl rand -hex 4)
+install_image=${ORKA_INSTALL_IMAGE:-}
+if [ -z "$install_image" ] && [ -f .release-image ]; then install_image=$(cat .release-image); fi
+case "$install_image" in *[!a-zA-Z0-9._/:@-]*) echo 'Invalid image reference.' >&2; exit 1 ;; esac
 server_mode=public
 compose_files=compose.yml
+if [ -n "$install_image" ]; then compose_files="$compose_files:compose.image.yml"; fi
 if [ "$domain" = localhost ]; then
   server_mode=local
-  compose_files=compose.yml:deploy/local/compose.yml
+  compose_files="$compose_files:deploy/local/compose.yml"
 fi
 # Noclobber also protects against a concurrent initialization.
 set -C
@@ -40,6 +44,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     ORKA_LOCAL_PORT=*) printf 'ORKA_LOCAL_PORT=%s\n' "$local_port" ;;
     COMPOSE_PROJECT_NAME=*) printf 'COMPOSE_PROJECT_NAME=%s\n' "$project_name" ;;
     COMPOSE_FILE=*) printf 'COMPOSE_FILE=%s\n' "$compose_files" ;;
+    ORKA_IMAGE=*) printf 'ORKA_IMAGE=%s\n' "$install_image" ;;
     POSTGRES_PASSWORD=*) printf 'POSTGRES_PASSWORD=%s\n' "$postgres_password" ;;
     AUTH_DB_PASSWORD=*) printf 'AUTH_DB_PASSWORD=%s\n' "$auth_password" ;;
     API_DB_PASSWORD=*) printf 'API_DB_PASSWORD=%s\n' "$api_password" ;;

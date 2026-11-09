@@ -11,7 +11,7 @@
     "build": "npm run build -w @portable/protocol && npm run build -w @portable/server-core && tsc -p tsconfig.apps.json && node scripts/copy-deployment.mjs",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "test:integration": "tsx scripts/integration.ts",
+    "test:integration": "tsx tests/acceptance/integration.ts",
     "start:oss": "node artifacts/apps/oss/main.js",
     "start:managed": "node artifacts/apps/managed/main.js",
     "migrate": "node packages/server-core/dist/migrate.js",
@@ -23,13 +23,14 @@
     "local:user": "node packages/server-core/dist/tools/local-dev.js user",
     "test:local": "node packages/server-core/dist/tools/check-local.js",
     "deploy:check": "node packages/server-core/dist/tools/check-deployment.js",
-    "package:release": "npm run build && node scripts/package-release.mjs",
+    "package:release": "npm run build && node scripts/release/package-release.mjs",
     "check:repository": "tsx scripts/check-repository.ts",
-    "test:images": "tsx scripts/image-e2e.ts",
-    "test:self-hosted": "tsx scripts/self-hosted-e2e.ts",
+    "test:images": "tsx tests/acceptance/image-e2e.ts",
+    "test:self-hosted": "tsx tests/acceptance/self-hosted-e2e.ts",
     "licenses": "node scripts/dependency-licenses.mjs",
     "licenses:check": "node scripts/dependency-licenses.mjs --check",
-    "migrate:sources": "node packages/server-core/dist/tools/migrate-project-sources.js"
+    "migrate:sources": "node packages/server-core/dist/tools/migrate-project-sources.js",
+    "package:operator": "node scripts/release/package-operator.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

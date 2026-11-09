@@ -53,7 +53,7 @@ chmod +x "$workspace/bin/"*
 touch "$workspace/fixture/deploy/ec2/compose.yml" "$workspace/fixture/deploy/cloud/compose.yml"
 cp deploy/ec2/backfill-member-emails.sql "$workspace/fixture/deploy/ec2/"
 tar -cf "$workspace/stage/deploy.tar" -C "$workspace/fixture" deploy
-cp scripts/verify-deployment.ts "$workspace/stage/"
+cp scripts/managed/verify-deployment.ts "$workspace/stage/"
 cp "$workspace/fixture/deploy/ec2/backup.sh" "$workspace/fixture/deploy/ec2/restore-check.sh" "$workspace/stage/"
 touch "$workspace/stage/verify-blobs.py"
 new_root() {
@@ -65,7 +65,7 @@ new_root() {
 }
 deploy() {
   : > "$TEST_LOG"
-  printf fixture-token | bash scripts/deploy-managed.sh "$root" "$workspace/stage" "$image" "$TEST_COMMIT" fixture-user > "$root/output" 2>&1
+  printf fixture-token | bash scripts/managed/deploy-managed.sh "$root" "$workspace/stage" "$image" "$TEST_COMMIT" fixture-user > "$root/output" 2>&1
 }
 check_credentials_removed() {
   [[ ! -e $(cat "$TEST_LOG.credentials") ]]

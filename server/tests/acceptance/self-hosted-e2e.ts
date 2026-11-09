@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { gunzipSync } from "node:zlib";
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
@@ -9,20 +8,22 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
-  writeFile,
 } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseEnv } from "node:util";
-import { legacyMigrationNames } from "../packages/server-core/src/migrations.js";
+import { legacyMigrationNames } from "../../packages/server-core/src/migrations.js";
 
 const source = resolve(process.argv[2] ?? ".");
 const temporary = await mkdtemp(join(tmpdir(), "orka-readme-e2e-"));
 const installation = join(temporary, "server");
 const recovery = join(temporary, "recovery");
+const operatorImage = process.env.ORKA_TEST_OPERATOR_IMAGE;
+const operatorArchive = join(temporary, "operator.tar.gz");
 const instances: { root: string; name: string }[] = [];
 const environment = { ...process.env };
 for (const key of Object.keys(environment))
@@ -137,6 +138,24 @@ try {
       installation,
       "--candidate",
     ]);
+  }
+  if (operatorImage) {
+    const snapshot = join(temporary, "source-snapshot");
+    await rename(installation, snapshot);
+    run(snapshot, process.execPath, [
+      "scripts/release/package-operator.mjs",
+      operatorImage,
+      operatorArchive,
+    ]);
+    await mkdir(installation);
+    run(snapshot, "tar", [
+      "-xzf",
+      operatorArchive,
+      "--strip-components=1",
+      "-C",
+      installation,
+    ]);
+    assert.ok(!(await readdir(installation)).includes("packages"));
   }
   const readme = await readFile(join(installation, "README.md"), "utf8");
   assert.ok(
@@ -386,56 +405,28 @@ try {
     "README setup, repeated setup, credentials, teammate join, real sync, cold restart, verified backup and upgrade passed.",
   );
 
-  await copySnapshot(installation, recovery);
+  if (operatorImage) {
+    await mkdir(recovery);
+    run(installation, "tar", [
+      "-xzf",
+      operatorArchive,
+      "--strip-components=1",
+      "-C",
+      recovery,
+    ]);
+  } else await copySnapshot(installation, recovery);
   const recoveryPort = await availablePort();
   const recoveryName = `${projectName}-restore`;
   instances.push({ root: recovery, name: recoveryName });
-  const recoveredConfig = (await readFile(join(backup, "operator.env"), "utf8"))
-    .replace(
-      /^COMPOSE_PROJECT_NAME=.*$/m,
-      `COMPOSE_PROJECT_NAME=${recoveryName}`,
-    )
-    .replace(/^ORKA_LOCAL_PORT=.*$/m, `ORKA_LOCAL_PORT=${recoveryPort}`);
-  await writeFile(join(recovery, ".env"), recoveredConfig, { mode: 0o600 });
-  await mkdir(join(recovery, ".runtime/accounts"), {
-    recursive: true,
-    mode: 0o700,
-  });
-  compose(recovery, ["up", "-d", "--wait", "db"]);
-  compose(
+  helper(
     recovery,
-    [
-      "exec",
-      "-T",
-      "db",
-      "pg_restore",
-      "--clean",
-      "--if-exists",
-      "--exit-on-error",
-      "-U",
-      "postgres",
-      "-d",
-      "orka",
-    ],
-    await readFile(join(backup, "database.dump")),
+    "restore",
+    backup,
+    "--project",
+    recoveryName,
+    "--port",
+    String(recoveryPort),
   );
-  compose(
-    recovery,
-    [
-      "run",
-      "--rm",
-      "-T",
-      "--no-deps",
-      "--entrypoint",
-      "sh",
-      "api",
-      "-c",
-      "tar -C /data -xf -",
-    ],
-    gunzipSync(await readFile(join(backup, "blobs.tar.gz"))),
-  );
-  helper(recovery, "start");
-  assert.equal(migrationLedger(recovery), "001_initial.sql");
   const recoveredOrigin = `http://127.0.0.1:${recoveryPort}`;
   await verifyContent(
     recoveredOrigin,

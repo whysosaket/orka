@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { validateDeployment } from "../scripts/prepare-deployment.js";
-import { verifyDeployment } from "../scripts/verify-deployment.js";
+import { validateDeployment } from "../scripts/managed/prepare-deployment.js";
+import { verifyDeployment } from "../scripts/managed/verify-deployment.js";
 
 const commit = "a".repeat(40);
 const digest = `sha256:${"b".repeat(64)}`;
