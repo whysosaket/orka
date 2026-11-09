@@ -32,20 +32,20 @@ case "$2" in
 esac
 SH
 chmod +x "$workspace/bin/"*
-bash scripts/deploy-network.sh open
-bash scripts/deploy-network.sh close
+bash scripts/managed/deploy-network.sh open
+bash scripts/managed/deploy-network.sh close
 [[ $(wc -l < "$TEST_LOG") = 3 ]]
 : > "$TEST_LOG"
-TEST_RULES='' bash scripts/deploy-network.sh close
+TEST_RULES='' bash scripts/managed/deploy-network.sh close
 [[ $(wc -l < "$TEST_LOG") = 1 ]]
 for invalid in '127.0.0.1' '10.0.0.1' '8.8.8.8/0' '8.8.8.8;id'; do
   : > "$TEST_LOG"
-  if TEST_IP="$invalid" bash scripts/deploy-network.sh open >/dev/null 2>&1; then exit 1; fi
+  if TEST_IP="$invalid" bash scripts/managed/deploy-network.sh open >/dev/null 2>&1; then exit 1; fi
   [[ ! -s "$TEST_LOG" ]]
 done
-if TEST_FAILURE=authorize bash scripts/deploy-network.sh open; then exit 1; fi
+if TEST_FAILURE=authorize bash scripts/managed/deploy-network.sh open; then exit 1; fi
 # Cleanup must still find the rule after an ambiguous/opening failure.
-bash scripts/deploy-network.sh close
-if TEST_FAILURE=revoke bash scripts/deploy-network.sh close; then exit 1; fi
-if GITHUB_RUN_ID='123`bad' bash scripts/deploy-network.sh close; then exit 1; fi
+bash scripts/managed/deploy-network.sh close
+if TEST_FAILURE=revoke bash scripts/managed/deploy-network.sh close; then exit 1; fi
+if GITHUB_RUN_ID='123`bad' bash scripts/managed/deploy-network.sh close; then exit 1; fi
 echo 'Deployment network access checks passed.'

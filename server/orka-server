@@ -12,9 +12,11 @@ Orka server — Docker Compose, no host Node.js required
 
   sh ./orka-server setup --local --email you@example.com [--port 8080]
   sh ./orka-server setup --domain sync.example.com --email you@example.com
+  sh ./orka-server setup --local --email you@example.com --image registry/orka:version
   sh ./orka-server setup                 Guided setup in an interactive terminal
   sh ./orka-server credentials           Show your saved owner login locally
   sh ./orka-server start                 Start the saved installation
+  sh ./orka-server build                 Build source without starting services
   sh ./orka-server stop                  Stop containers and keep all data
   sh ./orka-server status                Show containers and connection address
   sh ./orka-server doctor                Check database, auth, API and public HTTPS
@@ -22,7 +24,8 @@ Orka server — Docker Compose, no host Node.js required
   sh ./orka-server user teammate@example.com
   sh ./orka-server backup [directory]    Back up data/configuration and verify restore
   sh ./orka-server verify-backup directory
-  sh ./orka-server upgrade [--reset-ledger]  Verify a backup, then rebuild and restart
+  sh ./orka-server restore directory [--project name] [--port 8080]
+  sh ./orka-server upgrade [--image reference] [--reset-ledger]
 
 Setup saves the mode, port and project name in private .env. Reuse this directory.
 Local mode binds to 127.0.0.1. Public mode requires a domain and open ports 80/443.
@@ -47,6 +50,8 @@ load_config() {
   COMPOSE_PROJECT_NAME=$(setting COMPOSE_PROJECT_NAME)
   COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-orka-self-hosted}
   COMPOSE_FILE="$server_root/compose.yml"
+  image=$(setting ORKA_IMAGE)
+  if [ -n "$image" ]; then COMPOSE_FILE="$COMPOSE_FILE:$server_root/compose.image.yml"; fi
   if [ "$mode" = local ]; then COMPOSE_FILE="$COMPOSE_FILE:$server_root/deploy/local/compose.yml"; fi
   export COMPOSE_PROJECT_NAME COMPOSE_FILE
   origin="https://$domain"
@@ -64,9 +69,23 @@ connection() {
 start() {
   compose config --quiet || return $?
   if [ "$mode" = local ]; then
-    compose up --build -d --wait --wait-timeout 180 api
+    compose up --no-build --pull never -d --wait --wait-timeout 180 api
   else
-    compose up --build -d --wait --wait-timeout 180
+    compose up --no-build --pull never -d --wait --wait-timeout 180
+  fi
+}
+valid_image() {
+  case "$1" in ''|*[!a-zA-Z0-9._/:@-]*) fail 'Use a versioned container image reference.' ;; esac
+}
+prepare_image() {
+  if [ "$mode" = local ]; then compose pull --policy missing db auth
+  else compose pull --policy missing db auth caddy; fi
+  if [ -n "$image" ]; then
+    valid_image "$image"
+    docker image inspect "$image" >/dev/null 2>&1 || docker pull "$image"
+  else
+    [ -f deploy/Dockerfile ] || fail 'This operator release requires a server image.'
+    compose build api
   fi
 }
 doctor() {
@@ -131,8 +150,12 @@ if [ "$action" = credentials ]; then
   cat .runtime/accounts/owner.json
   exit 0
 fi
-case "$action" in setup|start|stop|status|doctor|logs|user|backup|verify-backup|upgrade) ;; *) help >&2; exit 1 ;; esac
+case "$action" in setup|start|build|stop|status|doctor|logs|user|backup|verify-backup|restore|upgrade) ;; *) help >&2; exit 1 ;; esac
 docker_ready
+if [ "$action" = restore ]; then
+  sh deploy/self-hosted/restore.sh "$@"
+  exit 0
+fi
 if [ "$action" = verify-backup ]; then
   [ "$#" -eq 1 ] || fail 'Usage: sh ./orka-server verify-backup directory'
   backup_directory=$1
@@ -141,13 +164,14 @@ if [ "$action" = verify-backup ]; then
   exit 0
 fi
 if [ "$action" = setup ]; then
-  requested_domain='' requested_port='' email=''
+  requested_domain='' requested_port='' requested_image='' email=''
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --local) [ -z "$requested_domain" ] || fail 'Choose --local or --domain, not both.'; requested_domain=localhost; shift ;;
       --domain) [ "$#" -ge 2 ] || fail '--domain needs a hostname.'; [ -z "$requested_domain" ] || fail 'Choose --local or --domain, not both.'; requested_domain=${2#https://}; requested_domain=${requested_domain%/}; shift 2 ;;
       --email) [ "$#" -ge 2 ] || fail '--email needs an address.'; email=$2; shift 2 ;;
       --port) [ "$#" -ge 2 ] || fail '--port needs a number.'; requested_port=$2; shift 2 ;;
+      --image) [ "$#" -ge 2 ] || fail '--image needs a reference.'; requested_image=$2; valid_image "$requested_image"; shift 2 ;;
       *) fail "Unknown setup option: $1. Run sh ./orka-server help." ;;
     esac
   done
@@ -164,6 +188,7 @@ if [ "$action" = setup ]; then
   fi
   if [ -f .env ]; then
     load_config
+    [ -z "$requested_image" ] || [ "$requested_image" = "$image" ] || fail 'Use upgrade --image to change an existing installation.'
     [ -z "$requested_domain" ] || [ "$requested_domain" = "$domain" ] || fail 'This directory already has a different server configuration. Use another checkout for a separate server; .env was preserved.'
     if [ -n "$requested_port" ] && [ "$requested_port" != "$local_port" ]; then
       [ "$mode" = local ] || fail '--port is for local installations. Public HTTPS uses ports 80/443.'
@@ -176,9 +201,10 @@ if [ "$action" = setup ]; then
     fi
   else
     command -v openssl >/dev/null 2>&1 || fail 'Install OpenSSL, then retry setup.'
-    sh configure.sh "$requested_domain" --port "${requested_port:-8080}"
+    ORKA_INSTALL_IMAGE="$requested_image" sh configure.sh "$requested_domain" --port "${requested_port:-8080}"
     load_config
   fi
+  prepare_image
   if ! start; then
     fail 'Startup failed; .env and volumes were preserved. Check Docker resources/port conflicts with sh ./orka-server logs. For local port conflicts, edit ORKA_LOCAL_PORT in .env and retry setup.'
   fi
@@ -190,6 +216,7 @@ fi
 load_config
 case "$action" in
   start) [ "$#" -eq 0 ] || fail 'Usage: sh ./orka-server start'; start; doctor; connection ;;
+  build) [ "$#" -eq 0 ] || fail 'Usage: sh ./orka-server build'; [ -z "$image" ] || fail 'Image installations do not need a source build.'; prepare_image ;;
   stop) [ "$#" -eq 0 ] || fail 'Usage: sh ./orka-server stop'; compose down; printf 'Stopped. Database, blobs, certificates and configuration were kept.\n' ;;
   status) compose ps; connection ;;
   doctor) doctor; connection ;;
@@ -197,9 +224,25 @@ case "$action" in
   user) [ "$#" -eq 1 ] || fail 'Usage: sh ./orka-server user teammate@example.com'; compose run --rm --no-deps admin "$1" ;;
   backup) [ "$#" -le 1 ] || fail 'Usage: sh ./orka-server backup [directory]'; backup "$@" ;;
   upgrade)
-    [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = --reset-ledger ]; } || fail 'Usage: sh ./orka-server upgrade [--reset-ledger]'
+    next_image='' reset_ledger=false
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --image) [ "$#" -ge 2 ] || fail '--image needs a reference.'; next_image=$2; valid_image "$next_image"; shift 2 ;;
+        --reset-ledger) reset_ledger=true; shift ;;
+        *) fail 'Usage: sh ./orka-server upgrade [--image reference] [--reset-ledger]' ;;
+      esac
+    done
     backup
-    if [ "${1:-}" = --reset-ledger ]; then
+    if [ -n "$next_image" ]; then
+      docker image inspect "$next_image" >/dev/null 2>&1 || docker pull "$next_image"
+      temporary_env=$(mktemp "$server_root/.env.XXXXXX")
+      awk -v image="$next_image" '/^ORKA_IMAGE=/ {next} /^COMPOSE_FILE=/ {next} {print} END {print "ORKA_IMAGE=" image; print "COMPOSE_FILE=compose.yml:compose.image.yml"}' .env > "$temporary_env"
+      if [ "$mode" = local ]; then sed 's|^COMPOSE_FILE=.*|COMPOSE_FILE=compose.yml:compose.image.yml:deploy/local/compose.yml|' "$temporary_env" > "$temporary_env.local"; mv "$temporary_env.local" "$temporary_env"; fi
+      mv "$temporary_env" .env
+      load_config
+    fi
+    prepare_image
+    if [ "$reset_ledger" = true ]; then
       compose stop api auth
       compose run --rm --no-deps --entrypoint node api packages/server-core/dist/migrate.js --reset-ledger
     fi

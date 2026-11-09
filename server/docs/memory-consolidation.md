@@ -32,7 +32,7 @@ Each inference has a five-second total deadline and at most one retry on a netwo
 Live acceptance uses synthetic memory only. Provide a private JEV environment file and run:
 
 ```sh
-ORKA_TEST_LIVE_JEV=true node --env-file=.runtime/jev.env --import tsx scripts/integration.ts
+ORKA_TEST_LIVE_JEV=true node --env-file=.runtime/jev.env --import tsx tests/acceptance/integration.ts
 ```
 
 The live cases exercise a runtime correction, retaining different service scopes, rejecting an explicit unverified guess, and an update that preserves a development exception. Ordinary CI uses an injected JEV transport and does not require a paid credential. The desktop repository has a two-native-client integration test verifying consolidation, materialized files, retained outbox requests on HTTP 503, recovery and no repeated inference on settled syncs.

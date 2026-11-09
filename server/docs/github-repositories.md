@@ -98,8 +98,8 @@ source revisions, request review/verification, signed webhook replay and revocat
 Credential-dependent acceptance uses private files, never token arguments:
 
 ```sh
-npx tsx scripts/github-live-e2e.ts /private/development.env /absolute/native-binary owner/private-fixture
-npx tsx scripts/github-auth-live-e2e.ts /private/development.env /absolute/native-binary github-login
+npx tsx tests/acceptance/github-live-e2e.ts /private/development.env /absolute/native-binary owner/private-fixture
+npx tsx tests/acceptance/github-auth-live-e2e.ts /private/development.env /absolute/native-binary github-login
 ```
 
 The first uses isolated PostgreSQL and two native caches to verify real device

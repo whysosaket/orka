@@ -4,6 +4,28 @@ Run your own Orka service from this public source tree. The server needs Docker,
 a shell and OpenSSL. Backups and upgrades also need Bash and Python 3. You do **not** need Node.js, Rust, a Supabase project, an
 Orka Cloud account, private registry access, or email/OAuth keys for the default setup.
 
+## Operator releases
+
+An operator archive contains only the deployment configuration, one `orka-server`
+interface and backup/recovery tools. It has no npm workspace, tests, source tree or
+managed AWS/SSH automation. Install Docker Compose **2.24 or later**, a shell and
+OpenSSL; backups/recovery also require Bash and Python 3.
+
+Extract a reviewed archive and run the setup commands below directly in its
+`orka-server/` directory. Its image is pinned by the release. No Git or source build
+is needed. A source checkout can use the same path explicitly:
+
+```sh
+sh ./orka-server setup --local --email you@example.com --image registry.example/orka:version
+```
+
+Use the image reference from the reviewed release. This change does not assume an
+unpublished image is available. Maintainers generate an archive from the selected
+image using `npm run package:operator -- registry.example/orka:version` and publish
+it with the matching image digest. Image updates use
+`sh ./orka-server upgrade --image registry.example/orka:new-version`; the helper
+verifies a backup before changing the installed image.
+
 ## Quick start: try it on your computer
 
 Install [Docker Desktop](https://docs.docker.com/desktop/) on macOS, or
@@ -82,8 +104,7 @@ sh ./orka-server stop
 sh ./orka-server start
 ```
 
-Stopping removes containers and keeps your data. Starting rebuilds from the
-checked-out source and restores the saved installation. To add a teammate:
+Stopping removes containers and keeps your data. Starting reuses installed images and restores the saved installation without a build. To add a teammate:
 
 ```sh
 sh ./orka-server user teammate@example.com
@@ -154,21 +175,18 @@ Use a fresh Docker host with no existing Orka volumes for this installation.
 Clone the source revision recorded in the backup's `source-revision.txt` and
 verify the backup first. `source-manifest.json` also records the server snapshot;
 a backup of an uncommitted candidate needs that candidate's source files.
-Set `backup` to the absolute directory containing its files:
+Run recovery in the fresh release/source directory:
 
 ```sh
-cd orka/server
-backup=/absolute/private/backups/orka
-sh ./orka-server verify-backup "$backup"
-umask 077
-cp "$backup/operator.env" .env
-mkdir -p .runtime/accounts
-chmod 700 .runtime .runtime/accounts
-docker compose up -d --wait db
-docker compose exec -T db pg_restore --clean --if-exists --exit-on-error -U postgres -d orka < "$backup/database.dump"
-gzip -dc "$backup/blobs.tar.gz" | docker compose run --rm -T --no-deps --entrypoint sh api -c 'tar -C /data -xf -'
-sh ./orka-server start
+sh ./orka-server restore /absolute/private/backups/orka
 ```
+
+The command verifies the archive and database restore, restores the original private
+configuration, and refuses to reuse existing containers or volumes. It requires
+no existing `.env`. For a recovery drill on the same Docker host, choose a fresh
+`--project orka-recovery`; local backups also accept `--port 8181`. Never restore
+over a live installation. Bind-mounted legacy installations retain their separate
+migration procedure.
 
 Keep the original database passwords and JWT secret from the backup. If the
 operator's numeric UID/GID changed, update `ORKA_OPERATOR_UID/GID` in `.env`
@@ -236,8 +254,8 @@ docker compose ps
 docker compose logs --tail 100 api
 ```
 
-For public mode, start with `docker compose up --build -d --wait`. For local mode,
-use `docker compose up --build -d --wait api`; the helper selects this automatically.
+For source development, `sh ./orka-server build` builds the image without starting services.
+The helper builds during setup/upgrade; ordinary `start` uses the installed image.
 
 Contributors need Node.js 24+ and PostgreSQL binaries for integration tests.
 The server has its own dependency graph:
@@ -264,6 +282,15 @@ delivery, public DNS/TLS for your domain, or signed macOS/two-Mac handoff.
 and per-file hashes. Public builds need no access to that repository.
 Preserve the [MIT license](LICENSE), [third-party notices](THIRD_PARTY_NOTICES.md)
 and [dependency inventory](docs/dependency-licenses.md).
+
+## Contributor layout
+
+Application source and contracts live in `packages/` and `apps/`. HTTP and Docker
+acceptance drivers live in `tests/acceptance/`; unit/integration fixtures stay in
+`tests/`. `scripts/managed/` owns managed deployment, `scripts/release/` owns release
+packaging, and the remaining scripts check repository/dependency boundaries.
+Generated deployment copies inside the npm package are recreated by the build.
+They are not maintained or distributed as a second operator configuration tree.
 
 Optional [GitHub repository connections](docs/github-repositories.md) let members
 clone authorized repositories from Orka and request missing access. They use the
