@@ -10,10 +10,12 @@ services:
       AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?Set AUTH_DB_PASSWORD}
       API_DB_PASSWORD: ${API_DB_PASSWORD:?Set API_DB_PASSWORD}
     volumes:
-      - ${DATA_ROOT:-/srv/orka}/postgres:/var/lib/postgresql/data
+      - type: bind
+        source: ${DATA_ROOT:-/srv/orka}/postgres
+        target: /var/lib/postgresql/data
       - ./init-db.sh:/docker-entrypoint-initdb.d/01-orka.sh:ro
     healthcheck:
-      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U postgres -d orka']
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U postgres -d orka"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -39,7 +41,7 @@ services:
       GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/confirm
       GOTRUE_MAILER_URLPATHS_INVITE: /auth/confirm
       GOTRUE_MAILER_OTP_EXP: 600
-      GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED: 'true'
+      GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED: "true"
       GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL: 10
       GOTRUE_SITE_URL: https://${DOMAIN}
       GOTRUE_JWT_ISSUER: https://${DOMAIN}/auth
@@ -51,9 +53,9 @@ services:
       GOTRUE_JWT_AUD: authenticated
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
       GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-true}
-      GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true'
-      GOTRUE_EXTERNAL_PHONE_ENABLED: 'false'
-      GOTRUE_MAILER_AUTOCONFIRM: 'false'
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      GOTRUE_MAILER_AUTOCONFIRM: "false"
       GOTRUE_MAILER_TEMPLATES_CONFIRMATION: http://api:8080/email-template
       GOTRUE_MAILER_TEMPLATES_MAGIC_LINK: http://api:8080/email-template
       GOTRUE_MAILER_SUBJECTS_CONFIRMATION: Your Orka sign-in code
@@ -69,7 +71,15 @@ services:
       GOTRUE_RATE_LIMIT_HEADER: X-Orka-Client-IP
       GOTRUE_LOG_LEVEL: error
     healthcheck:
-      test: [CMD, wget, --no-verbose, --tries=1, --spider, 'http://localhost:9999/health']
+      test:
+        [
+          CMD,
+          wget,
+          --no-verbose,
+          --tries=1,
+          --spider,
+          "http://localhost:9999/health",
+        ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -82,7 +92,7 @@ services:
     environment:
       PORT: 8080
       # API is reachable only through the Caddy proxy in this deployment.
-      TRUST_PROXY: 'true'
+      TRUST_PROXY: "true"
       AUTH_URL: http://auth:9999
       DATABASE_URL: postgres://orka_api:${API_DB_PASSWORD}@db:5432/orka
       BLOB_ROOT: /data/blobs
@@ -109,7 +119,9 @@ services:
       RESEND_FROM: ${RESEND_FROM:-}
       SEND_EMAIL_HOOK_SECRET: ${SEND_EMAIL_HOOK_SECRET:-}
     volumes:
-      - ${DATA_ROOT:-/srv/orka}/blobs:/data/blobs
+      - type: bind
+        source: ${DATA_ROOT:-/srv/orka}/blobs
+        target: /data/blobs
     healthcheck:
       test: [CMD, orka-server, healthcheck]
       interval: 10s
@@ -120,14 +132,19 @@ services:
     restart: unless-stopped
     depends_on:
       api: { condition: service_healthy }
-    ports: ['80:80', '443:443', '443:443/udp']
+    ports: ["80:80", "443:443", "443:443/udp"]
     environment:
       DOMAIN: ${DOMAIN}
     volumes:
-      - ./${CADDY_CONFIG:-Caddyfile}:/etc/caddy/Caddyfile:ro
-      - ${DATA_ROOT:-/srv/orka}/caddy:/data
+      - type: bind
+        source: ./${CADDY_CONFIG:-Caddyfile}
+        target: /etc/caddy/Caddyfile
+        read_only: true
+      - type: bind
+        source: ${DATA_ROOT:-/srv/orka}/caddy
+        target: /data
     healthcheck:
-      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:2019/config/']
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:2019/config/"]
       interval: 30s
       timeout: 5s
       retries: 3
