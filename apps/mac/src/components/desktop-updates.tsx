@@ -1,12 +1,12 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import * as Popover from "@radix-ui/react-popover";
-import { DownloadIcon } from "@primer/octicons-react";
+import { DownloadIcon, XIcon } from "@primer/octicons-react";
 import { Button } from "./button.js";
+import { IconButton } from "./icon-button.js";
 
 interface UpdateStatus {
-  installedVersion: string;
-  update?: { version: string; notes: string; sha256: string };
+  update?: { version: string; sha256: string };
 }
 
 export function useDesktopUpdates() {
@@ -35,14 +35,12 @@ export function useDesktopUpdates() {
 
 export function SidebarUpdate({
   update,
-  installedVersion,
   collapsed,
 }: {
   update: NonNullable<UpdateStatus["update"]>;
-  installedVersion: string;
   collapsed: boolean;
 }) {
-  const title = useId();
+  const [dismissed, setDismissed] = useState(false);
   const pending = useRef(false);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState("");
@@ -68,6 +66,69 @@ export function SidebarUpdate({
     }
   };
 
+  const changelog = `https://github.com/whysosaket/orka/releases/tag/v${encodeURIComponent(update.version)}`;
+  const openChangelog = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!isTauri()) return;
+    event.preventDefault();
+    setError("");
+    void invoke("open_update_changelog", { version: update.version }).catch(
+      () => setError("Couldn’t open the changelog in your browser."),
+    );
+  };
+  const close = (
+    <IconButton
+      icon={XIcon}
+      size="sm"
+      variant="tertiary"
+      aria-label="Close update"
+      onClick={
+        collapsed
+          ? undefined
+          : (event) => {
+              event.currentTarget
+                .closest(".sidebar-footer")
+                ?.querySelector<HTMLButtonElement>(".sidebar-bottom button")
+                ?.focus();
+              setDismissed(true);
+            }
+      }
+    />
+  );
+  const card = (
+    <>
+      <div className="sidebar-update-header">
+        <strong>v{update.version}</strong>
+        {collapsed ? <Popover.Close asChild>{close}</Popover.Close> : close}
+      </div>
+      {error && <p role="alert">{error}</p>}
+      <Button
+        variant="primary"
+        size="sm"
+        disabled={installing}
+        onClick={() => void install()}
+      >
+        {installing ? "Preparing…" : "Update and Restart"}
+      </Button>
+      <a
+        className="sidebar-update-changelog"
+        href={changelog}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={openChangelog}
+      >
+        View changelog
+      </a>
+    </>
+  );
+
+  if (!collapsed) {
+    return dismissed ? null : (
+      <section className="sidebar-update-review" aria-label="Available update">
+        {card}
+      </section>
+    );
+  }
+
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
@@ -75,57 +136,25 @@ export function SidebarUpdate({
           type="button"
           className="navigation-action sidebar-update-trigger"
           aria-label="Update available"
-          title={collapsed ? "Update available" : undefined}
+          title="Update available"
         >
           <DownloadIcon
             className="navigation-action-icon"
             size={16}
             aria-hidden="true"
           />
-          <span>Update available</span>
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
-          className="sidebar-update-review"
-          side={collapsed ? "right" : "top"}
-          align={collapsed ? "end" : "start"}
+          className="sidebar-update-review sidebar-update-popover"
+          side="right"
+          align="end"
           sideOffset={8}
           collisionPadding={12}
-          aria-labelledby={title}
+          aria-label="Available update"
         >
-          <h2 id={title}>Update Orka</h2>
-          <div className="sidebar-update-versions">
-            <strong>Orka {update.version}</strong>
-            <span>Installed {installedVersion}</span>
-          </div>
-          {update.notes && (
-            <p className="sidebar-update-notes">{update.notes}</p>
-          )}
-          {error && (
-            <p className="sidebar-update-error" role="alert">
-              {error}
-            </p>
-          )}
-          {installing && (
-            <p className="sidebar-update-status" role="status">
-              Orka will restart when the update is ready.
-            </p>
-          )}
-          <div className="sidebar-update-actions">
-            <Button
-              variant="primary"
-              disabled={installing}
-              onClick={() => void install()}
-            >
-              {installing ? "Preparing update…" : "Update and Restart"}
-            </Button>
-            <Popover.Close asChild>
-              <Button variant="tertiary">
-                {installing ? "Close" : "Later"}
-              </Button>
-            </Popover.Close>
-          </div>
+          {card}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

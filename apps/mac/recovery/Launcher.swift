@@ -179,9 +179,6 @@ final class RecoveryWindow: NSObject, NSApplicationDelegate {
             var detail = "Installed version: \(current.version)."
             if let release = update.update {
                 detail += "\n\nOrka \(release.version) is available."
-                if !release.notes.isEmpty {
-                    detail += "\n" + release.notes.prefix(240) + (release.notes.count > 240 ? "…" : "")
-                }
             }
             if let previous { detail += "\n\nYou can restore Orka \(previous.version) from this Mac." }
             if let message = update.message { detail += "\n\n\(message)" }

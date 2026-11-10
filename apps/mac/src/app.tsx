@@ -533,7 +533,6 @@ function WorkspaceApp({
             <SidebarUpdate
               key={updates.update.sha256}
               update={updates.update}
-              installedVersion={updates.installedVersion}
               collapsed={sidebarCollapsed}
             />
           )}

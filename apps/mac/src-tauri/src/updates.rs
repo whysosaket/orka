@@ -120,3 +120,26 @@ pub async fn update_install(version: String, sha256: String) -> Result<()> {
     .await
     .map_err(|error| error.to_string())?
 }
+
+#[tauri::command]
+pub fn open_update_changelog(version: String) -> Result<()> {
+    let valid_part = |part: &str| {
+        !part.is_empty()
+            && part.len() <= 9
+            && part.bytes().all(|byte| byte.is_ascii_digit())
+            && (part.len() == 1 || !part.starts_with('0'))
+    };
+    if version.matches('.').count() != 2 || !version.split('.').all(valid_part) {
+        return Err("Invalid desktop release version.".into());
+    }
+    let status = Command::new("/usr/bin/open")
+        .arg(format!(
+            "https://github.com/whysosaket/orka/releases/tag/v{version}"
+        ))
+        .status()
+        .map_err(|error| error.to_string())?;
+    if !status.success() {
+        return Err("Couldn’t open the changelog in your browser.".into());
+    }
+    Ok(())
+}
