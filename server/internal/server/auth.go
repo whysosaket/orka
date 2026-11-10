@@ -259,6 +259,8 @@ func (a *API) proxyAuth(w http.ResponseWriter, r *http.Request, target *url.URL,
 }
 func signInPage(w http.ResponseWriter, status int, title, message, action, hint string) error {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Keep the same-origin form's Origin header without revealing its token URL.
+	w.Header().Set("Referrer-Policy", "strict-origin")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow, noarchive")
 	w.WriteHeader(status)
@@ -320,7 +322,7 @@ func (a *API) confirmEmail(w http.ResponseWriter, r *http.Request) error {
 	}
 	if response.StatusCode >= 300 && response.StatusCode < 400 {
 		if callback, ok := desktopSignInCallback(response.Header.Get("Location"), redirect); ok {
-			action := `<a class="button" href="` + html.EscapeString(callback) + `">Open Orka</a>`
+			action := `<a class="button" rel="noreferrer" href="` + html.EscapeString(callback) + `">Open Orka</a>`
 			return signInPage(w, 200, "Return to Orka", "Open Orka to finish signing in on the Mac where you started.", action,
 				"If Orka doesn’t open, try Open Orka again. You can also return to the app and request a fresh email to use a code.")
 		}

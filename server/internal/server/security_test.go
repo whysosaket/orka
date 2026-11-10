@@ -132,7 +132,7 @@ func TestDesktopEmailConfirmationKeepsVerificationAndHandoffSeparate(t *testing.
 	}
 	for range 2 {
 		res := form("GET", "")
-		if res.Code != 200 || !strings.Contains(res.Body.String(), "Continue to Orka") || res.Header().Get("Cache-Control") != "no-store" {
+		if res.Code != 200 || !strings.Contains(res.Body.String(), "Continue to Orka") || res.Header().Get("Cache-Control") != "no-store" || res.Header().Get("Referrer-Policy") != "strict-origin" {
 			t.Fatalf("expected scanner-safe confirmation, got %d", res.Code)
 		}
 	}

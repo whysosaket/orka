@@ -50,7 +50,7 @@ older desktops continue using `token`. No migration or provider changes are need
 
 1. Native Orka generates a random verifier, retains it in the initiating profile's Keychain for ten minutes and sends only its S256 challenge with the email to `/auth/otp`.
 2. GoTrue issues a short-lived token and delivers via SMTP or the timestamped, signed email hook. The API verifies the hook before calling Resend with an idempotency key.
-3. Desktop email includes a link to `/auth/confirm` and a numeric code. GET renders the confirmation without consuming the token. **Continue to Orka** submits a same-origin form. The page uses no scripts, analytics, caching or referrers. Older direct `/auth/verify` links remain supported.
+3. Desktop email includes a link to `/auth/confirm` and a numeric code. GET renders the confirmation without consuming the token. **Continue to Orka** submits a same-origin form. The page uses no scripts, analytics or caching. Its origin-only referrer policy preserves the form's Origin without exposing the email URL. Older direct `/auth/verify` links remain supported.
 4. The verified page offers **Open Orka** with an intermediate code on the fixed `orka://auth/callback` route and the validated originating profile, when present. Orka exchanges it with the stored verifier. If the browser blocks the handoff, the same page can open the app again.
 5. Users can instead enter the numeric code from the email in the requesting desktop. The client shows this option when the API advertises `auth.emailCode`. GoTrue verifies the email and code independently of the PKCE exchange, and using either method consumes the email credential. For an expired, used or canceled attempt, request a new email. React never receives the verifier or session tokens.
 

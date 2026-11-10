@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "20972949796ef61255fbb8cf9b6cb60d82e7ad1e",
+  "commit": "a756035fae51d0569e514cd3b112126cfc788743",
   "candidate": false,
-  "sourceTreeSha256": "58c591960beee6b9d27ceed1d4dcf33c947ea601b1129b05d8f9116bd152107a",
+  "sourceTreeSha256": "62f2cd18c6ab479db70c623cb879c767379289d3b698ab0e8d8df034dd5d81a0",
   "files": [
     {
       "path": ".dockerignore",
@@ -146,7 +146,7 @@
     },
     {
       "path": "docs/authentication.md",
-      "sha256": "0a7afd598c883159a6227c502fceb390320ff3434ef08d87dea67e1adb78b0b8",
+      "sha256": "cec7a044780da9e335974fbe635c846ce810a2454952ccefc36d12184e82cabd",
       "mode": 420
     },
     {
@@ -221,7 +221,7 @@
     },
     {
       "path": "internal/server/auth.go",
-      "sha256": "ca00290316608fa03ce7bcbcc0cbde7c1d50221d29fafa0e264bc8894679d295",
+      "sha256": "f7caad50ac69cafbe8ae758326a60108cd19c9f8cf911c08b4b65782b25fb29c",
       "mode": 420
     },
     {
@@ -351,7 +351,7 @@
     },
     {
       "path": "internal/server/security_test.go",
-      "sha256": "53cf1bc33268c5f0851673bd45433c97f2fdeb0ce68b2580fc8860baea0db38c",
+      "sha256": "77f0eebd2c671f162b3926ec782edd3d481bab1c9313fe9da517064cea5723ac",
       "mode": 420
     },
     {
@@ -371,7 +371,7 @@
     },
     {
       "path": "internal/server/templates/confirm.html",
-      "sha256": "54e0036cc52d2c1498ed2840b9a3ac7f621e8de55437dbb73df79bdbed8d6965",
+      "sha256": "5bda9b156a67a1e426780ed9f7b4a90e2e9e000efe28064d7d185ae165c85dd3",
       "mode": 420
     },
     {
