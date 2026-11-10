@@ -54,6 +54,10 @@ import { SidebarQuickAccess } from "./components/sidebar-quick-access.js";
 import { Onboarding } from "./components/onboarding/onboarding.js";
 import { SignInForm } from "./components/sign-in-form.js";
 import { SyncMenu } from "./components/sync-menu.js";
+import {
+  UpdateBanner,
+  useDesktopUpdates,
+} from "./components/desktop-updates.js";
 import { WorkspaceHeader } from "./components/workspace-header.js";
 import { countSyncIssues, groupSyncIssues } from "./components/sync-issues.js";
 import { useDeepLinks } from "./components/use-deep-links.js";
@@ -151,6 +155,7 @@ function WorkspaceApp({
     actionNotice,
   } = workspace;
   const { notify } = useToasts();
+  const updates = useDesktopUpdates();
   const account = useAccount(state.config);
   const workspaceScope = JSON.stringify([
     state.profile,
@@ -625,6 +630,12 @@ function WorkspaceApp({
             />
           }
         />
+        {settings !== "updates" && (
+          <UpdateBanner
+            updates={updates}
+            onReview={() => openSettings("updates")}
+          />
+        )}
         {settings ? (
           <SettingsModal
             ref={settingsNavigation}
@@ -632,6 +643,7 @@ function WorkspaceApp({
             state={state}
             initialProjectId={project}
             initialSection={settings}
+            updates={updates}
             onSectionChange={setSettings}
             onManage={(id, section) => {
               setProject(id);

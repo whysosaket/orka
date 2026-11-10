@@ -3,6 +3,12 @@ export async function settingsFixture(
   page: Page,
   options: {
     noProjects?: boolean;
+    update?: {
+      installedVersion: string;
+      update?: { version: string; notes: string };
+      withdrawn?: boolean;
+      message?: string;
+    };
     role?: "owner" | "admin" | "member";
     queued?: boolean;
     pendingRequests?: boolean;
@@ -259,6 +265,7 @@ export async function settingsFixture(
           if (command === "sync_progress")
             return { user: state.user, progress: null };
           calls.push({ command, args: structuredClone(args) });
+          if (command === "update_status") return options.update;
           if (command === "plugin:event|listen") {
             events.set(args.event, args.handler);
             return args.handler;

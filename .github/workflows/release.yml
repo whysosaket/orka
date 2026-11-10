@@ -45,6 +45,7 @@ jobs:
           APPLE_ID: ${{ inputs.signing == 'notarized' && secrets.APPLE_ID || '' }}
           APPLE_PASSWORD: ${{ inputs.signing == 'notarized' && secrets.APPLE_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ inputs.signing == 'notarized' && secrets.APPLE_TEAM_ID || '' }}
+          ORKA_UPDATE_PUBLIC_KEY: ${{ vars.ORKA_UPDATE_PUBLIC_KEY }}
         run: |
           case "$BUILD_TARGET" in
             aarch64-apple-darwin|universal-apple-darwin|x86_64-apple-darwin) ;;
@@ -60,6 +61,10 @@ jobs:
                   missing=1
                 fi
               done
+              if [[ ! "$ORKA_UPDATE_PUBLIC_KEY" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
+                echo '::error::Set the raw base64 Ed25519 ORKA_UPDATE_PUBLIC_KEY in the macos-signing environment.'
+                missing=1
+              fi
               test "$missing" = 0
               ;;
             *) echo '::error::Unsupported signing mode'; exit 1 ;;
@@ -97,20 +102,33 @@ jobs:
         env:
           APPLE_SIGNING_IDENTITY: "-"
         run: npm run mac -- --ci --target "$BUILD_TARGET"
-      - name: Build signed app and DMG
+      - name: Build app for recovery packaging
         if: inputs.signing == 'notarized'
-        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
+          APPLE_SIGNING_IDENTITY: "-"
+        run: npm run mac -- --ci --target "$BUILD_TARGET" --bundles app
+      - name: Package and sign Orka and Orka Recovery
+        if: inputs.signing == 'notarized'
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          projectPath: apps/mac
-          tauriScript: npm run tauri
-          args: --ci --target ${{ inputs.target }}
+          ORKA_UPDATE_FEED_URL: ${{ vars.ORKA_UPDATE_FEED_URL || 'https://raw.githubusercontent.com/whysosaket/orka/desktop-updates/macos.json' }}
+          ORKA_UPDATE_PUBLIC_KEY: ${{ vars.ORKA_UPDATE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          export ORKA_SIGNING_KEYCHAIN="$work/signing.keychain-db"
+          password=$(openssl rand -hex 32)
+          trap 'security delete-keychain "$ORKA_SIGNING_KEYCHAIN" 2>/dev/null || true; rm -rf "$work"' EXIT
+          security create-keychain -p "$password" "$ORKA_SIGNING_KEYCHAIN"
+          security unlock-keychain -p "$password" "$ORKA_SIGNING_KEYCHAIN"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$work/signing.p12"
+          security import "$work/signing.p12" -k "$ORKA_SIGNING_KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$ORKA_SIGNING_KEYCHAIN" >/dev/null
+          scripts/package-recovery.sh "$BUNDLE_DIR/macos/Orka.app" "$BUNDLE_DIR/dmg"
       - name: Verify app signature
         run: codesign --verify --deep --strict "$BUNDLE_DIR/macos/Orka.app"
       - name: Notarize and verify installer
@@ -151,11 +169,20 @@ jobs:
           retry_ticket_request xcrun stapler validate "$BUNDLE_DIR/macos/Orka.app"
           codesign --verify --deep --strict "$BUNDLE_DIR/macos/Orka.app"
           spctl --assess --type execute --verbose=2 "$BUNDLE_DIR/macos/Orka.app"
+          recovery="$BUNDLE_DIR/dmg/Orka Recovery.app"
+          retry_ticket_request xcrun stapler staple "$recovery"
+          retry_ticket_request xcrun stapler validate "$recovery"
+          codesign --verify --deep --strict "$recovery"
+          spctl --assess --type execute --verbose=2 "$recovery"
       - name: Package downloads and record checksums
         run: |
           mkdir -p artifacts/manual-build
           cp "$BUNDLE_DIR"/dmg/*.dmg artifacts/manual-build/
           tar -czf artifacts/manual-build/Orka.app.tar.gz -C "$BUNDLE_DIR/macos" Orka.app
+          if [[ "$SIGNING_MODE" == notarized ]]; then
+            ditto -c -k --sequesterRsrc --keepParent "$BUNDLE_DIR/macos/Orka.app" artifacts/manual-build/Orka-update.zip
+            ditto -c -k --sequesterRsrc --keepParent "$BUNDLE_DIR/dmg/Orka Recovery.app" artifacts/manual-build/Orka-Recovery.zip
+          fi
           node <<'NODE'
           const fs = require('fs');
           fs.writeFileSync('artifacts/manual-build/build.json', JSON.stringify({
@@ -167,7 +194,7 @@ jobs:
             run: process.env.GITHUB_SERVER_URL + '/' + process.env.GITHUB_REPOSITORY + '/actions/runs/' + process.env.GITHUB_RUN_ID,
           }, null, 2) + '\n');
           NODE
-          (cd artifacts/manual-build && shasum -a 256 -- *.dmg *.tar.gz build.json > SHA256SUMS)
+          (cd artifacts/manual-build && shasum -a 256 -- ./* > ../SHA256SUMS && mv ../SHA256SUMS .)
           {
             echo '## Orka build ready'
             echo "- Source: $GITHUB_SHA"

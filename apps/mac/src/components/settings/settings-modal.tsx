@@ -22,6 +22,7 @@ import {
   type SettingsSection,
 } from "./settings-navigation.js";
 import { SettingsGeneral, SettingsFolder } from "./settings-sections.js";
+import { UpdatesSettings, type useDesktopUpdates } from "../desktop-updates.js";
 import { SettingsDeviceScreen } from "./settings-devices.js";
 import { SettingsProfile } from "./settings-profile.js";
 import { SettingsMembers } from "./settings-members.js";
@@ -48,6 +49,7 @@ export const SettingsModal = forwardRef<
     state: Snapshot;
     initialProjectId: string;
     initialSection?: SettingsSection;
+    updates: ReturnType<typeof useDesktopUpdates>;
     onSectionChange?: (section: SettingsSection) => void;
     busy: boolean;
     run: (action: () => Promise<unknown>) => Promise<void>;
@@ -61,6 +63,7 @@ export const SettingsModal = forwardRef<
     state,
     initialProjectId,
     initialSection = "general",
+    updates,
     onSectionChange,
     busy: workspaceBusy,
     run: workspaceRun,
@@ -807,6 +810,7 @@ export const SettingsModal = forwardRef<
                     )}
                   </>
                 )}
+                {section === "updates" && <UpdatesSettings updates={updates} />}
                 {section === "devices" && (
                   <SettingsDeviceScreen state={state} />
                 )}

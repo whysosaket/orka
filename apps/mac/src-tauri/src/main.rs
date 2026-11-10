@@ -34,12 +34,14 @@ mod sources;
 mod sync;
 #[cfg(test)]
 mod tests;
+mod updates;
 use serde_json::json;
 #[cfg(debug_assertions)]
 use serde_json::Value;
 use std::io::Read;
 use tauri::Manager;
 fn main() {
+    updates::initialize();
     let mut args = std::env::args().collect::<Vec<_>>();
     if let Err(error) = profiles::initialize(&mut args) {
         eprintln!("{error}");
@@ -198,7 +200,10 @@ fn main() {
     }
     let _instance = match profiles::acquire_instance() {
         Ok(Some(lock)) => lock,
-        Ok(None) => return,
+        Ok(None) => {
+            updates::clean_exit();
+            return;
+        }
         Err(error) => {
             eprintln!("{error}");
             std::process::exit(1);
@@ -280,7 +285,10 @@ fn main() {
             skill_usage::global_skill_usage,
             skill_usage::project_skill_usage,
             commands::retry_uploads,
-            commands::background_agent
+            commands::background_agent,
+            updates::update_ready,
+            updates::update_status,
+            updates::update_review
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -298,6 +306,7 @@ fn main() {
                 }
             }
             if matches!(event, tauri::RunEvent::Exit) {
+                updates::clean_exit();
                 env::clear();
             }
         });

@@ -36,3 +36,5 @@ GitHub cannot export existing secret values. Configure credentials directly in t
 Notarized mode verifies the app signature, submits the DMG to Apple, records the submission, requires acceptance, staples and validates the app and DMG, and checks Gatekeeper. If processing outlasts the job, download the receipts and query that submission before requesting another build.
 
 A configured workflow is not evidence of a completed build. Complete the [release checklist](release-checklist.md) before distributing a release candidate.
+
+For recovery-enabled notarized installers, feed setup, and promoting or withdrawing desktop updates, see [Desktop updates and recovery](desktop-updates.md).

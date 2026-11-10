@@ -1,0 +1,33 @@
+# Desktop updates and recovery
+
+## Install the recovery-enabled release
+
+Quit Orka and drag both **Orka** and **Orka Recovery** from the notarized DMG into the same Applications folder. Keep the names shown in the installer. Use the Applications folder in your home directory if your Mac restricts writes to the system Applications folder. Existing users install this first release over their previous Orka app. The installer replaces application bundles and leaves the workspace and account data in Application Support and Keychain.
+
+Open **Settings → Updates** to check for a new version. An available update also appears in a banner. **Review in Orka Recovery** opens a native approval prompt showing the exact version and release notes. Choose to install and restart, or choose **Later**. To repair Orka when its window cannot open, open **Orka Recovery** from Applications. It offers a verified forward update or an eligible previous version already on the Mac. An offline restore uses the latest withdrawal policy the Mac has seen.
+
+## Build and promote a release
+
+The [macOS build workflow](../.github/workflows/release.yml) produces the notarized bootstrap DMG and `Orka-update.zip`. The latter contains the stapled `Orka.app` only. Routine updates keep the companion installed by the bootstrap release. Changes to the recovery protocol, public key, or feed location require a new signed bootstrap installer for existing users. Keep the feed schema and companion compatible with every supported release.
+
+1. Provision a dedicated Ed25519 release policy signing key. Put the base64-encoded raw 32-byte public key in `ORKA_UPDATE_PUBLIC_KEY` in both protected environments. Set `ORKA_UPDATE_SIGNING_KEY` to the PKCS#8 PEM private key in `macos-update-publishing` only. Set its `APPLE_TEAM_ID` variable to the release signing team. The existing Apple signing credentials stay in `macos-signing`. Limit both environments to reviewed `main` workflows and keep access to the publishing key separate from Apple signing credentials.
+2. Build the next version as **universal** and **notarized** from `main`. The release workflow uses Xcode 16.4 for the Intel and Apple Silicon launcher slices. Verify the DMG and both applications, then attach the outputs to that version's GitHub desktop release. Publish the release for download. Keep each version and its update archive immutable.
+3. Run **Publish macOS update policy** with **promote**, the version, and short release notes. The workflow verifies the notarized archive and its Apple team, then signs the policy and advances the `desktop-updates` branch. The default feed URL is `https://raw.githubusercontent.com/whysosaket/orka/desktop-updates/macos.json`. If `ORKA_UPDATE_FEED_URL` is overridden, the operator must serve the same signed policy at that URL. The feed works before sign-in and across managed and self-hosted instances.
+4. The publishing workflow renews the 48-hour policy daily. Its environment must permit the scheduled `main` job to renew. If a reviewer gate is required for that environment, approve renewals before expiration. Monitor failed renewals and alert before the current policy expires.
+
+## Withdraw a bad release
+
+Run **Publish macOS update policy** with **withdraw** and the affected version. The withdrawal is permanent for that version. Optionally raise `minimum_version` when old builds must be excluded from installation and restore. The updater rechecks a fresh signed policy before an approved download can replace Orka. A Mac that has already observed a withdrawal remembers it across offline sessions. A Mac needs a successful feed refresh to learn about a new withdrawal.
+
+Build the fix with a higher version and promote it. Orka Recovery can fetch it independently of the UI and background sync process. Keep the old GitHub release for audit and mark it withdrawn in its release notes. Clients select from the signed desktop policy, including when the newest GitHub release is a server release.
+
+## Data compatibility and acceptance
+
+Increment [the desktop data epoch](../apps/mac/recovery/data-epoch) for a change that prevents the previous build from safely opening local data, retaining pending sync work, or using the supported server contract. The updater can install a forward version with a higher epoch and offers a local restore only within the same epoch. Test the old and new client against the same data and supported server versions before keeping the epoch unchanged.
+
+The launcher preserves the LaunchServices PID and existing executable entry point when handing off to Tauri. It records startup and exit health locally. The installer stages a signed full bundle on the installation volume, waits for foreground and background processes to release their shared runtime lock, and swaps the bundles atomically. An interruption leaves either the previous or the new complete bundle at the same path. The recovery process and application data live outside that swap.
+
+- Run `scripts/test-macos-recovery.sh` for signed policy, replay, withdrawal, and lock checks. Run the Updates and Settings Playwright tests for banner dismissal, navigation, and native review handoff.
+- On a test Mac, use a disposable account and isolated install directory. Exercise startup failure and two abnormal exits after the window opens. Verify that the separate recovery window appears in both cases. Review a hotfix, choose **Later**, verify the version is unchanged, then approve it. Verify sign-in, a deep link, background sync, and pending local work after restart.
+- For the signed HTTPS drill, prepare a test install of `0.3.0` and two stapled fixtures `0.3.1` and `0.3.2`. Build both test apps with a disposable Ed25519 key and `https://127.0.0.1:38477/macos.json`. In the fixture directory put the apps in `installation/`, the notarized archives at `downloads/Orka-0.3.1.zip` and `downloads/Orka-0.3.2.zip`, the private test key in `feed-key.pem`, and a loopback server certificate and key in `tls.pem` and `tls-key.pem`, and the DER certificate of its test CA in `tls.der`. Run `node tests/macos/serve-recovery-fixture.mjs "$fixture"` and then `scripts/test-macos-recovery.sh "$fixture"`. The test client trusts that fixture certificate for the drill only. It exercises archive tampering, mid-download withdrawal, hotfix replacement, and offline restore without modifying user data.
+- Repeat the native drill on Apple Silicon and Intel, including the minimum supported macOS release. Verify the Developer ID signatures, stapled tickets, and Gatekeeper assessment on the distributed DMG and both apps. A development or ad-hoc build can exercise the UI and policy tests. Production installation requires Developer ID signing and notarization.

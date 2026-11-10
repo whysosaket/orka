@@ -737,7 +737,7 @@ pub fn background_agent(enabled: bool) -> Result<()> {
         .output();
     let result = (|| -> Result<()> {
         if enabled {
-            let exe = std::env::current_exe()
+            let exe = crate::updates::executable()
                 .map_err(|e| e.to_string())?
                 .to_string_lossy()
                 .replace('&', "&amp;")

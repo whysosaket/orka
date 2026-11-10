@@ -25,7 +25,7 @@ pub fn classify(path: &Path, home: &Path) -> (bool, Option<&'static str>) {
     (valid, if valid { None } else { Some("other") })
 }
 pub fn location() -> Result<Value> {
-    let path = std::env::current_exe().map_err(|e| e.to_string())?;
+    let path = crate::updates::executable().map_err(|e| e.to_string())?;
     let (ok, reason) = classify(&path, &db::home()?);
     let skip = cfg!(debug_assertions)
         || std::env::var_os("ORKA_TEST_HOME").is_some()
