@@ -708,24 +708,3 @@
   padding: 0;
   min-width: 0;
 }
-
-.desktop-update-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-  margin: 8px 16px;
-  padding: 8px 12px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-}
-
-.desktop-update-banner p {
-  flex: 1;
-  margin: 0;
-}
-
-.desktop-update-release p {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}

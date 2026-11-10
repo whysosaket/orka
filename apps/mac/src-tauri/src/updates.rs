@@ -93,18 +93,28 @@ pub async fn update_status(app: tauri::AppHandle) -> Result<Value> {
 }
 
 #[tauri::command]
-pub async fn update_review() -> Result<()> {
+pub async fn update_install(version: String, sha256: String) -> Result<()> {
     bundled_app().ok_or("Updates are unavailable for this build.")?;
-    tauri::async_runtime::spawn_blocking(|| {
-        // The launcher validates the companion’s signature before opening it.
-        let status = Command::new(executable().map_err(|error| error.to_string())?)
-            .arg("--orka-update-review")
-            .status()
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = Command::new(executable().map_err(|error| error.to_string())?)
+            .args([
+                "--orka-install-update",
+                &version,
+                &sha256,
+                crate::profiles::current(),
+            ])
+            .output()
             .map_err(|error| error.to_string())?;
-        if status.success() {
+        if result.status.success() {
             Ok(())
         } else {
-            Err("Couldn’t open Orka Recovery.".into())
+            let message = String::from_utf8_lossy(&result.stderr);
+            let message = message.trim();
+            Err(if message.is_empty() {
+                "Couldn’t install the update. Try again.".into()
+            } else {
+                message.into()
+            })
         }
     })
     .await

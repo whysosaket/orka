@@ -288,7 +288,7 @@ fn main() {
             commands::background_agent,
             updates::update_ready,
             updates::update_status,
-            updates::update_review
+            updates::update_install
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

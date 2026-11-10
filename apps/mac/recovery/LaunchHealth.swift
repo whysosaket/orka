@@ -60,7 +60,7 @@ struct LaunchHealth {
             if !quit {
                 let record = CrashRecord.record(installation, version: version)
                 if !opened || record.repeated {
-                    try? openRecovery(installation, mode: "--launch-failure")
+                    try? openRecovery(installation)
                 }
             }
             exit(0)

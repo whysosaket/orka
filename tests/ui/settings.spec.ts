@@ -9,7 +9,7 @@ async function choose(scope: Locator, label: string, value: string) {
   await scope.page().getByRole("option", { name: value, exact: true }).click();
 }
 
-test("all seven destinations and no-project account and Mac settings stay usable", async ({
+test("all six destinations and no-project account and Mac settings stay usable", async ({
   page,
 }) => {
   const settings = await settingsFixture(page, { noProjects: true });
@@ -17,7 +17,7 @@ test("all seven destinations and no-project account and Mac settings stay usable
     settings
       .getByRole("navigation", { name: "Settings sections" })
       .getByRole("button"),
-  ).toHaveCount(7);
+  ).toHaveCount(6);
   await expect(button(settings, "General")).toBeDisabled();
   await button(settings, "Profile").click();
   await expect(
@@ -35,43 +35,6 @@ test("all seven destinations and no-project account and Mac settings stay usable
     "aria-pressed",
     "true",
   );
-});
-
-test("update banner opens Updates and installation is handed to native review", async ({
-  page,
-}) => {
-  const settings = await settingsFixture(page, {
-    noProjects: true,
-    update: {
-      installedVersion: "0.3.0",
-      update: { version: "0.3.1", notes: "Fixes a startup crash." },
-    },
-  });
-  const banner = page.getByRole("complementary", { name: "Orka update" });
-  await expect(banner).toContainText("Orka 0.3.1 is available.");
-  await expect(
-    (await settingsCalls(page)).map(({ command }) => command),
-  ).not.toContain("update_review");
-  await banner.getByRole("button", { name: "Review update" }).click();
-  await expect(
-    settings.getByRole("heading", { name: "Updates" }),
-  ).toBeVisible();
-  await button(settings, "Sync & startup").click();
-  await banner.getByRole("button", { name: "Dismiss update banner" }).click();
-  await expect(banner).toHaveCount(0);
-  await button(settings, "Updates").click();
-  await expect(settings.getByText("Installed version 0.3.0")).toBeVisible();
-  await expect(settings.getByText("Fixes a startup crash.")).toBeVisible();
-  await button(settings, "Check for updates").click();
-  await button(settings, "Review in Orka Recovery").click();
-  await expect
-    .poll(
-      async () =>
-        (await settingsCalls(page)).filter(
-          ({ command }) => command === "update_review",
-        ).length,
-    )
-    .toBe(1);
 });
 
 test("profile edits persist, empty name fails safely, and email is read-only", async ({

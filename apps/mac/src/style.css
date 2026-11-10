@@ -410,8 +410,42 @@
   .project-section:disabled {
     color: var(--text-disabled);
   }
+  .sidebar-footer {
+    @apply mt-auto grid gap-2;
+  }
   .sidebar-bottom {
-    @apply relative mt-auto grid gap-2 text-xs text-secondary;
+    @apply relative grid gap-2 text-xs text-secondary;
+  }
+  .sidebar .sidebar-update-trigger {
+    @apply text-foreground;
+  }
+  .sidebar-update-trigger:hover,
+  .sidebar-update-trigger[data-state="open"] {
+    @apply bg-hover;
+  }
+  .sidebar-update-review {
+    @apply z-40 grid gap-3 overflow-auto rounded-xl border border-line bg-raised p-3 text-left shadow-2xl;
+    width: 216px;
+    max-width: calc(100vw - 24px);
+    max-height: var(--radix-popover-content-available-height);
+  }
+  .sidebar-update-review h2 {
+    @apply m-0 text-label-sm;
+  }
+  .sidebar-update-versions,
+  .sidebar-update-actions {
+    @apply grid gap-1;
+  }
+  .sidebar-update-versions strong {
+    @apply text-label-sm;
+  }
+  .sidebar-update-versions span,
+  .sidebar-update-review p {
+    @apply m-0 text-xs text-muted;
+  }
+  .sidebar-update-notes {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   .sidebar .sync-status:hover,
   .sidebar .sync-status[data-state="open"] {

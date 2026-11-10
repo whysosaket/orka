@@ -55,7 +55,7 @@ import { Onboarding } from "./components/onboarding/onboarding.js";
 import { SignInForm } from "./components/sign-in-form.js";
 import { SyncMenu } from "./components/sync-menu.js";
 import {
-  UpdateBanner,
+  SidebarUpdate,
   useDesktopUpdates,
 } from "./components/desktop-updates.js";
 import { WorkspaceHeader } from "./components/workspace-header.js";
@@ -528,13 +528,23 @@ function WorkspaceApp({
             })
           }
         />
-        <SidebarQuickAccess
-          settingsActive={Boolean(settings)}
-          collapsed={sidebarCollapsed}
-          onSettings={() => openSettings("general")}
-          onCreate={() => leaveSettings(() => setup.show("create"))}
-          onJoin={() => leaveSettings(() => setup.show("join"))}
-        />
+        <div className="sidebar-footer">
+          {updates?.update && (
+            <SidebarUpdate
+              key={updates.update.sha256}
+              update={updates.update}
+              installedVersion={updates.installedVersion}
+              collapsed={sidebarCollapsed}
+            />
+          )}
+          <SidebarQuickAccess
+            settingsActive={Boolean(settings)}
+            collapsed={sidebarCollapsed}
+            onSettings={() => openSettings("general")}
+            onCreate={() => leaveSettings(() => setup.show("create"))}
+            onJoin={() => leaveSettings(() => setup.show("join"))}
+          />
+        </div>
       </motion.aside>
       <main>
         <WorkspaceHeader
@@ -630,12 +640,6 @@ function WorkspaceApp({
             />
           }
         />
-        {settings !== "updates" && (
-          <UpdateBanner
-            updates={updates}
-            onReview={() => openSettings("updates")}
-          />
-        )}
         {settings ? (
           <SettingsModal
             ref={settingsNavigation}
@@ -643,7 +647,6 @@ function WorkspaceApp({
             state={state}
             initialProjectId={project}
             initialSection={settings}
-            updates={updates}
             onSectionChange={setSettings}
             onManage={(id, section) => {
               setProject(id);

@@ -16,7 +16,7 @@ struct InstalledBuild: Equatable {
         guard let metadata = NSDictionary(contentsOf: plist), metadata["CFBundleIdentifier"] as? String == desktopID,
               let version = metadata["CFBundleShortVersionString"] as? String, versionParts(version) != nil,
               let epoch = metadata["OrkaUpdateDataEpoch"] as? Int, epoch > 0 else {
-            throw UpdateError("Orka Recovery couldn’t read the installed Orka version.")
+            throw UpdateError("Couldn’t read the installed Orka version.")
         }
         self.version = version
         dataEpoch = epoch
@@ -40,11 +40,12 @@ struct Installation {
                                                   appropriateFor: nil, create: true)
         state = support.appendingPathComponent("com.orka.updates", isDirectory: true)
             .appendingPathComponent(digest(Data(self.app.path.utf8)), isDirectory: true)
-        team = info["OrkaUpdateTeam"] as? String ?? ""
+        let configuredTeam = info["OrkaUpdateTeam"] as? String ?? ""
+        team = configuredTeam.range(of: "^[A-Z0-9]{10}$", options: .regularExpression) == nil ? "" : configuredTeam
         try files.createDirectory(at: state, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         if let address = info["OrkaUpdateFeed"] as? String, let url = URL(string: address), isHTTPS(url),
            let encoded = info["OrkaUpdatePublicKey"] as? String, let key = Data(base64Encoded: encoded),
-           key.count == 32, team.range(of: "^[A-Z0-9]{10}$", options: .regularExpression) != nil {
+           key.count == 32, !team.isEmpty {
             feed = Feed(url: url, key: key, directory: state, makeSession: makeSession)
         } else {
             feed = nil
@@ -55,15 +56,20 @@ struct Installation {
     var maintenanceLock: URL { state.appendingPathComponent("maintenance.lock") }
     var previous: URL { state.appendingPathComponent("Previous/Orka.app") }
 
-    func verify(_ url: URL, id: String = desktopID) throws {
-        guard !team.isEmpty else { throw UpdateError("This build does not have an Orka release signing identity.") }
-        var code: SecStaticCode?
-        var requirement: SecRequirement?
+    func signingRequirement(id: String) throws -> SecRequirement {
         let rule = "anchor apple generic and identifier \"\(id)\" and certificate leaf[subject.OU] = \"\(team)\" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
+        var requirement: SecRequirement?
+        guard !team.isEmpty, SecRequirementCreateWithString(rule as CFString, [], &requirement) == errSecSuccess,
+              let requirement else { throw UpdateError("This build does not have an Orka release signing identity.") }
+        return requirement
+    }
+
+    func verify(_ url: URL, id: String = desktopID) throws {
+        let requirement = try signingRequirement(id: id)
+        var code: SecStaticCode?
         guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess, let code,
-              SecRequirementCreateWithString(rule as CFString, [], &requirement) == errSecSuccess, let requirement,
               SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSStrictValidate | kSecCSCheckAllArchitectures | kSecCSCheckNestedCode), requirement) == errSecSuccess else {
-            throw UpdateError("The downloaded app does not have a valid Orka Developer ID signature.")
+            throw UpdateError("The app does not have a valid Orka Developer ID signature.")
         }
     }
 
@@ -123,7 +129,7 @@ struct Installation {
         try run("/usr/bin/ditto", [previous.path, next.path])
         try verify(next)
         guard try InstalledBuild(at: next) == approved else {
-            throw UpdateError("The previous version has changed. Open Recovery again.")
+            throw UpdateError("The previous version has changed. Review the update again.")
         }
         try await replace(with: next, current: current, keepPrevious: false, refreshPolicy: {}) {
             guard restoreCandidate(current: current) == approved else {
@@ -154,7 +160,7 @@ struct Installation {
         defer { withExtendedLifetime(locked) {} }
         guard try InstalledBuild(at: app) == current,
               try app.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false else {
-            throw UpdateError("The installed app changed during this update. Open Recovery again.")
+            throw UpdateError("The installed app changed during this update. Review the update again.")
         }
         // Withdrawal can change while Orka and the sync agent are stopping.
         try await refreshPolicy()

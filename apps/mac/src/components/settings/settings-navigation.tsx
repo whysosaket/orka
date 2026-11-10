@@ -3,7 +3,6 @@ import {
   PeopleIcon,
   SyncIcon,
   DeviceDesktopIcon,
-  DownloadIcon,
   PersonIcon,
   ShieldLockIcon,
 } from "@primer/octicons-react";
@@ -12,7 +11,6 @@ import type { Project } from "../../types.js";
 export const settingsSections = {
   account: { label: "Profile", icon: PersonIcon },
   devices: { label: "Devices", icon: DeviceDesktopIcon },
-  updates: { label: "Updates", icon: DownloadIcon },
   sync: { label: "Sync & startup", icon: SyncIcon },
   general: { label: "General", icon: FileDirectoryIcon },
   members: { label: "Members", icon: PeopleIcon },
@@ -23,7 +21,7 @@ export const settingsSections = {
 export type SettingsSection = keyof typeof settingsSections;
 const groups = {
   Account: ["account", "devices"],
-  "This Mac": ["sync", "updates"],
+  "This Mac": ["sync"],
   Project: ["general", "members", "permissions"],
 } as const;
 export function SettingsNavigation({

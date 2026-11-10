@@ -8,43 +8,50 @@ struct Launcher {
     @MainActor
     static func main() {
         let bundle = Bundle.main
-        let arguments = Array(CommandLine.arguments.dropFirst())
-        let recovery = bundle.bundleIdentifier == recoveryID
-        let app = recovery ? bundle.bundleURL.deletingLastPathComponent().appendingPathComponent("Orka.app") : bundle.bundleURL
+        var arguments = Array(CommandLine.arguments.dropFirst())
+        let helper = bundle.bundleIdentifier == recoveryID
         do {
+            let app: URL
+            if helper {
+                guard arguments.count >= 2, ["--orka-recover", "--orka-update-watch", "--orka-install-update"].contains(arguments[0]),
+                      arguments[1].hasPrefix("/") else { exit(1) }
+                app = URL(fileURLWithPath: arguments.remove(at: 1), isDirectory: true)
+            } else {
+                app = bundle.bundleURL
+            }
             let installation = try Installation(app: app, info: bundle.infoDictionary ?? [:])
-            if arguments.first == "--orka-update-status" {
+            if helper && canonicalPath(bundle.bundleURL) != canonicalPath(installation.updater) { exit(1) }
+            switch arguments.first {
+            case "--orka-update-status" where !helper:
                 Task {
                     let status = await status(for: installation)
                     if let data = try? JSONEncoder().encode(status) { FileHandle.standardOutput.write(data) }
                     exit(0)
                 }
                 dispatchMain()
-            }
-            if arguments.first == "--orka-update-review" {
-                try openRecovery(installation, mode: "--review")
-                return
-            }
-            if recovery || arguments.first == "--orka-builtin-recovery" {
-                let delegate = RecoveryWindow(installation: installation, failure: arguments.contains("--launch-failure"))
+            case "--orka-install-update" where arguments.count == 4:
+                if !helper {
+                    try installation.provisionUpdater()
+                    try replaceProcess(with: installation.updaterExecutable, arguments: [arguments[0], app.path] + arguments.dropFirst())
+                }
+                try installApprovedUpdate(installation, version: arguments[1], sha256: arguments[2], profile: arguments[3])
+            case "--orka-recover" where helper, "--orka-builtin-recovery" where !helper:
+                let lock = try FileLock(installation.state.appendingPathComponent("recovery-window.lock"), operation: LOCK_EX | LOCK_NB)
+                let delegate = RecoveryWindow(installation: installation)
                 let application = NSApplication.shared
                 application.delegate = delegate
-                application.setActivationPolicy(.regular)
-                withExtendedLifetime(delegate) { application.run() }
-                return
-            }
-            if arguments.first == "--orka-update-watch", arguments.count == 4,
-               let pid = pid_t(arguments[1]), pid > 1,
-               versionParts(arguments[2]) != nil, UUID(uuidString: arguments[3]) != nil {
+                application.setActivationPolicy(.accessory)
+                withExtendedLifetime((delegate, lock)) { application.run() }
+            case "--orka-update-watch" where arguments.count == 4:
+                guard let pid = pid_t(arguments[1]), pid > 1,
+                      versionParts(arguments[2]) != nil, UUID(uuidString: arguments[3]) != nil else { exit(1) }
                 LaunchHealth(installation: installation, session: arguments[3], version: arguments[2]).watch(pid: pid)
+            default:
+                guard !helper else { exit(1) }
+                try launch(installation, arguments: arguments)
             }
-            try launch(installation, arguments: arguments)
         } catch {
             FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))
-            if recovery {
-                NSApplication.shared.setActivationPolicy(.regular)
-                message("Orka Recovery", error.localizedDescription)
-            }
             exit(1)
         }
     }
@@ -60,37 +67,39 @@ struct Launcher {
         let current = try InstalledBuild(at: installation.app)
         let withdrawn = installation.feed?.cached()?.allows(current.version) == false
         if !bypass && (withdrawn || CrashRecord.load(installation, version: current.version).repeated) {
-            if !headless { try openRecovery(installation, mode: "--launch-failure") }
+            if !headless { try openRecovery(installation) }
             return
         }
         if !headless {
             let session = UUID().uuidString
-            let watcher = Process()
-            watcher.executableURL = Bundle.main.executableURL
-            watcher.arguments = ["--orka-update-watch", String(getpid()), current.version, session]
-            watcher.standardInput = FileHandle.nullDevice
-            watcher.standardOutput = FileHandle.nullDevice
-            watcher.standardError = FileHandle.nullDevice
-            try watcher.run()
+            let watchArguments = [String(getpid()), current.version, session]
+            do {
+                try installation.updaterProcess("--orka-update-watch", arguments: watchArguments).run()
+            } catch {
+                // A failed helper setup must still allow the desktop to open.
+                let watcher = Process()
+                watcher.executableURL = Bundle.main.executableURL
+                watcher.arguments = ["--orka-update-watch"] + watchArguments
+                watcher.standardInput = FileHandle.nullDevice
+                watcher.standardOutput = FileHandle.nullDevice
+                watcher.standardError = FileHandle.nullDevice
+                try watcher.run()
+            }
             setenv("ORKA_UPDATE_SESSION", session, 1)
         }
         // Keep the running lock through exec, preserving the LaunchServices PID for URLs and activation.
         guard fcntl(running.descriptor, F_SETFD, 0) == 0 else { throw UpdateError("Couldn’t start Orka.") }
         setenv("ORKA_UPDATE_LOCK", String(running.descriptor), 1)
-        let binary = installation.app.appendingPathComponent("Contents/MacOS/\(desktopName)").path
         let forwarded = arguments.filter { $0 != "--orka-try-launch" }
-        var argv = ([binary] + forwarded).map { strdup($0) }
-        argv.append(nil)
-        withExtendedLifetime((maintenance, running)) { _ = execv(binary, &argv) }
-        for value in argv { free(value) }
-        throw UpdateError("Couldn’t start Orka.")
+        try withExtendedLifetime((maintenance, running)) {
+            try replaceProcess(with: installation.desktopExecutable, arguments: forwarded)
+        }
     }
 }
 
 struct UpdateStatus: Encodable {
     let installedVersion: String
     var update: Release?
-    var withdrawn = false
     var message: String?
 }
 
@@ -103,33 +112,27 @@ func status(for installation: Installation) async -> UpdateStatus {
     }
     do {
         let policy = try await feed.refresh()
-        return UpdateStatus(installedVersion: current.version, update: feed.candidate(policy, current: current),
-                            withdrawn: !policy.allows(current.version))
+        return UpdateStatus(installedVersion: current.version, update: feed.candidate(policy, current: current))
     } catch {
-        return UpdateStatus(installedVersion: current.version, withdrawn: feed.cached()?.allows(current.version) == false,
-                            message: "Couldn’t verify the update feed. Try again when you’re online.")
+        return UpdateStatus(installedVersion: current.version, message: "Couldn’t verify the update feed. Try again when you’re online.")
     }
 }
 
-func openRecovery(_ installation: Installation, mode: String) throws {
-    let recovery = installation.app.deletingLastPathComponent().appendingPathComponent("Orka Recovery.app")
-    if (try? installation.verify(recovery, id: recoveryID)) != nil {
-        try run("/usr/bin/open", ["-a", recovery.path, "--args", mode])
-    } else {
-        // The launcher can still present native recovery if the companion was moved or omitted.
-        try run("/usr/bin/open", ["-n", "-a", installation.app.path, "--args", "--orka-builtin-recovery", mode])
+func openRecovery(_ installation: Installation) throws {
+    do {
+        try installation.updaterProcess("--orka-recover").run()
+    } catch {
+        try installation.openDesktop(arguments: ["--orka-builtin-recovery"])
     }
 }
 
 @MainActor
 final class RecoveryWindow: NSObject, NSApplicationDelegate {
     let installation: Installation
-    let failure: Bool
     private var progress: NSWindow?
 
-    init(installation: Installation, failure: Bool) {
+    init(installation: Installation) {
         self.installation = installation
-        self.failure = failure
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -141,14 +144,25 @@ final class RecoveryWindow: NSObject, NSApplicationDelegate {
     private func showProgress(_ title: String) {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 135), styleMask: [.titled],
                               backing: .buffered, defer: false)
-        window.title = "Orka Recovery"
+        window.title = "Update Orka"
         let label = NSTextField(labelWithString: title)
-        label.frame = NSRect(x: 25, y: 76, width: 350, height: 22)
-        let indicator = NSProgressIndicator(frame: NSRect(x: 25, y: 40, width: 350, height: 16))
+        let indicator = NSProgressIndicator()
         indicator.isIndeterminate = true
         indicator.startAnimation(nil)
-        window.contentView?.addSubview(label)
-        window.contentView?.addSubview(indicator)
+        let stack = NSStackView(views: [label, indicator])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 14
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        if let content = window.contentView {
+            content.addSubview(stack)
+            NSLayoutConstraint.activate([
+                stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
+                stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+                stack.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+                indicator.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            ])
+        }
         window.center()
         window.makeKeyAndOrderFront(nil)
         progress = window
@@ -161,16 +175,21 @@ final class RecoveryWindow: NSObject, NSApplicationDelegate {
             let current = try InstalledBuild(at: installation.app)
             let previous = installation.restoreCandidate(current: current)
             let alert = NSAlert()
-            alert.messageText = failure || update.withdrawn ? "Orka needs recovery" : "Orka Updates"
+            alert.messageText = "Orka couldn’t keep running"
             var detail = "Installed version: \(current.version)."
-            if let release = update.update { detail += "\n\nOrka \(release.version) is available.\n\(release.notes)" }
+            if let release = update.update {
+                detail += "\n\nOrka \(release.version) is available."
+                if !release.notes.isEmpty {
+                    detail += "\n" + release.notes.prefix(240) + (release.notes.count > 240 ? "…" : "")
+                }
+            }
             if let previous { detail += "\n\nYou can restore Orka \(previous.version) from this Mac." }
             if let message = update.message { detail += "\n\n\(message)" }
             else if update.update == nil { detail += "\n\nNo compatible update is available." }
             alert.informativeText = detail
             var choices: [() async throws -> Void] = []
             if let release = update.update {
-                alert.addButton(withTitle: failure || update.withdrawn ? "Install fix \(release.version)" : "Update to \(release.version) and Restart")
+                alert.addButton(withTitle: "Install fix \(release.version)")
                 choices.append {
                     self.showProgress("Installing Orka \(release.version)…")
                     try await self.installation.install(release, replacing: current)
@@ -185,24 +204,21 @@ final class RecoveryWindow: NSObject, NSApplicationDelegate {
                     self.openOrka()
                 }
             }
-            if failure || update.withdrawn {
-                alert.addButton(withTitle: "Try Opening Orka")
-                choices.append { self.openOrka(bypass: true) }
-            }
+            alert.addButton(withTitle: "Try Opening Orka")
+            choices.append { self.openOrka(bypass: true) }
             let cancel = alert.addButton(withTitle: "Later")
             cancel.keyEquivalent = "\u{1b}"
             let choice = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
             if choices.indices.contains(choice) { try await choices[choice]() }
         } catch {
             progress?.orderOut(nil)
-            message("Orka Recovery", error.localizedDescription)
+            message("Couldn’t update Orka", error.localizedDescription)
         }
         exit(0)
     }
 
     private func openOrka(bypass: Bool = false) {
-        let arguments = bypass ? ["--args", "--orka-try-launch"] : []
-        try? run("/usr/bin/open", ["-n", "-a", installation.app.path] + arguments)
+        try? installation.openDesktop(arguments: bypass ? ["--orka-try-launch"] : [])
     }
 }
 

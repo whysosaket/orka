@@ -107,7 +107,7 @@ jobs:
         env:
           APPLE_SIGNING_IDENTITY: "-"
         run: npm run mac -- --ci --target "$BUILD_TARGET" --bundles app
-      - name: Package and sign Orka and Orka Recovery
+      - name: Package and sign Orka with the background updater
         if: inputs.signing == 'notarized'
         env:
           DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
@@ -169,11 +169,6 @@ jobs:
           retry_ticket_request xcrun stapler validate "$BUNDLE_DIR/macos/Orka.app"
           codesign --verify --deep --strict "$BUNDLE_DIR/macos/Orka.app"
           spctl --assess --type execute --verbose=2 "$BUNDLE_DIR/macos/Orka.app"
-          recovery="$BUNDLE_DIR/dmg/Orka Recovery.app"
-          retry_ticket_request xcrun stapler staple "$recovery"
-          retry_ticket_request xcrun stapler validate "$recovery"
-          codesign --verify --deep --strict "$recovery"
-          spctl --assess --type execute --verbose=2 "$recovery"
       - name: Package downloads and record checksums
         run: |
           mkdir -p artifacts/manual-build
@@ -181,7 +176,6 @@ jobs:
           tar -czf artifacts/manual-build/Orka.app.tar.gz -C "$BUNDLE_DIR/macos" Orka.app
           if [[ "$SIGNING_MODE" == notarized ]]; then
             ditto -c -k --sequesterRsrc --keepParent "$BUNDLE_DIR/macos/Orka.app" artifacts/manual-build/Orka-update.zip
-            ditto -c -k --sequesterRsrc --keepParent "$BUNDLE_DIR/dmg/Orka Recovery.app" artifacts/manual-build/Orka-Recovery.zip
           fi
           node <<'NODE'
           const fs = require('fs');

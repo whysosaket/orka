@@ -1,138 +1,133 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { DownloadIcon, XIcon } from "@primer/octicons-react";
+import * as Popover from "@radix-ui/react-popover";
+import { DownloadIcon } from "@primer/octicons-react";
 import { Button } from "./button.js";
-import { IconButton } from "./icon-button.js";
-import { SettingsHeading } from "./settings/settings-shared.js";
 
 interface UpdateStatus {
   installedVersion: string;
-  update?: { version: string; notes: string };
-  withdrawn?: boolean;
-  message?: string;
+  update?: { version: string; notes: string; sha256: string };
 }
 
 export function useDesktopUpdates() {
   const [status, setStatus] = useState<UpdateStatus>();
-  const [checking, setChecking] = useState(false);
-  const [error, setError] = useState("");
-  const [dismissed, setDismissed] = useState("");
-  const pending = useRef(false);
-
-  const check = useCallback(async () => {
-    if (pending.current) return;
-    pending.current = true;
-    setChecking(true);
-    setError("");
-    try {
-      setStatus(await invoke<UpdateStatus>("update_status"));
-    } catch {
-      setStatus(undefined);
-      setError("Couldn’t check for Orka updates. Try again.");
-    } finally {
-      pending.current = false;
-      setChecking(false);
-    }
-  }, []);
 
   useEffect(() => {
     if (!isTauri()) return;
+    let active = true;
+    const check = async () => {
+      const next = await invoke<UpdateStatus>("update_status").catch(
+        () => undefined,
+      );
+      if (active) setStatus(next);
+    };
     void invoke("update_ready").catch(() => {});
     void check();
     const timer = window.setInterval(() => void check(), 4 * 60 * 60 * 1000);
-    return () => window.clearInterval(timer);
-  }, [check]);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
-  const review = async () => {
+  return status;
+}
+
+export function SidebarUpdate({
+  update,
+  installedVersion,
+  collapsed,
+}: {
+  update: NonNullable<UpdateStatus["update"]>;
+  installedVersion: string;
+  collapsed: boolean;
+}) {
+  const title = useId();
+  const pending = useRef(false);
+  const [installing, setInstalling] = useState(false);
+  const [error, setError] = useState("");
+  const install = async () => {
+    if (pending.current) return;
+    pending.current = true;
+    setInstalling(true);
     setError("");
     try {
-      await invoke("update_review");
-    } catch {
+      await invoke("update_install", {
+        version: update.version,
+        sha256: update.sha256,
+      });
+    } catch (reason) {
       setError(
-        "Couldn’t open Orka Recovery. Try opening it from Applications.",
+        typeof reason === "string"
+          ? reason
+          : "Couldn’t install the update. Try again.",
       );
+    } finally {
+      pending.current = false;
+      setInstalling(false);
     }
   };
-  const notice = status?.withdrawn
-    ? `withdrawn-${status.installedVersion}-${status.update?.version ?? ""}`
-    : (status?.update?.version ?? "");
-  return {
-    status,
-    checking,
-    error,
-    check,
-    review,
-    showBanner: Boolean(notice && notice !== dismissed),
-    dismiss: () => setDismissed(notice),
-  };
-}
 
-type Updates = ReturnType<typeof useDesktopUpdates>;
-
-export function UpdateBanner({
-  updates,
-  onReview,
-}: {
-  updates: Updates;
-  onReview: () => void;
-}) {
-  if (!updates.showBanner || !updates.status) return null;
-  const { update, withdrawn } = updates.status;
   return (
-    <aside className="desktop-update-banner" aria-label="Orka update">
-      <DownloadIcon aria-hidden="true" size={16} />
-      <p>
-        {withdrawn
-          ? "This version of Orka has been withdrawn."
-          : `Orka ${update?.version} is available.`}
-      </p>
-      <Button size="sm" onClick={onReview}>
-        {update ? "Review update" : "Review recovery options"}
-      </Button>
-      <IconButton
-        size="sm"
-        aria-label="Dismiss update banner"
-        icon={XIcon}
-        onClick={updates.dismiss}
-      />
-    </aside>
-  );
-}
-
-export function UpdatesSettings({ updates }: { updates: Updates }) {
-  const { status, checking, error, check, review } = updates;
-  return (
-    <>
-      <SettingsHeading
-        title="Updates"
-        description="Check for new versions of Orka for this Mac. You approve each installation."
-        action={
-          <Button disabled={checking} onClick={() => void check()}>
-            {checking ? "Checking…" : "Check for updates"}
-          </Button>
-        }
-      />
-      {status?.installedVersion && (
-        <p>Installed version {status.installedVersion}</p>
-      )}
-      {status?.withdrawn && (
-        <p role="status">This version of Orka has been withdrawn.</p>
-      )}
-      {status?.update ? (
-        <div className="desktop-update-release">
-          <h3>Orka {status.update.version}</h3>
-          {status.update.notes && <p>{status.update.notes}</p>}
-          <Button variant="primary" onClick={() => void review()}>
-            Review in Orka Recovery
-          </Button>
-        </div>
-      ) : status?.withdrawn ? (
-        <Button onClick={() => void review()}>Open Orka Recovery</Button>
-      ) : status && !status.message && !checking ? (
-        <p role="status">You’re up to date.</p>
-      ) : null}
-      {status?.message && <p role="status">{status.message}</p>}
-      {error && <p role="alert">{error}</p>}
-    </>
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          className="navigation-action sidebar-update-trigger"
+          aria-label="Update available"
+          title={collapsed ? "Update available" : undefined}
+        >
+          <DownloadIcon
+            className="navigation-action-icon"
+            size={16}
+            aria-hidden="true"
+          />
+          <span>Update available</span>
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          className="sidebar-update-review"
+          side={collapsed ? "right" : "top"}
+          align={collapsed ? "end" : "start"}
+          sideOffset={8}
+          collisionPadding={12}
+          aria-labelledby={title}
+        >
+          <h2 id={title}>Update Orka</h2>
+          <div className="sidebar-update-versions">
+            <strong>Orka {update.version}</strong>
+            <span>Installed {installedVersion}</span>
+          </div>
+          {update.notes && (
+            <p className="sidebar-update-notes">{update.notes}</p>
+          )}
+          {error && (
+            <p className="sidebar-update-error" role="alert">
+              {error}
+            </p>
+          )}
+          {installing && (
+            <p className="sidebar-update-status" role="status">
+              Orka will restart when the update is ready.
+            </p>
+          )}
+          <div className="sidebar-update-actions">
+            <Button
+              variant="primary"
+              disabled={installing}
+              onClick={() => void install()}
+            >
+              {installing ? "Preparing update…" : "Update and Restart"}
+            </Button>
+            <Popover.Close asChild>
+              <Button variant="tertiary">
+                {installing ? "Close" : "Later"}
+              </Button>
+            </Popover.Close>
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }

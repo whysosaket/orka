@@ -64,7 +64,6 @@ struct RecoveryTests {
         let files = FileManager.default
         let copy = scratch.appendingPathComponent("installation")
         try run("/usr/bin/ditto", [work.appendingPathComponent("installation/Orka.app").path, copy.appendingPathComponent("Orka.app").path])
-        try run("/usr/bin/ditto", [work.appendingPathComponent("installation/Orka Recovery.app").path, copy.appendingPathComponent("Orka Recovery.app").path])
         let app = copy.appendingPathComponent("Orka.app")
         let info = Bundle(url: app)!.infoDictionary!
         let root = try Data(contentsOf: work.appendingPathComponent("tls.der"))
@@ -78,7 +77,13 @@ struct RecoveryTests {
         let current = try InstalledBuild(at: app)
         let release = try await feed.refresh().release!
         try installation.verify(app)
-        try installation.verify(app.deletingLastPathComponent().appendingPathComponent("Orka Recovery.app"), id: recoveryID)
+        try installation.verify(installation.embeddedUpdater, id: recoveryID)
+        try installation.provisionUpdater()
+        try installation.verify(installation.updater, id: recoveryID)
+        try require(installation.updater != installation.embeddedUpdater, "the updater is installed outside the replaced bundle")
+        try require(Bundle(url: installation.updater)?.object(forInfoDictionaryKey: "LSUIElement") as? Bool == true,
+                    "the provisioned updater is a background app")
+        try rejects { try installation.verifyDesktopCaller(getpid()) }
         let held = work.appendingPathComponent("downloads/revoke-after-download")
         let marker = scratch.appendingPathComponent("sqlite-and-outbox-sentinel")
         try Data("local workspace data".utf8).write(to: marker)
@@ -106,12 +111,14 @@ struct RecoveryTests {
         try await installation.install(approved, replacing: current)
         let installed = try InstalledBuild(at: app)
         try require(installed.version == approved.version, "hotfix replaced Orka at the same path")
+        try installation.provisionUpdater()
+        try installation.verify(installation.updater, id: recoveryID)
         try require(installation.restoreCandidate(current: installed) == current, "verified original remains available")
         try files.removeItem(at: manifest)
         try await installation.restore(current, replacing: installed)
         try require(InstalledBuild(at: app) == current, "offline restore returned to the known-good version")
         try require(String(contentsOf: marker, encoding: .utf8) == "local workspace data", "restore preserved files outside app bundle")
-        print("Developer ID signatures, verified HTTPS download, hotfix, and offline restore passed")
+        print("Developer ID signatures, independent helper, verified HTTPS download, hotfix, and offline restore passed")
     }
 
     static func signed(_ policy: Policy, _ key: Curve25519.Signing.PrivateKey) throws -> Data {
