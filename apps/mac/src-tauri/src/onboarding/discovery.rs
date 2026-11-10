@@ -179,21 +179,16 @@ fn claude(
             .entries(&folder.path())
             .into_iter()
             .filter(|f| {
-                f.path().extension().is_some_and(|e| e == "jsonl")
+                let path = f.path();
+                path.extension().is_some_and(|e| e == "jsonl")
                     && f.file_type().is_ok_and(|k| k.is_file())
+                    // Sync imports use their own native IDs and carry historical timestamps.
+                    && !path.file_stem().and_then(|name| name.to_str()).is_some_and(|id| imported.contains(id))
             })
             .collect();
         files.sort_by_key(|f| std::cmp::Reverse(modified(&f.path())));
+        let count = files.len();
         for file in files {
-            // Sync imports use their own native IDs and carry historical timestamps.
-            if file
-                .path()
-                .file_stem()
-                .and_then(|name| name.to_str())
-                .is_some_and(|id| imported.contains(id))
-            {
-                continue;
-            }
             if !budget.next() {
                 break;
             }
@@ -204,8 +199,9 @@ fn claude(
                     home,
                     Some("claude"),
                     session_time(&record),
-                    1,
+                    count,
                 );
+                break;
             }
         }
     }
