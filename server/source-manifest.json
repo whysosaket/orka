@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "5b323455c3423bddaaeba07250485a4c45fc113e",
+  "commit": "20972949796ef61255fbb8cf9b6cb60d82e7ad1e",
   "candidate": false,
-  "sourceTreeSha256": "6901316f2b7407aef07fd8844dd7b6994a0767e9d416dfb6239a849839c1b6ce",
+  "sourceTreeSha256": "58c591960beee6b9d27ceed1d4dcf33c947ea601b1129b05d8f9116bd152107a",
   "files": [
     {
       "path": ".dockerignore",
@@ -101,7 +101,7 @@
     },
     {
       "path": "deploy/ec2/compose.yml",
-      "sha256": "4c3daf344c5bad6611adef9be5edd7b3d37b3e7945cbf13f6e7201a730d96dba",
+      "sha256": "a8598bdf49a3ebdaf95470e25fb12d558e6331c5d2f7d269266b5a57d1600e39",
       "mode": 420
     },
     {
@@ -146,7 +146,7 @@
     },
     {
       "path": "docs/authentication.md",
-      "sha256": "48671dbdba7db7d379eafda074c761c026524b2a437b7b962305d84a9a813be6",
+      "sha256": "0a7afd598c883159a6227c502fceb390320ff3434ef08d87dea67e1adb78b0b8",
       "mode": 420
     },
     {
@@ -216,12 +216,12 @@
     },
     {
       "path": "internal/server/api.go",
-      "sha256": "fc3e444be675622fc88e4e2a0eb73733c0c680fc5d3a87659857b2d90c082326",
+      "sha256": "dd2ae17e13a6c6d1a5d36ce684f6507a7bc44cc323f3eb32a9cbc0a764ee1e69",
       "mode": 420
     },
     {
       "path": "internal/server/auth.go",
-      "sha256": "a767ab11d16bf6c4163161e324d07037fec1d6d66d9c8c02b283b24769424b7a",
+      "sha256": "ca00290316608fa03ce7bcbcc0cbde7c1d50221d29fafa0e264bc8894679d295",
       "mode": 420
     },
     {
@@ -351,7 +351,7 @@
     },
     {
       "path": "internal/server/security_test.go",
-      "sha256": "244358c397193c1e0b19e802ad9c01a36fc03ca5a0ab8ba2f3368711150fe6f5",
+      "sha256": "53cf1bc33268c5f0851673bd45433c97f2fdeb0ce68b2580fc8860baea0db38c",
       "mode": 420
     },
     {
@@ -371,7 +371,7 @@
     },
     {
       "path": "internal/server/templates/confirm.html",
-      "sha256": "9945c301751cc561ce675c3871b81483eccec7843ae401039e155fa38fa4c009",
+      "sha256": "54e0036cc52d2c1498ed2840b9a3ac7f621e8de55437dbb73df79bdbed8d6965",
       "mode": 420
     },
     {
@@ -601,7 +601,7 @@
     },
     {
       "path": "tests/acceptance/image-e2e.ts",
-      "sha256": "b330bebf9103d90a784b19e4de807356e00c2dbaaa1cc02e6f66ee9b175ed6b5",
+      "sha256": "907949c89cba9c90be4107123abd678be21f6e4974e6312ca3dbfd5a66397436",
       "mode": 420
     },
     {

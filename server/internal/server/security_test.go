@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -91,5 +92,61 @@ func TestSettingsRejectUnsafeOriginsAndMissingSecrets(t *testing.T) {
 	settings, err := SettingsFromEnv(map[string]string{}, false)
 	if err != nil || settings.Mode != "self-hosted" || !settings.Password {
 		t.Fatal("default OSS settings changed")
+	}
+}
+
+func TestDesktopEmailConfirmationKeepsVerificationAndHandoffSeparate(t *testing.T) {
+	const origin = "https://orka.example"
+	const code = "12345678-1234-4123-8123-123456789abc"
+	const redirect = "orka://auth/callback?profile=qa"
+	verifications := 0
+	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		verifications++
+		if r.Method != http.MethodGet || r.URL.Path != "/verify" || r.URL.Query().Get("redirect_to") != redirect {
+			t.Errorf("unexpected verifier request: %s %s", r.Method, r.URL)
+		}
+		if verifications == 1 {
+			w.Header().Set("Location", redirect+"&code="+code)
+		} else {
+			w.Header().Set("Location", redirect+"#error=access_denied")
+		}
+		w.WriteHeader(http.StatusSeeOther)
+	}))
+	defer auth.Close()
+	api := NewAPI(nil, AuthSettings{MagicLink: true, PublicURL: origin}, auth.URL)
+	params := url.Values{"token": {"fixture-token"}, "type": {"magiclink"}, "redirect_to": {redirect}}
+	form := func(method, requestOrigin string) *httptest.ResponseRecorder {
+		path := "/auth/confirm"
+		var body string
+		if method == "GET" {
+			path += "?" + params.Encode()
+		} else {
+			body = params.Encode()
+		}
+		req := httptest.NewRequest(method, origin+path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Origin", requestOrigin)
+		res := httptest.NewRecorder()
+		api.ServeHTTP(res, req)
+		return res
+	}
+	for range 2 {
+		res := form("GET", "")
+		if res.Code != 200 || !strings.Contains(res.Body.String(), "Continue to Orka") || res.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("expected scanner-safe confirmation, got %d", res.Code)
+		}
+	}
+	if res := form("POST", "https://other.example"); res.Code != 400 || verifications != 0 {
+		t.Fatal("verification ran before a same-origin form submission")
+	}
+	res := form("POST", origin)
+	if res.Code != 200 || !strings.Contains(res.Body.String(), "Open Orka") ||
+		!strings.Contains(res.Body.String(), code) || strings.Contains(res.Body.String(), params.Get("token")) ||
+		res.Header().Get("Location") != "" {
+		t.Fatalf("expected a clean app handoff page, got %d", res.Code)
+	}
+	res = form("POST", origin)
+	if res.Code != 410 || !strings.Contains(res.Body.String(), "request a new sign-in email") {
+		t.Fatalf("expected recovery instructions after replay, got %d", res.Code)
 	}
 }
