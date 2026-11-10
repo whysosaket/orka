@@ -14,7 +14,7 @@ use std::{
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-fn attempts(db: &Connection) -> Result<Vec<Value>> {
+pub(crate) fn attempts(db: &Connection) -> Result<Vec<Value>> {
     db::rows(
         db,
         "SELECT value FROM meta WHERE key LIKE 'codexImport:%'",

@@ -937,6 +937,15 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
         }
     }
     let mut sessions_complete = true;
+    let unattributed_pattern = format!("{}*", history::UNATTRIBUTED_SESSION_PREFIX);
+    let unattributed_paths: BTreeSet<_> = db::rows(
+        db,
+        "SELECT json_quote(source) FROM errors WHERE source GLOB ?",
+        &[&unattributed_pattern],
+    )?
+    .into_iter()
+    .filter_map(|source| source.as_str().map(str::to_owned))
+    .collect();
     if crate::projects::sharing_allowed(project, "plan") {
         for source in ["codex", "claude"] {
             let directory = plans::project_directory(&root, source)?;
@@ -994,18 +1003,38 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                 {
                     continue;
                 }
+                let unattributed = format!(
+                    "{}{}",
+                    history::UNATTRIBUTED_SESSION_PREFIX,
+                    e.path().display()
+                );
                 let bytes = match history::read_session(e.path()) {
-                    Ok(bytes) => bytes,
+                    Ok(bytes) => {
+                        if unattributed_paths.contains(&unattributed) {
+                            db.execute("DELETE FROM errors WHERE source=?", [&unattributed])
+                                .map_err(|e| e.to_string())?;
+                        }
+                        bytes
+                    }
                     Err(err) => {
                         if err == history::SESSION_SIZE_ERROR {
                             match history::session_cwd_prefix(e.path(), tool) {
-                                Some(cwd) if !cwd.starts_with(&root) => continue,
                                 None => {
                                     // An unattributed transcript must never imply a local deletion.
+                                    error(db, &unattributed, history::UNATTRIBUTED_SESSION_ERROR)?;
                                     sessions_complete = false;
                                     continue;
                                 }
-                                Some(_) => {}
+                                Some(cwd) => {
+                                    db.execute(
+                                        "DELETE FROM errors WHERE source=?",
+                                        [&unattributed],
+                                    )
+                                    .map_err(|e| e.to_string())?;
+                                    if !cwd.starts_with(&root) {
+                                        continue;
+                                    }
+                                }
                             }
                         }
                         error(db, &format!("{scan_id}:scan:{}", e.path().display()), &err)?;

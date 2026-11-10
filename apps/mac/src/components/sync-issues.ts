@@ -1,6 +1,6 @@
 import type { Snapshot } from "../types.js";
 
-/** Groups one project's persistent sync errors by message, naming the affected items. */
+/** Groups project and workspace sync errors by message, naming the affected items. */
 export function groupSyncIssues(
   state: Pick<Snapshot, "errors" | "resources">,
   projectId: string,
@@ -8,10 +8,12 @@ export function groupSyncIssues(
 ): Map<string, string[]> {
   const issues = new Map<string, string[]>();
   for (const issue of state.errors) {
+    const unattributed = issue.source.startsWith("history:unattributed:");
     const affected = state.resources.find(
       (r) => r.projectId === projectId && r.resourceId === issue.source,
     );
     if (
+      !unattributed &&
       issue.source !== projectId &&
       !issue.source.startsWith(projectId + ":") &&
       !affected
@@ -20,6 +22,9 @@ export function groupSyncIssues(
     const sources = issues.get(issue.error) ?? [];
     sources.push(
       affected?.title ??
+        (unattributed
+          ? issue.source.slice("history:unattributed:".length)
+          : undefined) ??
         (issue.source.split(":").slice(1).join(":") ||
           projectName ||
           issue.source),

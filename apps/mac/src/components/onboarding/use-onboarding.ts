@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { Snapshot } from "../../types.js";
 import {
+  destinationCandidates,
   initialDraft,
   type AccountProfile,
   type DiscoveredProject,
@@ -255,9 +256,9 @@ export function useOnboarding(
     void run(async () => {
       const selected = current.current.selected;
       if (!selected.length) throw new Error("Choose at least one project.");
-      const review = await command<{
-        matches: OnboardingDraft["matches"];
-      }>("review", { paths: selected });
+      const review = await command<
+        Pick<OnboardingDraft, "catalog" | "matches">
+      >("review", { paths: selected });
       const choices = Object.fromEntries(
         Object.entries(review.matches ?? {}).flatMap(([path, match]) => {
           const previous = current.current.choices?.[path];
@@ -265,7 +266,9 @@ export function useOnboarding(
             current.current.matches?.[path]?.remoteKey === match.remoteKey;
           const stillAvailable =
             previous === "new" ||
-            match.projects.some((project) => project.id === previous);
+            destinationCandidates(review, path).some(
+              (project) => project.id === previous,
+            );
           const choice =
             match.connectedId ??
             (sameRemote && stillAvailable ? previous : undefined);
@@ -275,11 +278,13 @@ export function useOnboarding(
       await checkpoint({
         step: "review",
         matches: review.matches,
+        catalog: review.catalog,
         choices,
         sourceChoices: Object.fromEntries(
           Object.entries(current.current.sourceChoices ?? {}).filter(
             ([path, source]) => {
-              const project = review.matches?.[path]?.projects.find(
+              if (review.matches?.[path]?.connectedId) return false;
+              const project = destinationCandidates(review, path).find(
                 (project) => project.id === choices[path],
               );
               return project?.sources?.some(

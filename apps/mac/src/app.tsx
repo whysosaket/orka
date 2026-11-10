@@ -157,7 +157,7 @@ function WorkspaceApp({
   } = workspace;
   const { notify } = useToasts();
   const updates = useDesktopUpdates();
-  const account = useAccount(state.config);
+  const account = useAccount(state.config, !state.user);
   const workspaceScope = JSON.stringify([
     state.profile,
     state.user,

@@ -144,6 +144,9 @@ export function RecoveryStep({
       /folder (changed|unavailable)|mount is missing|couldn.t read.*folder|can.t read.*folder|permission denied|operation not permitted/i.test(
         error,
       );
+    const destinationChanged = failed.some((p) =>
+      p.error?.includes("Review the destination before syncing"),
+    );
     const folderErrors =
       failed.length > 0 && failed.every((p) => isFolderError(p.error));
     const localExclusions =
@@ -223,13 +226,15 @@ export function RecoveryStep({
           <Button
             variant="primary"
             disabled={busy}
-            onClick={() => flow.sync(true)}
+            onClick={destinationChanged ? flow.proceed : () => flow.sync(true)}
           >
-            {localExclusions
-              ? "Scan again"
-              : step === "offline" || failed.length !== 1
-                ? "Try again"
-                : "Retry this project"}
+            {destinationChanged
+              ? "Review destinations"
+              : localExclusions
+                ? "Scan again"
+                : step === "offline" || failed.length !== 1
+                  ? "Try again"
+                  : "Retry this project"}
           </Button>,
         )}
       </>

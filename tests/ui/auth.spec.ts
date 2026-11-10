@@ -87,6 +87,19 @@ async function fixture(
                 },
               };
             }
+            if (command === "pending_email_sign_in") {
+              const pending = JSON.parse(
+                sessionStorage.getItem("fixture-pending-sign-in") ?? "null",
+              );
+              return pending?.apiUrl === config?.apiUrl ? pending : null;
+            }
+            if (command === "begin_sign_in" && args.method === "magic-link")
+              sessionStorage.setItem(
+                "fixture-pending-sign-in",
+                JSON.stringify({ email: args.email, apiUrl: config?.apiUrl }),
+              );
+            if (command === "cancel_sign_in")
+              sessionStorage.removeItem("fixture-pending-sign-in");
             if (command === "configure") {
               if ((window as any).failConfigure)
                 throw new Error("Could not save your connection");
@@ -120,6 +133,7 @@ async function fixture(
                     ? "Keychain unavailable: interaction not allowed"
                     : "Keychain unavailable: access denied",
                 );
+              sessionStorage.removeItem("fixture-pending-sign-in");
               user = "user";
             }
             if (command === "retry_sign_in_storage") {
@@ -995,4 +1009,29 @@ test("advertised email code fallback is keyboard usable and can recover from an 
     { callback: null, code: "000000" },
     { callback: null, code: "123456" },
   ]);
+});
+
+test("restores a pending email code after restarting the desktop window", async ({
+  page,
+}, info) => {
+  await fixture(page, false, { fresh: true, emailCode: true });
+  await page.getByLabel("Email", { exact: true }).fill("alex@example.test");
+  await page.getByRole("button", { name: "Start for free" }).click();
+  await expect(
+    page.getByRole("button", { name: "Use email code" }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Use email code" }).click();
+  await page.screenshot({
+    animations: "disabled",
+    path: info.outputPath("restart-email-code.png"),
+  });
+  await page.getByLabel("Email code", { exact: true }).fill("123456");
+  await page.getByRole("button", { name: "Verify code" }).click();
+  await expect(
+    page.getByRole("button", { name: "Settings", exact: true }),
+  ).toBeVisible();
+  expect((await calls(page)).map((call) => call.command)).not.toContain(
+    "begin_sign_in",
+  );
 });

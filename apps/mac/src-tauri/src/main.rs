@@ -256,6 +256,7 @@ fn main() {
             commands::switch_service,
             commands::auth_capabilities,
             commands::begin_sign_in,
+            commands::pending_email_sign_in,
             commands::complete_sign_in,
             commands::cancel_sign_in,
             commands::retry_sign_in_storage,

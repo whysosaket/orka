@@ -749,9 +749,12 @@ async fn pull(owner: &str, db: &mut rusqlite::Connection, project: &str, name: &
 pub async fn once() -> Result<()> {
     cycle().await.map(|_| ())
 }
-pub(crate) async fn onboarding_once() -> Result<()> {
+pub(crate) async fn onboarding_once(scope: Option<(&str, &str)>) -> Result<()> {
     // The current onboarding job already owns its retry lock.
-    workspace_cycle(Ok(())).await.map(|_| ())
+    match workspace_cycle(Ok(()), scope).await? {
+        WorkspaceSync::Complete(_) => Ok(()),
+        WorkspaceSync::Yielded => Err("A sync or project operation is in progress".into()),
+    }
 }
 
 enum WorkspaceSync {
@@ -763,20 +766,35 @@ enum WorkspaceSync {
 async fn cycle() -> Result<bool> {
     let preparation = crate::onboarding::resume_pending_connections().await;
     // Only a service-wide failure should prevent unrelated projects from syncing.
-    workspace_cycle(preparation.or_else(|error| {
-        if service_error(&error) {
-            Err(error)
-        } else {
-            Ok(())
-        }
-    }))
+    workspace_cycle(
+        preparation.or_else(|error| {
+            if service_error(&error) {
+                Err(error)
+            } else {
+                Ok(())
+            }
+        }),
+        None,
+    )
     .await
+    .map(|outcome| match outcome {
+        WorkspaceSync::Complete(deferred) => deferred,
+        WorkspaceSync::Yielded => true,
+    })
 }
-async fn workspace_cycle(preparation: Result<()>) -> Result<bool> {
+async fn workspace_cycle(
+    preparation: Result<()>,
+    scope: Option<(&str, &str)>,
+) -> Result<WorkspaceSync> {
     let _lock = crate::projects::lock()?;
     let mut db = db::open()?;
     let user = db::get(&db, "user")?;
     let owner = user.as_str().ok_or("Sign in required")?.to_string();
+    if let Some((expected, service)) = scope {
+        if owner != expected || db::get(&db, "config")?["apiUrl"] != service {
+            return Err("Account or service changed. Reopen onboarding.".into());
+        }
+    }
     db::set(&db, "syncHandledRequest", &db::get(&db, "syncRequest")?)?;
     progress(&db, "Preparing sync", None, 0, None)?;
     let _ = crate::account_profile::flush_pending().await;
@@ -794,10 +812,13 @@ async fn workspace_cycle(preparation: Result<()>) -> Result<bool> {
     db::set(&tx, "sync", &status)?;
     db::set(&tx, "syncProgress", &Value::Null)?;
     tx.commit().map_err(|e| e.to_string())?;
-    result.map(|outcome| match outcome {
-        WorkspaceSync::Complete(deferred) => deferred,
-        WorkspaceSync::Yielded => true,
-    })
+    if !matches!(&result, Ok(WorkspaceSync::Yielded)) {
+        let _ = crate::onboarding::reconcile_workspace_sync(
+            &db,
+            result.as_ref().err().map(String::as_str),
+        );
+    }
+    result
 }
 
 async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<WorkspaceSync> {
@@ -840,6 +861,24 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         ),
         &[],
     )?;
+    let prefix = crate::history::UNATTRIBUTED_SESSION_PREFIX;
+    for source in db::rows(
+        db,
+        "SELECT json_quote(source) FROM errors WHERE source GLOB ?",
+        &[&format!("{prefix}*")],
+    )? {
+        if let Some(path) = source
+            .as_str()
+            .and_then(|source| source.strip_prefix(prefix))
+        {
+            if std::fs::symlink_metadata(path)
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+            {
+                db.execute("DELETE FROM errors WHERE source=?", [source.as_str()])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
     for (index, p) in local.iter().enumerate() {
         if crate::projects::foreground_waiting()? {
             return Ok(WorkspaceSync::Yielded);

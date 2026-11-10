@@ -168,6 +168,12 @@ pub async fn begin_sign_in(method: String, email: Option<String>) -> Result<Valu
     auth::begin(method, email).await
 }
 #[tauri::command]
+pub async fn pending_email_sign_in() -> Result<Value> {
+    tokio::task::spawn_blocking(auth::pending_email_sign_in)
+        .await
+        .map_err(|error| error.to_string())?
+}
+#[tauri::command]
 pub async fn complete_sign_in(callback: Option<String>, code: Option<String>) -> Result<Value> {
     let value = auth::complete(callback, code).await?;
     sync_now()?;
@@ -208,6 +214,13 @@ pub fn sync_now() -> Result<()> {
 }
 #[tauri::command]
 pub async fn cloud_action(action: String, input: Value) -> Result<Value> {
+    cloud_action_scoped(action, input, None).await
+}
+pub(crate) async fn cloud_action_scoped(
+    action: String,
+    input: Value,
+    scope: Option<(&str, &str)>,
+) -> Result<Value> {
     let adding = action == "create" || action == "join";
     let sharing = if adding {
         Some(if input.get("sharing").is_some() {
@@ -225,6 +238,12 @@ pub async fn cloud_action(action: String, input: Value) -> Result<Value> {
     } else {
         None
     };
+    if let Some((owner, service)) = scope {
+        let db = db::open()?;
+        if db::get(&db, "user")? != owner || db::get(&db, "config")?["apiUrl"] != service {
+            return Err("Account or service changed. Reopen onboarding.".into());
+        }
+    }
     let mut request = input;
     if adding {
         request

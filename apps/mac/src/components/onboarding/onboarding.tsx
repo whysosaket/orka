@@ -16,7 +16,12 @@ import type { Snapshot } from "../../types.js";
 import { AuthRecovery } from "../auth-recovery.js";
 import { ProfileStep } from "./profile-step.js";
 import { RecoveryStep } from "./recovery-step.js";
-import { frameForStep, type OnboardingStep } from "./model.js";
+import {
+  destinationCandidates,
+  frameForStep,
+  suggestedSource,
+  type OnboardingStep,
+} from "./model.js";
 import { useOnboarding } from "./use-onboarding.js";
 import "./onboarding.css";
 import { RepositoryOnboarding } from "../repository-onboarding.js";
@@ -89,14 +94,15 @@ export function Onboarding({
   const visiblePaths = visibleProjects
     .filter((p) => p.readable !== false)
     .map((p) => p.path);
-  const needsChoice = projects.some(({ path }) => {
-    const match = draft.matches?.[path];
+  const needsChoice = projects.some(({ path, name }) => {
+    if (draft.matches?.[path]?.connectedId) return false;
+    const candidates = destinationCandidates(draft, path);
     const choice = draft.choices?.[path];
-    if (match?.projects.length && !choice) return true;
-    const project = match?.projects.find((p) => p.id === choice);
+    if (candidates.length && !choice) return true;
+    const project = candidates.find((p) => p.id === choice);
     return Boolean(
       (project?.sources?.length ?? 0) > 1 &&
-      !(draft.sourceChoices?.[path] || project?.sourceId),
+      !(draft.sourceChoices?.[path] || suggestedSource(project, name)),
     );
   });
   const synced = projects.filter(
@@ -223,7 +229,14 @@ export function Onboarding({
           {projects.map(({ path, displayPath, name }) => {
             const match = draft.matches?.[path];
             const choice = draft.choices?.[path] ?? "";
-            const project = match?.projects.find((p) => p.id === choice);
+            const candidates = destinationCandidates(draft, path);
+            const project = candidates.find((p) => p.id === choice);
+            const suggestion = candidates.find(
+              (p) => p.id === match?.suggestedId,
+            );
+            const destinations = suggestion
+              ? [suggestion, ...candidates.filter((p) => p !== suggestion)]
+              : candidates;
             const sources = project?.sources ?? [];
             return (
               <div className="onboarding-flow__match" key={path}>
@@ -231,10 +244,10 @@ export function Onboarding({
                   <strong>{name}</strong>
                   <small title={path}>{displayPath}</small>
                 </div>
-                {match?.connectedId || !match?.projects.length ? (
+                {match?.connectedId || !destinations.length ? (
                   <p>
-                    {project
-                      ? `Connected to ${project.name}`
+                    {match?.connectedId
+                      ? `Connected to ${project?.name ?? match.connectedName ?? "an existing project"}`
                       : `Create a project named ${name}`}
                   </p>
                 ) : (
@@ -244,10 +257,10 @@ export function Onboarding({
                     value={choice}
                     disabled={busy}
                     options={[
-                      ...match.projects.map((p) => ({
+                      ...destinations.map((p) => ({
                         value: p.id,
                         label:
-                          p.id === match.suggestedId
+                          p.id === match?.suggestedId
                             ? `${p.name} · Suggested match`
                             : `${p.name} · ${p.role === "owner" ? "Owner" : "Member"}`,
                       })),
@@ -261,7 +274,9 @@ export function Onboarding({
                     label={`Repository for ${name}`}
                     placeholder="Choose a repository"
                     value={
-                      draft.sourceChoices?.[path] || project?.sourceId || ""
+                      draft.sourceChoices?.[path] ||
+                      suggestedSource(project, name) ||
+                      ""
                     }
                     disabled={busy}
                     options={sources.map((source) => ({

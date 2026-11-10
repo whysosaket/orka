@@ -208,16 +208,31 @@ fn pending() -> Result<Value> {
         })?;
     let pending: Value = serde_json::from_str(&raw).map_err(|_| "Invalid pending sign-in")?;
     if pending["expiresAt"].as_i64().unwrap_or(0) < chrono::Utc::now().timestamp() {
-        cancel()?;
         return Err("Sign-in expired. Request a new link".into());
     }
     if pending["apiUrl"] != db::get(&db::open()?, "config")?["apiUrl"] {
         return Err("Service changed. Start sign-in again".into());
     }
-    if pending["requestId"] != db::get(&db::open()?, "authRequestId")? {
+    if !pending["requestId"].is_string()
+        || pending["requestId"] != db::get(&db::open()?, "authRequestId")?
+    {
         return Err("Start sign-in on this Mac first".into());
     }
     Ok(pending)
+}
+pub fn pending_email_sign_in() -> Result<Value> {
+    if db::get(&db::open()?, "user")?.is_string() {
+        return Ok(Value::Null);
+    }
+    let pending = match pending() {
+        Ok(value) => value,
+        Err(error) if error.starts_with("Keychain unavailable:") => return Err(error),
+        Err(_) => return Ok(Value::Null),
+    };
+    Ok(match pending["email"].as_str() {
+        Some(email) if pending["method"] == "magic-link" => json!({"email":email}),
+        _ => Value::Null,
+    })
 }
 pub fn cancel() -> Result<()> {
     *UNSAVED.lock().map_err(|_| "Sign-in recovery unavailable")? = None;

@@ -14,6 +14,10 @@ use walkdir::WalkDir;
 
 pub(crate) const MAX_FILE: u64 = 128 * 1024 * 1024;
 pub(crate) const SESSION_SIZE_ERROR: &str = "Session exceeds 128 MB; source preserved";
+pub(crate) const UNATTRIBUTED_SESSION_PREFIX: &str = "history:unattributed:";
+pub(crate) const UNATTRIBUTED_SESSION_ERROR: &str =
+    "Session exceeds 128 MB; Orka could not identify its project. Source preserved.";
+const MAX_ATTRIBUTION_PREFIX: u64 = 1024 * 1024;
 const MAX_TOTAL: usize = 256 * 1024 * 1024;
 
 fn ordinal_reference(value: &Value) -> bool {
@@ -94,7 +98,7 @@ pub(crate) fn session_cwd_prefix(path: &Path, tool: &str) -> Option<PathBuf> {
     let mut prefix = Vec::new();
     reader(path)
         .ok()?
-        .take(65_536)
+        .take(MAX_ATTRIBUTION_PREFIX)
         .read_to_end(&mut prefix)
         .ok()?;
     native::session_cwd(tool, &native::complete_records(&prefix).ok()?).ok()

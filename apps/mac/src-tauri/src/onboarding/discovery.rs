@@ -69,14 +69,37 @@ fn modified(path: &Path) -> u64 {
         .map(|v| v.as_millis() as u64)
         .unwrap_or(0)
 }
-fn session_time(record: &Value) -> u64 {
-    record["payload"]["timestamp"]
-        .as_str()
-        .or_else(|| record["timestamp"].as_str())
-        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-        .and_then(|value| u64::try_from(value.timestamp_millis()).ok())
-        .unwrap_or(0)
+#[derive(Default)]
+struct ImportedHistory {
+    claude: BTreeSet<String>,
+    codex: BTreeSet<String>,
 }
+impl ImportedHistory {
+    fn load(db: &rusqlite::Connection) -> Result<Self> {
+        let mut imported = Self::default();
+        for receipt in db::rows(
+            db,
+            "SELECT value FROM meta WHERE key GLOB 'claudeImport:*'",
+            &[],
+        )? {
+            if let Some(id) = receipt["id"].as_str() {
+                imported.claude.insert(id.into());
+            }
+        }
+        for receipt in crate::codex_import::attempts(db)? {
+            imported.codex.extend(
+                receipt["ids"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .chain(std::iter::once(&receipt["child"]["id"]))
+                    .filter_map(|id| id.as_str().map(str::to_owned)),
+            );
+        }
+        Ok(imported)
+    }
+}
+
 fn project_root(path: &Path, home: &Path) -> Option<PathBuf> {
     let path = match fs::canonicalize(path) {
         Ok(path) => path,
@@ -198,7 +221,7 @@ fn claude(
                     Path::new(record["cwd"].as_str().unwrap()),
                     home,
                     Some("claude"),
-                    session_time(&record),
+                    modified(&file.path()),
                     count,
                 );
                 break;
@@ -312,11 +335,11 @@ fn history(
     home: &Path,
     claude_root: &Path,
     codex_root: &Path,
-    imported_claude: &BTreeSet<String>,
+    imported: &ImportedHistory,
     found: &mut BTreeMap<PathBuf, Candidate>,
     budget: &mut Budget,
 ) -> Result<()> {
-    claude(home, claude_root, imported_claude, found, budget)?;
+    claude(home, claude_root, &imported.claude, found, budget)?;
     let mut files = vec![];
     codex_files(&codex_root.join("sessions"), 5, budget, &mut files);
     files.sort_by_key(|p| std::cmp::Reverse(modified(p)));
@@ -325,12 +348,18 @@ fn history(
             break;
         }
         if let Some(record) = cwd_record(&file, true, budget) {
+            if record["payload"]["id"]
+                .as_str()
+                .is_some_and(|id| imported.codex.contains(id))
+            {
+                continue;
+            }
             add(
                 found,
                 Path::new(record["payload"]["cwd"].as_str().unwrap()),
                 home,
                 Some("codex"),
-                session_time(&record),
+                modified(&file),
                 1,
             );
         }
@@ -353,14 +382,7 @@ pub fn discover(path: Option<&str>) -> Result<Value> {
             add(&mut found, &root, &home, None, 0, 0);
         }
     } else {
-        let imported = db::rows(
-            &db,
-            "SELECT value FROM meta WHERE key GLOB 'claudeImport:*'",
-            &[],
-        )?
-        .iter()
-        .filter_map(|receipt| receipt["id"].as_str().map(str::to_owned))
-        .collect();
+        let imported = ImportedHistory::load(&db)?;
         history(
             &home,
             &native::claude_home()?,
@@ -597,7 +619,10 @@ mod tests {
             &mut Budget::new(),
         )
         .unwrap();
-        assert_eq!(found[&project].last, 1_767_225_600_000);
+        assert_eq!(
+            found[&project].last,
+            modified(&transcripts.join("local.jsonl"))
+        );
         assert_eq!(found[&project].sessions, 1);
     }
     #[test]
@@ -626,7 +651,7 @@ mod tests {
             &home,
             &home.join(".claude"),
             &codex,
-            &BTreeSet::new(),
+            &ImportedHistory::default(),
             &mut found,
             &mut Budget::new(),
         )
@@ -677,7 +702,7 @@ mod tests {
             &home,
             &claude,
             &codex,
-            &BTreeSet::new(),
+            &ImportedHistory::default(),
             &mut found,
             &mut budget,
         )

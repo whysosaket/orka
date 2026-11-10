@@ -88,6 +88,7 @@ async function fixture(
     ambiguous?: boolean;
     suggestedMatch?: boolean;
     localExclusions?: boolean;
+    destinationChanged?: boolean;
     legacyMatch?: boolean;
     pauseDiscovery?: boolean;
     clipboardFailure?: boolean;
@@ -172,17 +173,21 @@ async function fixture(
             : {}),
           ...(options.step === "offline" || options.step === "sync-error"
             ? {
-                projectId: `p-${index}`,
-                status:
-                  options.step === "offline"
+                projectId: options.destinationChanged
+                  ? undefined
+                  : `p-${index}`,
+                status: options.destinationChanged
+                  ? "error"
+                  : options.step === "offline"
                     ? index === 0
                       ? "synced"
                       : "error"
                     : index < (options.localExclusions ? 1 : 2)
                       ? "synced"
                       : "error",
-                error:
-                  options.localExclusions && index > 0
+                error: options.destinationChanged
+                  ? "This folder’s connection changed. Review the destination before syncing."
+                  : options.localExclusions && index > 0
                     ? index === 1
                       ? "Package contains symlink"
                       : "Session exceeds 128 MB; source preserved"
@@ -416,6 +421,19 @@ async function fixture(
                     };
               if (action === "review")
                 return {
+                  ...(options.suggestedMatch || options.destinationChanged
+                    ? {
+                        catalog: [
+                          {
+                            id: "existing-1",
+                            name: options.destinationChanged
+                              ? "Team Orka"
+                              : "Personal Orka",
+                            role: "owner",
+                          },
+                        ],
+                      }
+                    : {}),
                   matches: options.legacyMatch
                     ? {
                         [projects[0].path]: {
@@ -434,37 +452,37 @@ async function fixture(
                           ],
                         },
                       }
-                    : options.suggestedMatch
+                    : options.destinationChanged
                       ? {
                           [projects[0].path]: {
-                            suggestedId: "existing-1",
-                            projects: [
-                              {
-                                id: "existing-1",
-                                name: "Personal Orka",
-                                role: "owner",
-                              },
-                            ],
+                            connectedId: "existing-1",
+                            connectedName: "Team Orka",
                           },
                         }
-                      : options.ambiguous
+                      : options.suggestedMatch
                         ? {
                             [projects[0].path]: {
-                              projects: [
-                                {
-                                  id: "existing-1",
-                                  name: "Personal Orka",
-                                  role: "owner",
-                                },
-                                {
-                                  id: "existing-2",
-                                  name: "Team Orka",
-                                  role: "member",
-                                },
-                              ],
+                              suggestedId: "existing-1",
                             },
                           }
-                        : {},
+                        : options.ambiguous
+                          ? {
+                              [projects[0].path]: {
+                                projects: [
+                                  {
+                                    id: "existing-1",
+                                    name: "Personal Orka",
+                                    role: "owner",
+                                  },
+                                  {
+                                    id: "existing-2",
+                                    name: "Team Orka",
+                                    role: "member",
+                                  },
+                                ],
+                              },
+                            }
+                          : {},
                   supported: true,
                 };
               if (action === "batch-sync") {
@@ -1762,4 +1780,28 @@ test("local sync exclusions identify the resource and explain recovery", async (
     page.getByText(/start a new session for future work/i),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Scan again" })).toBeEnabled();
+});
+
+test("a changed connection prompts review before sync can resume", async ({
+  page,
+}, info) => {
+  await fixture(page, {
+    step: "sync-error",
+    projectNames: ["Orka"],
+    destinationChanged: true,
+  });
+  await expect(
+    page.getByText("This folder’s connection changed", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await page.screenshot({
+    animations: "disabled",
+    path: info.outputPath("destination-review.png"),
+  });
+  await page.getByRole("button", { name: "Review destinations" }).click();
+  await expect(page.getByText("Connected to Team Orka")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Start Syncing" }),
+  ).toBeEnabled();
 });

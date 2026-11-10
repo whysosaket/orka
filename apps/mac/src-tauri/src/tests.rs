@@ -1888,6 +1888,44 @@ fn service_profiles_isolate_same_identity_and_preserve_legacy_cache() {
 }
 
 #[test]
+fn onboarding_refuses_a_folder_bound_to_a_different_project() {
+    let f = Fixture::new();
+    let service = "http://127.0.0.1:1";
+    db::set(&f.db, "config", &json!({"apiUrl":service})).unwrap();
+    let project = f.project["id"].as_str().unwrap();
+    db::upsert(&f.db, "projects", project, project, &f.project).unwrap();
+    let saved = json!({
+        "active":true,"owner":db::get(&f.db,"user").unwrap(),"service":service,
+        "draft":{"step":"syncing","selected":[f.root]}
+    });
+    fs::write(
+        db::root().unwrap().join("onboarding.json"),
+        saved.to_string(),
+    )
+    .unwrap();
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    for destination in [Value::Null, json!(uuid::Uuid::new_v4().to_string())] {
+        let failure = runtime
+            .block_on(crate::onboarding::onboarding_command(
+                "connect".into(),
+                json!({
+                    "path":f.root,"name":"Project","existingId":destination,
+                    "sharing":{"session":true,"plan":false,"memory":false,"skill":false,"env":false}
+                }),
+                None,
+            ))
+            .unwrap_err();
+        assert!(
+            failure.contains("Review the destination before syncing"),
+            "{failure}"
+        );
+    }
+    let stored = crate::governance::project(&f.db, project).unwrap();
+    assert_eq!(stored["sharing"], f.project["sharing"]);
+}
+
+#[test]
 fn oversized_transcript_only_marks_its_project_even_with_plan_only_sharing() {
     let f = Fixture::new();
     let other = f._home.path().join("unrelated");
@@ -1899,7 +1937,8 @@ fn oversized_transcript_only_marks_its_project_even_with_plan_only_sharing() {
     fs::write(
         &transcript,
         native::encode(&[json!({
-            "type":"user","cwd":f.root,"sessionId":uuid::Uuid::new_v4().to_string()
+            "type":"user","cwd":f.root,"sessionId":uuid::Uuid::new_v4().to_string(),
+            "message":"x".repeat(70_000)
         })]),
     )
     .unwrap();
@@ -1932,6 +1971,38 @@ fn oversized_transcript_only_marks_its_project_even_with_plan_only_sharing() {
     );
     assert_eq!(fs::metadata(transcript).unwrap().len(), size);
     assert!(f.outbox().is_empty());
+}
+
+#[test]
+fn unattributed_oversized_transcript_surfaces_once_and_clears_after_repair() {
+    let f = Fixture::new();
+    let dir = native::claude_home().unwrap().join("projects/fixture");
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("oversized.jsonl");
+    fs::File::create(&path)
+        .unwrap()
+        .set_len(crate::history::MAX_FILE + 1)
+        .unwrap();
+    for _ in 0..2 {
+        indexer::scan(&f.db, &f.project).unwrap();
+    }
+    let issue = format!(
+        "{}{}",
+        crate::history::UNATTRIBUTED_SESSION_PREFIX,
+        path.display()
+    );
+    let issues = || {
+        db::rows(
+            &f.db,
+            "SELECT json_quote(source) FROM errors WHERE error=?",
+            &[&crate::history::UNATTRIBUTED_SESSION_ERROR],
+        )
+        .unwrap()
+    };
+    assert_eq!(issues(), vec![json!(issue)]);
+    fs::write(&path, []).unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    assert!(issues().is_empty());
 }
 
 #[test]
@@ -1969,6 +2040,68 @@ fn dismissed_missing_folder_does_not_block_an_existing_projects_first_scan() {
         saved["projects"][0]["error"],
         "Project folder is unavailable"
     );
+}
+
+#[test]
+fn dismissed_setup_stays_visible_until_the_reconnected_project_syncs() {
+    let f = Fixture::new();
+    let service = "http://127.0.0.1:1";
+    db::set(&f.db, "config", &json!({"apiUrl":service})).unwrap();
+    let id = f.project["id"].as_str().unwrap();
+    let draft = json!({"owner":db::get(&f.db,"user").unwrap(),"service":service,"active":false,
+        "draft":{"step":"retrying","completedAt":"done","reviewed":true,"selected":[f.root],
+                 "projects":[{"path":f.root,"name":"test","projectId":id,"status":"scanning"}]}});
+    fs::write(
+        db::root().unwrap().join("onboarding.json"),
+        draft.to_string(),
+    )
+    .unwrap();
+
+    crate::onboarding::reconcile_workspace_sync(&f.db, None).unwrap();
+    let setup =
+        |db: &rusqlite::Connection| crate::onboarding::snapshot(db).unwrap()["setup"].clone();
+    assert_eq!(setup(&f.db)["step"], "syncing");
+    assert_eq!(setup(&f.db)["projects"][0]["status"], "syncing");
+
+    db::set(&f.db, &format!("firstScan:{id}"), &json!(db::now())).unwrap();
+    let resource = format!("{id}:scan:skills/broken");
+    sync::record_result(&f.db, &resource, Err("Package contains symlink".into())).unwrap();
+    crate::onboarding::reconcile_workspace_sync(&f.db, None).unwrap();
+    assert_eq!(setup(&f.db)["step"], "sync-error");
+    assert_eq!(setup(&f.db)["projects"][0]["issues"][0]["item"], resource);
+
+    sync::record_result(&f.db, &resource, Ok(())).unwrap();
+    crate::onboarding::reconcile_workspace_sync(&f.db, None).unwrap();
+    assert!(setup(&f.db).is_null());
+}
+
+#[test]
+fn completed_setup_keeps_a_disconnected_folder_visible_despite_an_old_scan() {
+    let f = Fixture::new();
+    let service = "http://127.0.0.1:1";
+    db::set(&f.db, "config", &json!({"apiUrl":service})).unwrap();
+    let id = f.project["id"].as_str().unwrap();
+    db::set(&f.db, &format!("firstScan:{id}"), &json!(db::now())).unwrap();
+    let mut disconnected = f.project.clone();
+    disconnected["path"] = Value::Null;
+    db::upsert(&f.db, "projects", id, id, &disconnected).unwrap();
+    let draft = json!({"owner":db::get(&f.db,"user").unwrap(),"service":service,"active":false,
+        "draft":{"step":"offline","completedAt":"done","reviewed":true,"selected":[f.root],
+                 "projects":[{"path":f.root,"name":"test","projectId":id,"status":"syncing"}]}});
+    fs::write(
+        db::root().unwrap().join("onboarding.json"),
+        draft.to_string(),
+    )
+    .unwrap();
+
+    crate::onboarding::reconcile_workspace_sync(&f.db, None).unwrap();
+    let setup = crate::onboarding::snapshot(&f.db).unwrap()["setup"].clone();
+    assert_eq!(setup["step"], "sync-error");
+    assert!(setup["projects"][0]["projectId"].is_null());
+    assert!(setup["projects"][0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("Review the destination"));
 }
 
 #[test]
