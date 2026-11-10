@@ -8,6 +8,7 @@ async function fixture(
     fresh?: boolean;
     passwordOnly?: boolean;
     password?: boolean;
+    emailCode?: boolean;
     failConfigure?: boolean;
     authDisabled?: boolean;
     deepLink?: string;
@@ -76,6 +77,7 @@ async function fixture(
                 auth: {
                   github: !options.passwordOnly,
                   magicLink: !options.passwordOnly,
+                  emailCode: options.emailCode,
                   password: options.password ?? true,
                   ...(options.authDisabled && {
                     github: false,
@@ -101,7 +103,12 @@ async function fixture(
               return link;
             }
             if (command === "complete_sign_in") {
-              if (
+              if (args.callback === null && options.emailCode) {
+                if (args.code !== "123456")
+                  throw new Error(
+                    "Incorrect or expired code. Try again or resend email.",
+                  );
+              } else if (
                 args.code !== null ||
                 args.callback !==
                   "orka://auth/callback?code=11111111-1111-4111-8111-111111111111"
@@ -956,4 +963,36 @@ test("unreachable self-hosted recovery matches Figma and returns to the editable
   await expect(page.getByLabel("Server link")).toHaveValue(
     "https://offline.example.test",
   );
+});
+
+test("advertised email code fallback is keyboard usable and can recover from an invalid code", async ({
+  page,
+}) => {
+  await fixture(page, false, { fresh: true, emailCode: true });
+  await page.getByLabel("Email", { exact: true }).fill("alex@example.test");
+  await page.getByRole("button", { name: "Start for free" }).click();
+  await page.getByRole("button", { name: "Use email code" }).click();
+  const code = page.getByLabel("Email code", { exact: true });
+  await expect(code).toBeFocused();
+  const verify = page.getByRole("button", { name: "Verify code" });
+  await expect(verify).toBeDisabled();
+  await code.fill("000000");
+  await code.press("Enter");
+  await expect(page.getByRole("alert")).toContainText(
+    "Incorrect or expired code",
+  );
+  await code.fill("123 456");
+  await expect(code).toHaveValue("123456");
+  await code.press("Enter");
+  await expect(
+    page.getByRole("button", { name: "Settings", exact: true }),
+  ).toBeVisible();
+  expect(
+    (await calls(page))
+      .filter((call) => call.command === "complete_sign_in")
+      .map((call) => call.args),
+  ).toEqual([
+    { callback: null, code: "000000" },
+    { callback: null, code: "123456" },
+  ]);
 });

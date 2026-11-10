@@ -1,6 +1,6 @@
 use crate::{
     db::{self, Result},
-    memory_context, native, packages, plans,
+    history, memory_context, native, packages, plans,
 };
 use rusqlite::params;
 use serde_json::{json, Value};
@@ -933,7 +933,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                 }
                 Ok(())
             })();
-            crate::sync::record_result(db, &format!("{scan_id}:scan:{id}"), result)?;
+            crate::sync::record_result(db, &format!("{scan_id}:scan:skills/{name}"), result)?;
         }
     }
     let mut sessions_complete = true;
@@ -994,31 +994,25 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                 {
                     continue;
                 }
-                let bytes = match if tool == "codex" {
-                    crate::history::read_session(e.path())
-                } else {
-                    fs::read(e.path()).map_err(|e| e.to_string())
-                } {
+                let bytes = match history::read_session(e.path()) {
                     Ok(bytes) => bytes,
                     Err(err) => {
-                        error(
-                            db,
-                            &format!("{scan_id}:scan:{}", e.path().display()),
-                            &err.to_string(),
-                        )?;
+                        if err == history::SESSION_SIZE_ERROR {
+                            match history::session_cwd_prefix(e.path(), tool) {
+                                Some(cwd) if !cwd.starts_with(&root) => continue,
+                                None => {
+                                    // An unattributed transcript must never imply a local deletion.
+                                    sessions_complete = false;
+                                    continue;
+                                }
+                                Some(_) => {}
+                            }
+                        }
+                        error(db, &format!("{scan_id}:scan:{}", e.path().display()), &err)?;
                         sessions_complete = false;
                         continue;
                     }
                 };
-                if bytes.len() > 128 * 1024 * 1024 {
-                    error(
-                        db,
-                        &format!("{scan_id}:scan:{}", e.path().display()),
-                        "Session exceeds 128 MB; source preserved",
-                    )?;
-                    sessions_complete = false;
-                    continue;
-                }
                 let records = match native::complete_records(&bytes) {
                     Ok(r) => r,
                     Err(err) => {

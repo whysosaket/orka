@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import { MarkGithubIcon } from "@primer/octicons-react";
 import { Button } from "./button.js";
 import { Icon } from "./icon.js";
+import { TextField } from "./text-field.js";
 import type { Account } from "./use-account.js";
 import {
   OnboardingAuthLayout,
@@ -16,6 +17,7 @@ export function PendingSignIn({
   error,
   headingRef,
   onRetry,
+  onCode,
   onBack,
   children,
 }: {
@@ -24,16 +26,26 @@ export function PendingSignIn({
   error: string;
   headingRef: React.RefObject<HTMLHeadingElement | null>;
   onRetry: () => void;
+  onCode: (code: string) => void;
   onBack: () => void;
   children?: React.ReactNode;
 }) {
   const email = account.pending === "magic-link";
+  const canUseCode = email && account.capabilities?.auth.emailCode === true;
+  const [showCode, setShowCode] = useState(false);
+  const [code, setCode] = useState("");
+  const codeInput = useRef<HTMLInputElement>(null);
+  const enterCode = canUseCode && showCode;
+  const validCode = /^[0-9]{6,10}$/.test(code);
 
   return (
     <OnboardingAuthLayout
       busy={busy}
       className="onboarding-entry__pending"
-      onSubmit={(event) => event.preventDefault()}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (enterCode && validCode && !busy) onCode(code);
+      }}
       afterCard={
         email && (
           <div className="onboarding-entry__recovery-actions">
@@ -75,16 +87,58 @@ export function PendingSignIn({
             </h1>
             <p role="status">
               {email
-                ? `We sent a sign-in link to ${account.email}.`
+                ? canUseCode
+                  ? `We sent a sign-in link and code to ${account.email}.`
+                  : `We sent a sign-in link to ${account.email}.`
                 : "Continue with GitHub in your browser. Orka will open when you finish."}
             </p>
           </div>
+          {enterCode && (
+            <>
+              <TextField
+                ref={codeInput}
+                className="onboarding-entry__field"
+                label="Email code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={code}
+                disabled={busy}
+                onChange={(event) =>
+                  setCode(
+                    event.target.value.replace(/[^0-9]/g, "").slice(0, 10),
+                  )
+                }
+              />
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={busy || !validCode}
+              >
+                {busy ? "Verifying…" : "Verify code"}
+              </Button>
+            </>
+          )}
           <OnboardingError>{error}</OnboardingError>
+          {canUseCode && !enterCode && (
+            <Button
+              className="onboarding-entry__flat-button"
+              disabled={busy}
+              onClick={() => {
+                setShowCode(true);
+                requestAnimationFrame(() => codeInput.current?.focus());
+              }}
+            >
+              Use email code
+            </Button>
+          )}
           <Button
             size="lg"
             className="onboarding-entry__flat-button"
             disabled={busy}
-            onClick={onRetry}
+            onClick={() => {
+              setCode("");
+              onRetry();
+            }}
           >
             {email ? (busy ? "Sending…" : "Resend email") : "Try again"}
           </Button>

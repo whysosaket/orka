@@ -86,6 +86,8 @@ async function fixture(
     location?: boolean;
     sample?: boolean;
     ambiguous?: boolean;
+    suggestedMatch?: boolean;
+    localExclusions?: boolean;
     legacyMatch?: boolean;
     pauseDiscovery?: boolean;
     clipboardFailure?: boolean;
@@ -131,6 +133,7 @@ async function fixture(
       const projects = (options.sample ? names.slice(0, 3) : names).map(
         (name, index) => ({
           name,
+          lastActiveAt: names.length - index,
           path: `/Users/fixture/Developer/${name.toLowerCase()}`,
           displayPath: `~/Developer/${name.toLowerCase()}`,
           sources:
@@ -149,6 +152,24 @@ async function fixture(
                 status: index === 0 ? "synced" : "syncing",
               }
             : {}),
+          ...(options.localExclusions && index > 0
+            ? {
+                issues:
+                  index === 1
+                    ? [
+                        {
+                          error: "Package contains symlink",
+                          item: "design-review",
+                        },
+                      ]
+                    : [
+                        {
+                          error: "Session exceeds 128 MB; source preserved",
+                          item: "session.jsonl",
+                        },
+                      ],
+              }
+            : {}),
           ...(options.step === "offline" || options.step === "sync-error"
             ? {
                 projectId: `p-${index}`,
@@ -157,13 +178,17 @@ async function fixture(
                     ? index === 0
                       ? "synced"
                       : "error"
-                    : index < 2
+                    : index < (options.localExclusions ? 1 : 2)
                       ? "synced"
                       : "error",
                 error:
-                  options.step === "sync-error" && index === 2
-                    ? "Connected folder unavailable"
-                    : undefined,
+                  options.localExclusions && index > 0
+                    ? index === 1
+                      ? "Package contains symlink"
+                      : "Session exceeds 128 MB; source preserved"
+                    : options.step === "sync-error" && index === 2
+                      ? "Connected folder unavailable"
+                      : undefined,
               }
             : {}),
         }),
@@ -173,7 +198,10 @@ async function fixture(
       ) ?? {
         step: options.step ?? "profile",
         projects: options.step ? projects : [],
-        selected: options.step ? projects.map((p) => p.path) : [],
+        selected:
+          options.step && options.step !== "discover"
+            ? projects.map((p) => p.path)
+            : [],
         folder: options.folder ?? "",
         sharing: {
           memory: true,
@@ -283,6 +311,10 @@ async function fixture(
                 onboarding: {
                   active,
                   draft,
+                  setup:
+                    !active && (draft.deferred || draft.step === "syncing")
+                      ? draft
+                      : null,
                   location: {
                     ok: options.location !== false,
                     path: "/Applications/Orka.app",
@@ -402,24 +434,37 @@ async function fixture(
                           ],
                         },
                       }
-                    : options.ambiguous
+                    : options.suggestedMatch
                       ? {
                           [projects[0].path]: {
+                            suggestedId: "existing-1",
                             projects: [
                               {
                                 id: "existing-1",
                                 name: "Personal Orka",
                                 role: "owner",
                               },
-                              {
-                                id: "existing-2",
-                                name: "Team Orka",
-                                role: "member",
-                              },
                             ],
                           },
                         }
-                      : {},
+                      : options.ambiguous
+                        ? {
+                            [projects[0].path]: {
+                              projects: [
+                                {
+                                  id: "existing-1",
+                                  name: "Personal Orka",
+                                  role: "owner",
+                                },
+                                {
+                                  id: "existing-2",
+                                  name: "Team Orka",
+                                  role: "member",
+                                },
+                              ],
+                            },
+                          }
+                        : {},
                   supported: true,
                 };
               if (action === "batch-sync") {
@@ -465,7 +510,13 @@ async function fixture(
                 };
               if (action === "app-location") return { ok: false };
               if (action === "folder-access") return { ok: true };
+              if (action === "resume-setup") {
+                draft.deferred = false;
+                active = true;
+                return { ok: true };
+              }
               if (action === "complete") {
+                draft.deferred = input.defer;
                 active = false;
                 return { ok: true };
               }
@@ -485,6 +536,7 @@ const calls = (page: Page) =>
   );
 
 async function watchButtonDisabling(page: Page) {
+  await page.locator("body").waitFor();
   await page.evaluate(() => {
     const disabledButtons: string[] = [];
     new MutationObserver((records) => {
@@ -834,11 +886,15 @@ for (const width of [1440, 900])
       .getByRole("button", { name: "Find my projects", exact: true })
       .click();
     await expect(
-      page.getByText("7 of 7 selected", { exact: true }),
+      page.getByText("0 of 7 selected", { exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Proceed", exact: true }),
-    ).toBeEnabled();
+    ).toBeDisabled();
+    await page.getByRole("button", { name: "Select all", exact: true }).click();
+    await expect(
+      page.getByText("7 of 7 selected", { exact: true }),
+    ).toBeVisible();
     const firstRow = await page
       .locator(".onboarding-flow__project")
       .first()
@@ -1163,7 +1219,7 @@ test("folder access uses the native picker and leaves the readable selections in
   ).toBeVisible();
   await page.getByRole("button", { name: "Give access", exact: true }).click();
   await expect(
-    page.getByText("3 of 3 selected", { exact: true }),
+    page.getByText("1 of 3 selected", { exact: true }),
   ).toBeVisible();
   const pickers = await page.evaluate(() => (window as any).onboardingPickers);
   expect(pickers[0]).toMatchObject({
@@ -1273,7 +1329,7 @@ test("fetching uses the Figma progress overlay and can finish without a fake per
   });
   await page.evaluate(() => (window as any).resolveDiscovery());
   await expect(
-    page.getByText("7 of 7 selected", { exact: true }),
+    page.getByText("0 of 7 selected", { exact: true }),
   ).toBeVisible();
 });
 
@@ -1628,3 +1684,82 @@ for (const width of [1440, 900])
       path: info.outputPath(`invite-${width}.png`),
     });
   });
+
+test("search keeps offscreen selections and a suggested destination requires confirmation", async ({
+  page,
+}) => {
+  await fixture(page, { step: "discover", sample: true, suggestedMatch: true });
+  await page.getByRole("button", { name: "Find my projects" }).click();
+  await expect(page.getByText("0 of 3 selected")).toBeVisible();
+  await page.getByRole("checkbox", { name: /Orka/ }).check();
+  const search = page.getByRole("searchbox", { name: "Search projects" });
+  await search.fill("~/Developer/nimbus");
+  await expect(page.getByRole("checkbox")).toHaveCount(1);
+  await page.getByRole("button", { name: "Select visible" }).click();
+  await expect(page.getByText("2 of 3 selected")).toBeVisible();
+  await page.getByRole("button", { name: "Unselect visible" }).click();
+  await search.clear();
+  await expect(page.getByRole("checkbox", { name: /Orka/ })).toBeChecked();
+  await page.getByRole("button", { name: "Proceed", exact: true }).click();
+  const start = page.getByRole("button", {
+    name: "Start Syncing",
+    exact: true,
+  });
+  await expect(start).toBeDisabled();
+  await expect(page.getByText("~/Developer/orka")).toBeVisible();
+  await page.getByRole("combobox", { name: "Connect Orka to project" }).click();
+  await page
+    .getByRole("option", { name: "Personal Orka · Suggested match" })
+    .click();
+  await expect(start).toBeEnabled();
+  await page.getByRole("button", { name: "Set up later" }).click();
+  await page.getByRole("button", { name: /Sync stopped/ }).click();
+  await expect(page.getByText("Project setup saved")).toBeVisible();
+  await page.getByRole("button", { name: "Resume setup" }).click();
+  await expect(
+    page.getByRole("combobox", { name: "Connect Orka to project" }),
+  ).toContainText("Personal Orka");
+  expect((await calls(page)).some((c) => c.args.action === "batch-sync")).toBe(
+    false,
+  );
+});
+
+test("the sync overlay exposes completion count and continues into the workspace", async ({
+  page,
+}) => {
+  await fixture(page, { step: "syncing", sample: true, partialSync: true });
+  const dialog = page.getByRole("dialog", { name: "Syncing your projects" });
+  await expect(dialog.getByRole("status")).toContainText(
+    "1 of 3 projects synced",
+  );
+  await dialog.getByRole("button", { name: "Continue to Orka" }).click();
+  await page.getByRole("button", { name: /Sync stopped/ }).click();
+  await expect(page.getByText("Initial project sync")).toBeVisible();
+  await expect(page.getByText("1 of 3 projects synced")).toBeVisible();
+});
+
+test("local sync exclusions identify the resource and explain recovery", async ({
+  page,
+}) => {
+  await fixture(page, {
+    step: "sync-error",
+    sample: true,
+    localExclusions: true,
+  });
+  await expect(
+    page.getByRole("heading", { name: "Some resources were kept local" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("design-review ·", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("session.jsonl ·", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/replace the link with a regular file/i),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/start a new session for future work/i),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Scan again" })).toBeEnabled();
+});

@@ -1,6 +1,7 @@
 import React, { useEffect, useEffectEvent, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "../button.js";
+import { TextField } from "../text-field.js";
 import { Icon } from "../icon.js";
 import {
   ArrowRightIcon,
@@ -54,6 +55,7 @@ export function Onboarding({
     };
   }, [repositoryCall]);
   const [showProgress, setShowProgress] = useState(true);
+  const [search, setSearch] = useState("");
   const title = useRef<HTMLHeadingElement>(null);
   const continueAfterSync = useEffectEvent(() =>
     flow.go(state.background ? "invite" : "background"),
@@ -78,15 +80,20 @@ export function Onboarding({
     step === "scanning" ||
     (syncing && showProgress) ||
     (step === "ready" && showProgress);
-  const matches = Object.entries(draft.matches ?? {}).filter(
-    ([path, match]) =>
-      draft.selected.includes(path) && match.projects.length > 0,
+  const query = search.trim().toLowerCase();
+  const visibleProjects = draft.projects.filter((p) =>
+    [p.name, p.path, p.displayPath].some((value) =>
+      value?.toLowerCase().includes(query),
+    ),
   );
-  const needsChoice = matches.some(([path, match]) => {
+  const visiblePaths = visibleProjects
+    .filter((p) => p.readable !== false)
+    .map((p) => p.path);
+  const needsChoice = projects.some(({ path }) => {
+    const match = draft.matches?.[path];
     const choice = draft.choices?.[path];
-    if ((match.requiresChoice || match.projects.length > 1) && !choice)
-      return true;
-    const project = match.projects.find((project) => project.id === choice);
+    if (match?.projects.length && !choice) return true;
+    const project = match?.projects.find((p) => p.id === choice);
     return Boolean(
       (project?.sources?.length ?? 0) > 1 &&
       !(draft.sourceChoices?.[path] || project?.sourceId),
@@ -95,6 +102,13 @@ export function Onboarding({
   const synced = projects.filter(
     (project) => project.status === "synced",
   ).length;
+  const syncStage = projects.some(
+    (p) => p.status === "connecting" || p.status === "creating",
+  )
+    ? "Connecting project folders"
+    : projects.some((p) => p.status === "scanning")
+      ? "Checking local resources"
+      : "Syncing selected resources";
   const reviewPending = projects.some(
     (project) => (project.reviewPending ?? 0) > 0,
   );
@@ -201,54 +215,67 @@ export function Onboarding({
   );
   const syncChoices = (
     <>
-      {step === "review" &&
-        matches.map(([path, match]) => {
-          const project = match.projects.find(
-            (project) => project.id === draft.choices?.[path],
-          );
-          const projectChoice =
-            match.requiresChoice || match.projects.length > 1;
-          const sources = project?.sources ?? [];
-          const sourceChoice = sources.length > 1;
-          if (!projectChoice && !sourceChoice) return null;
-          const name =
-            draft.projects.find((project) => project.path === path)?.name ??
-            "folder";
-          return (
-            <div className="onboarding-flow__match" key={path}>
-              <p>{name}</p>
-              {projectChoice && (
-                <PermissionSelect
-                  label={`Connect ${name} to project`}
-                  placeholder="Choose an Orka project"
-                  value={draft.choices?.[path] ?? ""}
-                  disabled={busy}
-                  options={[
-                    ...match.projects.map((project) => ({
-                      value: project.id,
-                      label: `${project.name}${project.lastSyncAt ? ` · Synced ${new Date(project.lastSyncAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ` · ${project.role === "owner" ? "Owner" : "Member"}`}`,
-                    })),
-                    { value: "new", label: "Create a separate project" },
-                  ]}
-                  onChange={(id) => flow.setProjectChoice(path, id)}
-                />
-              )}
-              {sourceChoice && (
-                <PermissionSelect
-                  label={`Repository for ${name}`}
-                  placeholder="Choose a repository"
-                  value={draft.sourceChoices?.[path] || project?.sourceId || ""}
-                  disabled={busy}
-                  options={sources.map((source) => ({
-                    value: source.id,
-                    label: source.name,
-                  }))}
-                  onChange={(id) => flow.setSourceChoice(path, id)}
-                />
-              )}
-            </div>
-          );
-        })}
+      {step === "review" && (
+        <div
+          className="onboarding-flow__destinations"
+          aria-label="Project destinations"
+        >
+          {projects.map(({ path, displayPath, name }) => {
+            const match = draft.matches?.[path];
+            const choice = draft.choices?.[path] ?? "";
+            const project = match?.projects.find((p) => p.id === choice);
+            const sources = project?.sources ?? [];
+            return (
+              <div className="onboarding-flow__match" key={path}>
+                <div className="onboarding-flow__project-details">
+                  <strong>{name}</strong>
+                  <small title={path}>{displayPath}</small>
+                </div>
+                {match?.connectedId || !match?.projects.length ? (
+                  <p>
+                    {project
+                      ? `Connected to ${project.name}`
+                      : `Create a project named ${name}`}
+                  </p>
+                ) : (
+                  <PermissionSelect
+                    label={`Connect ${name} to project`}
+                    placeholder="Choose an Orka project"
+                    value={choice}
+                    disabled={busy}
+                    options={[
+                      ...match.projects.map((p) => ({
+                        value: p.id,
+                        label:
+                          p.id === match.suggestedId
+                            ? `${p.name} · Suggested match`
+                            : `${p.name} · ${p.role === "owner" ? "Owner" : "Member"}`,
+                      })),
+                      { value: "new", label: "Create a separate project" },
+                    ]}
+                    onChange={(id) => flow.setProjectChoice(path, id)}
+                  />
+                )}
+                {sources.length > 1 && !match?.connectedId && (
+                  <PermissionSelect
+                    label={`Repository for ${name}`}
+                    placeholder="Choose a repository"
+                    value={
+                      draft.sourceChoices?.[path] || project?.sourceId || ""
+                    }
+                    disabled={busy}
+                    options={sources.map((source) => ({
+                      value: source.id,
+                      label: source.name,
+                    }))}
+                    onChange={(id) => flow.setSourceChoice(path, id)}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="onboarding-flow__sharing-list">
         {(
           Object.entries(descriptions) as [
@@ -278,6 +305,11 @@ export function Onboarding({
           </div>
         ))}
       </div>
+      {needsChoice && step === "review" && (
+        <p className="onboarding-flow__setup-note">
+          Choose a destination and repository where required to start syncing.
+        </p>
+      )}
       {actions(
         () => go("select"),
         syncing ? "Syncing…" : step === "review" ? "Start Syncing" : "Continue",
@@ -286,6 +318,11 @@ export function Onboarding({
             ? flow.sync()
             : go(state.background ? "invite" : "background"),
         syncing || needsChoice,
+      )}
+      {step === "review" && (
+        <Button variant="tertiary" disabled={busy} onClick={flow.defer}>
+          Set up later
+        </Button>
       )}
     </>
   );
@@ -336,6 +373,13 @@ export function Onboarding({
                 <Button disabled={busy} onClick={() => go("folder")}>
                   Choose a folder instead
                 </Button>
+                <Button
+                  variant="tertiary"
+                  disabled={busy || step === "scanning"}
+                  onClick={flow.defer}
+                >
+                  Set up later
+                </Button>
                 {repositoryEnabled && (
                   <Button disabled={busy} onClick={() => setGithubSetup(true)}>
                     Connect a GitHub repository
@@ -344,20 +388,39 @@ export function Onboarding({
               </div>
             ) : (
               <div className="onboarding-flow__selection">
+                <TextField
+                  type="search"
+                  aria-label="Search projects"
+                  placeholder="Search by project name or folder"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
                 <div className="onboarding-flow__selection-toolbar">
                   <span aria-live="polite">
                     {draft.selected.length} of {draft.projects.length} selected
                   </span>
-                  <Button size="sm" disabled={busy} onClick={flow.toggleAll}>
-                    {draft.projects
-                      .filter((p) => p.readable !== false)
-                      .every((p) => draft.selected.includes(p.path))
-                      ? "Unselect all"
-                      : "Select all"}
+                  <Button
+                    size="sm"
+                    disabled={busy || !visiblePaths.length}
+                    onClick={() => flow.toggleVisible(visiblePaths)}
+                  >
+                    {visiblePaths.length > 0 &&
+                    visiblePaths.every((path) => draft.selected.includes(path))
+                      ? query
+                        ? "Unselect visible"
+                        : "Unselect all"
+                      : query
+                        ? "Select visible"
+                        : "Select all"}
                   </Button>
                 </div>
                 <div className="onboarding-flow__project-list">
-                  {draft.projects.map((project) => (
+                  {visibleProjects.length === 0 && (
+                    <p className="onboarding-flow__no-results">
+                      No projects match this search.
+                    </p>
+                  )}
+                  {visibleProjects.map((project) => (
                     <label
                       className="onboarding-flow__project"
                       key={project.path}
@@ -407,6 +470,9 @@ export function Onboarding({
                     <Icon icon={ArrowRightIcon} />
                   </Button>
                 </div>
+                <Button variant="tertiary" disabled={busy} onClick={flow.defer}>
+                  Set up later
+                </Button>
               </div>
             )}
           </>
@@ -449,7 +515,8 @@ export function Onboarding({
               </span>
             </div>
             <p className="onboarding-flow__keep-open">
-              Keep Orka open until syncing finishes.
+              Keep Orka open until syncing finishes. You can follow progress in
+              Sync.
             </p>
             <div className="onboarding-flow__recovery-actions">
               <Button onClick={() => setShowProgress(true)}>
@@ -577,16 +644,24 @@ export function Onboarding({
             )}
             <div className="onboarding-flow__progress-content">
               <div
-                className={`onboarding-flow__progress-bar${step !== "ready" ? " onboarding-flow__progress-bar--indeterminate" : ""}`}
+                className={`onboarding-flow__progress-bar${step === "scanning" ? " onboarding-flow__progress-bar--indeterminate" : ""}`}
                 role="progressbar"
                 aria-label={
                   step === "scanning" ? "Finding projects" : "Syncing projects"
                 }
-                aria-valuenow={step === "ready" ? 100 : undefined}
+                aria-valuenow={step === "scanning" ? undefined : synced}
                 aria-valuemin={0}
-                aria-valuemax={100}
+                aria-valuemax={
+                  step === "scanning" ? undefined : projects.length || 1
+                }
               >
-                <span />
+                <span
+                  style={
+                    syncing
+                      ? { width: `${(100 * synced) / (projects.length || 1)}%` }
+                      : undefined
+                  }
+                />
               </div>
               <Dialog.Title asChild>
                 <h2>
@@ -599,7 +674,26 @@ export function Onboarding({
                       : "Syncing your projects"}
                 </h2>
               </Dialog.Title>
+              {syncing && (
+                <p className="onboarding-flow__setup-note" role="status">
+                  {syncStage} · {synced} of {projects.length} projects synced
+                </p>
+              )}
             </div>
+            {syncing && (
+              <div className="onboarding-flow__progress-actions">
+                <Button onClick={() => setShowProgress(false)}>
+                  View details
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={busy}
+                  onClick={flow.complete}
+                >
+                  Continue to Orka
+                </Button>
+              </div>
+            )}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>

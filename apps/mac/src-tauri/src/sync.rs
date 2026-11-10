@@ -762,7 +762,15 @@ enum WorkspaceSync {
 // Item failures retain retry backoff without reporting a connectivity failure.
 async fn cycle() -> Result<bool> {
     let preparation = crate::onboarding::resume_pending_connections().await;
-    workspace_cycle(preparation).await
+    // Only a service-wide failure should prevent unrelated projects from syncing.
+    workspace_cycle(preparation.or_else(|error| {
+        if service_error(&error) {
+            Err(error)
+        } else {
+            Ok(())
+        }
+    }))
+    .await
 }
 async fn workspace_cycle(preparation: Result<()>) -> Result<bool> {
     let _lock = crate::projects::lock()?;

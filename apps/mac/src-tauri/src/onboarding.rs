@@ -102,8 +102,19 @@ pub fn snapshot(db: &rusqlite::Connection) -> Result<Value> {
     } else {
         first
     };
+    let draft = &saved["draft"];
+    let setup = if matches
+        && completed
+        && (draft["deferred"] == true
+            || ["syncing", "retrying", "offline", "sync-error"]
+                .contains(&draft["step"].as_str().unwrap_or("")))
+    {
+        draft.clone()
+    } else {
+        Value::Null
+    };
     Ok(
-        json!({"active":active,"draft":if active && matches {saved["draft"].clone()} else {Value::Null},"firstLaunchAt":first,"location":install::location()?,"auth":Value::Null}),
+        json!({"active":active,"draft":if active && matches {draft.clone()} else {Value::Null},"setup":setup,"firstLaunchAt":first,"location":install::location()?,"auth":Value::Null}),
     )
 }
 fn checkpoint(mut input: Value) -> Result<Value> {
@@ -202,6 +213,7 @@ async fn review(input: Value) -> Result<Value> {
             == 1;
     let catalog = sync::api("GET", "/v2/projects", None).await?;
     crate::projects::merge_catalog(&db, &catalog)?;
+    let local = db::rows(&db, "SELECT value FROM projects", &[])?;
     let mut matches = serde_json::Map::new();
     for path in paths.iter().filter_map(Value::as_str) {
         let key = if supported {
@@ -209,25 +221,37 @@ async fn review(input: Value) -> Result<Value> {
         } else {
             None
         };
-        let mut projects: Vec<_> = catalog
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|p| key.is_some() && p["remoteKey"].as_str() == key.as_deref())
-            .cloned()
-            .collect();
-        let requires_choice = projects.is_empty();
-        if requires_choice {
-            projects = catalog.as_array().into_iter().flatten().cloned().collect();
-        }
+        let candidates = catalog.as_array().map(Vec::as_slice).unwrap_or_default();
+        let mut suggested = candidates
+            .iter()
+            .filter(|p| key.is_some() && p["remoteKey"].as_str() == key.as_deref());
+        let suggested_id = suggested
+            .next()
+            .filter(|_| suggested.next().is_none())
+            .map(|p| &p["id"]);
+        let connected = local.iter().find_map(|p| {
+            crate::sources::views(p)
+                .into_iter()
+                .find(|view| view["path"].as_str() == Some(path))
+                .map(|view| (p["id"].clone(), view["sourceId"].clone()))
+        });
+        let mut projects = candidates.to_vec();
         for project in &mut projects {
-            project["sourceId"] = json!(matching_source(project, path));
+            project["sourceId"] = connected
+                .as_ref()
+                .filter(|(id, _)| *id == project["id"])
+                .map(|(_, source)| source.clone())
+                .unwrap_or_else(|| json!(matching_source(project, path)));
         }
-        projects
-            .sort_by_key(|p| std::cmp::Reverse(p["lastSyncAt"].as_str().unwrap_or("").to_string()));
+        projects.sort_by_key(|p| {
+            (
+                suggested_id != Some(&p["id"]),
+                p["name"].as_str().unwrap_or("").to_lowercase(),
+            )
+        });
         matches.insert(
             path.into(),
-            json!({"remoteKey":key,"projects":projects,"requiresChoice":requires_choice}),
+            json!({"remoteKey":key,"projects":projects,"suggestedId":suggested_id,"connectedId":connected.map(|(id, _)| id),"requiresChoice":true}),
         );
     }
     Ok(json!({"matches":matches,"supported":supported}))
@@ -364,24 +388,27 @@ fn project_sync_status(
     id: &str,
     sync_error: Option<&str>,
 ) -> Result<Value> {
-    let issues=db::rows(db,"SELECT json_object('error',error) FROM errors WHERE source=? OR substr(source,1,length(?)+1)=?||':' OR source IN (SELECT id FROM resources WHERE project=?)",&[&id,&id,&id,&id])?;
+    let mut issues = db::rows(
+        db,
+        "SELECT json_object('error', errors.error, 'item', coalesce(json_extract(resources.value,'$.title'), errors.source))
+         FROM errors LEFT JOIN resources ON resources.id=errors.source
+         WHERE errors.source=? OR substr(errors.source,1,length(?)+1)=?||':' OR resources.project=?
+         ORDER BY errors.source",
+        &[&id, &id, &id, &id],
+    )?;
     let pending = db::rows(
         db,
-        "SELECT json_object('error',error) FROM outbox WHERE project=?",
+        "SELECT json_object('error',error,'item',coalesce(json_extract(value,'$.resource.title'),json_extract(value,'$.resource.logicalPath'))) FROM outbox WHERE project=?",
         &[&id],
     )?;
     let scanned = db::get(db, &format!("firstScan:{id}"))?.is_string();
-    let issue = issues
-        .first()
-        .and_then(|p| p["error"].as_str())
-        .map(String::from)
-        .or_else(|| {
-            pending
-                .first()
-                .and_then(|p| p["error"].as_str())
-                .filter(|s| !s.is_empty())
-                .map(String::from)
-        });
+    issues.extend(
+        pending
+            .iter()
+            .filter(|row| row["error"].as_str().is_some_and(|error| !error.is_empty()))
+            .cloned(),
+    );
+    let issue = issues.first().and_then(|row| row["error"].as_str());
     let status = if issue.is_some() {
         "error"
     } else if scanned && pending.is_empty() && sync_error.is_none() {
@@ -394,7 +421,7 @@ fn project_sync_status(
     let items = db::rows(db, "SELECT value FROM resources WHERE project=? AND coalesce(json_extract(value,'$.deleted'),0)=0", &[&id])?.len()
         + review_pending;
     Ok(
-        json!({"id":id,"status":status,"error":issue,"conflicts":conflicts,"pending":pending.len(),"items":items,"reviewPending":review_pending}),
+        json!({"id":id,"status":status,"error":issue,"issues":issues,"conflicts":conflicts,"pending":pending.len(),"items":items,"reviewPending":review_pending}),
     )
 }
 fn offline_error(error: &str) -> bool {
@@ -560,7 +587,7 @@ async fn batch_sync(retry: bool, connections_only: bool) -> Result<Value> {
         let path = project["path"].as_str().ok_or("Missing project folder")?;
         patch_project(
             path,
-            json!({"status":if project["projectId"].is_string(){"connecting"}else{"creating"},"error":null,"syncStartedAt":chrono::Utc::now().timestamp_millis()}),
+            json!({"status":if project["projectId"].is_string(){"connecting"}else{"creating"},"error":null,"issues":[] ,"syncStartedAt":chrono::Utc::now().timestamp_millis()}),
         )?;
         let d = &saved["draft"];
         let sharing = if d["overrides"][path].is_object() {
@@ -595,23 +622,31 @@ async fn batch_sync(retry: bool, connections_only: bool) -> Result<Value> {
     }
     if connections_only {
         let draft = read_draft()?["draft"].clone();
-        if let Some(project) = draft["projects"]
+        if draft["projects"]
             .as_array()
             .into_iter()
             .flatten()
-            .find(|project| {
+            .any(|project| {
                 selected.contains(&project["path"])
                     && !project["projectId"].is_string()
                     && project["status"] != "skipped"
             })
         {
             patch_job(&json!({"step":failed_sync_step(&draft)}))?;
-            return Err(project["error"]
-                .as_str()
-                .unwrap_or("Could not connect the selected project")
-                .into());
+            // A local folder or project failure is recoverable independently of workspace sync.
+            if let Some(error) = draft["projects"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|row| selected.contains(&row["path"]) && row["status"] == "error")
+                .filter_map(|row| row["error"].as_str())
+                .find(|error| sync::service_error(error))
+            {
+                return Err(error.into());
+            }
+            return Ok(read_draft()?["draft"].clone());
         }
-        return Ok(draft);
+        return patch_job(&json!({"step":"ready"}));
     }
     loop {
         if db::get(&db::open()?, "user")? != owner
@@ -626,14 +661,19 @@ async fn batch_sync(retry: bool, connections_only: bool) -> Result<Value> {
                 .as_array()
                 .is_some_and(|s| s.contains(&p["path"]))
                 && p["projectId"].is_string()
-                && !["error", "skipped"].contains(&p["status"].as_str().unwrap_or(""))
+                && !["error", "skipped", "synced"].contains(&p["status"].as_str().unwrap_or(""))
         }) {
             if !ids.contains(&p["projectId"]) {
                 ids.push(p["projectId"].clone());
             }
         }
         if ids.is_empty() {
-            return patch_job(&json!({"step":failed_sync_step(&d)}));
+            let failed = d["projects"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|p| selected.contains(&p["path"]) && p["status"] == "error");
+            return patch_job(&json!({"step":if failed { failed_sync_step(&d) } else { "ready" }}));
         }
         let result = busy_retry(|| synchronize(json!({"projectIds":ids}))).await?;
         for row in result["projects"].as_array().into_iter().flatten() {
@@ -642,7 +682,7 @@ async fn batch_sync(retry: bool, connections_only: bool) -> Result<Value> {
                     && d["selected"]
                         .as_array()
                         .is_some_and(|selected| selected.contains(&p["path"]))
-                    && !["error", "skipped"].contains(&p["status"].as_str().unwrap_or(""))
+                    && !["error", "skipped", "synced"].contains(&p["status"].as_str().unwrap_or(""))
             }) {
                 let mut row = row.clone();
                 row["durationMs"] = json!(
@@ -705,9 +745,11 @@ pub fn resume_sync() {
     let Ok(saved) = read_draft() else {
         return;
     };
-    if saved["draft"]["completedAt"].is_string()
-        || !["syncing", "retrying", "offline"]
-            .contains(&saved["draft"]["step"].as_str().unwrap_or(""))
+    let draft = &saved["draft"];
+    let step = draft["step"].as_str().unwrap_or("");
+    if draft["reviewed"] != true
+        || (draft["completedAt"].is_string() && step == "offline")
+        || !["syncing", "retrying", "offline"].contains(&step)
         || RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst)
     {
         return;
@@ -811,6 +853,30 @@ pub async fn onboarding_command(
             }
             "open-settings" => install::open_settings(input["kind"].as_str().unwrap_or("privacy")),
             "app-location" => install::location(),
+            "resume-setup" => {
+                let lock = sync_lock()?;
+                lock.try_lock_exclusive()
+                    .map_err(|_| "Wait for the current sync before reopening setup")?;
+                let _state_lock = state_lock()?;
+                ensure_context()?;
+                let db = db::open()?;
+                let mut saved = read_draft()?;
+                if saved["owner"] != db::get(&db, "user")?
+                    || saved["service"] != db::get(&db, "config")?["apiUrl"]
+                    || !saved["draft"]["completedAt"].is_string()
+                    || !(saved["draft"]["deferred"] == true
+                        || ["offline", "sync-error"]
+                            .contains(&saved["draft"]["step"].as_str().unwrap_or("")))
+                {
+                    return Err("There is no paused setup to resume".into());
+                }
+                saved["draft"]["completedAt"] = Value::Null;
+                saved["draft"]["deferred"] = json!(false);
+                saved["active"] = json!(true);
+                db::set(&db, "onboardingComplete", &json!(false))?;
+                write_draft_in(&db, &saved)?;
+                Ok(json!({"ok":true}))
+            }
             "complete" => {
                 // Completion only changes scoped setup metadata. A running sync
                 // keeps its workspace lock and retains the completion receipt.
@@ -832,6 +898,23 @@ pub async fn onboarding_command(
                 if !owner.is_string() || saved["owner"] != owner || saved["service"] != service {
                     return Err("Account or service changed. Reopen onboarding.".into());
                 }
+                let defer = input["defer"] == true;
+                if defer
+                    && (saved["draft"]["reviewed"] == true
+                        || ![
+                            "discover",
+                            "select",
+                            "review",
+                            "folder",
+                            "empty",
+                            "access-error",
+                            "partial-access",
+                        ]
+                        .contains(&saved["draft"]["step"].as_str().unwrap_or("")))
+                {
+                    return Err("Only setup that has not started syncing can be deferred".into());
+                }
+                saved["draft"]["deferred"] = json!(defer);
                 saved["draft"]["completedAt"] = json!(db::now());
                 saved["active"] = json!(false);
                 write_draft_in(&db, &saved)?;
@@ -839,7 +922,9 @@ pub async fn onboarding_command(
                 if db::get(&db, "background")?.is_null() {
                     db::set(&db, "background", &json!(false))?;
                 }
-                db::set(&db, "syncRequest", &json!(uuid::Uuid::new_v4().to_string()))?;
+                if !defer {
+                    db::set(&db, "syncRequest", &json!(uuid::Uuid::new_v4().to_string()))?;
+                }
                 Ok(json!({"ok":true}))
             }
             _ => Err("Unknown onboarding action".into()),
@@ -921,7 +1006,7 @@ mod tests {
     #[test]
     fn first_sync_requires_a_scan_and_no_queue_or_resource_errors_but_allows_conflicts() {
         let db = rusqlite::Connection::open_in_memory().unwrap();
-        db.execute_batch("CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT);CREATE TABLE errors(source TEXT,error TEXT);CREATE TABLE outbox(project TEXT,error TEXT);CREATE TABLE resources(id TEXT,project TEXT,value TEXT);CREATE TABLE conflicts(project TEXT,value TEXT);CREATE TABLE drafts(project TEXT,value TEXT);").unwrap();
+        db.execute_batch("CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT);CREATE TABLE errors(source TEXT,error TEXT);CREATE TABLE outbox(project TEXT,error TEXT,value TEXT);CREATE TABLE resources(id TEXT,project TEXT,value TEXT);CREATE TABLE conflicts(project TEXT,value TEXT);CREATE TABLE drafts(project TEXT,value TEXT);").unwrap();
         assert_eq!(
             project_sync_status(&db, "p", None).unwrap()["status"],
             "syncing"
@@ -931,7 +1016,7 @@ mod tests {
             project_sync_status(&db, "p", None).unwrap()["status"],
             "synced"
         );
-        db.execute("INSERT INTO outbox VALUES('p',NULL)", [])
+        db.execute("INSERT INTO outbox(project,error) VALUES('p',NULL)", [])
             .unwrap();
         assert_eq!(
             project_sync_status(&db, "p", None).unwrap()["status"],

@@ -158,6 +158,7 @@ export function SignInForm({
         error={error}
         headingRef={heading}
         onRetry={() => void act(() => account.begin(pending))}
+        onCode={(code) => void act(() => account.complete(null, code))}
         onBack={() => navigate(step === "entry" ? "entry" : "login")}
       >
         {inviteNotice}

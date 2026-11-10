@@ -191,16 +191,28 @@ export function useOnboarding(
           ].map((p) => [p.path, p]),
         ).values(),
       ];
+      projects.sort(
+        (a, b) =>
+          (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0) ||
+          (b.pendingChanges ?? 0) - (a.pendingChanges ?? 0) ||
+          a.name.localeCompare(b.name) ||
+          a.path.localeCompare(b.path),
+      );
+      const picked = new Set(
+        results.flatMap((result) =>
+          result.projects.length === 1 ? [result.projects[0].path] : [],
+        ),
+      );
       const selected = projects
         .filter(
           (p) =>
             p.readable !== false &&
-            (!append ||
-              !before.projects.some((old) => old.path === p.path) ||
-              before.projects.some(
-                (old) => old.path === p.path && old.readable === false,
-              ) ||
-              before.selected.includes(p.path)),
+            (before.selected.includes(p.path) ||
+              (paths &&
+                picked.has(p.path) &&
+                !before.projects.some(
+                  (old) => old.path === p.path && old.readable !== false,
+                ))),
         )
         .map((p) => p.path);
       await checkpoint({
@@ -255,11 +267,8 @@ export function useOnboarding(
             previous === "new" ||
             match.projects.some((project) => project.id === previous);
           const choice =
-            sameRemote && stillAvailable
-              ? previous
-              : match.projects.length === 1 && !match.requiresChoice
-                ? match.projects[0].id
-                : undefined;
+            match.connectedId ??
+            (sameRemote && stillAvailable ? previous : undefined);
           return choice ? [[path, choice]] : [];
         }),
       );
@@ -303,9 +312,9 @@ export function useOnboarding(
           if (active.current) setError(String(e));
         });
     });
-  const complete = (projectId?: string) =>
+  const complete = (projectId?: string, defer = false) =>
     void run(async () => {
-      await command("complete");
+      await command("complete", { defer });
       if (!active.current) return;
       const connected = current.current.projects.find(
         (project) =>
@@ -428,6 +437,7 @@ export function useOnboarding(
     proceed,
     sync,
     complete: () => complete(),
+    defer: () => complete(undefined, true),
     completeProject: (id: string) => complete(id),
     invite,
     background,
@@ -446,16 +456,16 @@ export function useOnboarding(
           ? value.selected.filter((p) => p !== path)
           : [...value.selected, path],
       })),
-    toggleAll: () =>
-      updateChoices((value) => ({
-        selected: value.projects
-          .filter((p) => p.readable !== false)
-          .every((p) => value.selected.includes(p.path))
-          ? []
-          : value.projects
-              .filter((p) => p.readable !== false)
-              .map((p) => p.path),
-      })),
+    toggleVisible: (paths: string[]) =>
+      updateChoices((value) => {
+        const selected = new Set(value.selected);
+        if (paths.every((path) => selected.has(path))) {
+          for (const path of paths) selected.delete(path);
+        } else {
+          for (const path of paths) selected.add(path);
+        }
+        return { selected: [...selected] };
+      }),
     openSettings: () =>
       void run(() =>
         command("open-settings", {

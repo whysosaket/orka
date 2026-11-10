@@ -1,5 +1,6 @@
 import type { RefObject, ReactNode } from "react";
 import { Button } from "../button.js";
+import { syncIssueRecovery } from "../sync-issues.js";
 import type { useOnboarding } from "./use-onboarding.js";
 
 export function RecoveryStep({
@@ -129,24 +130,28 @@ export function RecoveryStep({
           </Button>,
           <Button
             variant="primary"
-            disabled={busy || !draft.selected.length}
-            onClick={flow.proceed}
+            disabled={busy || !draft.projects.some((p) => p.readable !== false)}
+            onClick={() => flow.go("select")}
           >
-            Continue with {draft.selected.length}{" "}
-            {draft.selected.length === 1 ? "project" : "projects"}
+            Review projects
           </Button>,
         )}
       </>
     );
   } else if (step === "offline" || step === "sync-error") {
     const failed = selected.filter((p) => p.status !== "synced");
-    const folderErrors =
-      failed.length > 0 &&
-      failed.every((p) =>
-        /folder|couldn.t read|can.t read|permission denied|operation not permitted/i.test(
-          p.error ?? "",
-        ),
+    const isFolderError = (error = "") =>
+      /folder (changed|unavailable)|mount is missing|couldn.t read.*folder|can.t read.*folder|permission denied|operation not permitted/i.test(
+        error,
       );
+    const folderErrors =
+      failed.length > 0 && failed.every((p) => isFolderError(p.error));
+    const localExclusions =
+      failed.length > 0 &&
+      failed.every((p) => {
+        const issues = p.issues?.length ? p.issues : [{ error: p.error ?? "" }];
+        return issues.every(({ error }) => Boolean(syncIssueRecovery(error)));
+      });
     content = (
       <>
         {heading(
@@ -156,31 +161,49 @@ export function RecoveryStep({
               ? failed.length === 1
                 ? "One project needs access"
                 : "Some projects need access"
-              : "Some projects need another try",
+              : localExclusions
+                ? "Some resources were kept local"
+                : "Some projects need attention",
           step === "offline"
             ? "Your progress is saved. Reconnect to finish syncing."
             : folderErrors
-              ? "Your other projects have synced. Allow folder access to finish."
-              : "Your progress is saved. Retry the remaining projects.",
+              ? "Allow access to the listed folders to finish syncing them."
+              : "Your progress is saved. Review the items below or continue to Orka.",
         )}
         <div className="onboarding-flow__sync-status" aria-live="polite">
           {selected.map((project) => (
             <div key={project.path}>
               <div className="onboarding-flow__status-details">
                 <strong>{project.name}</strong>
-                {step !== "offline" && project.status === "error" && (
-                  <small>
-                    {folderErrors
-                      ? `Orka can’t read ${project.displayPath}`
-                      : project.error}
-                  </small>
-                )}
+                {step !== "offline" &&
+                  project.status === "error" &&
+                  (isFolderError(project.error) ? (
+                    <small>Orka can’t read {project.displayPath}</small>
+                  ) : (
+                    (project.issues?.length
+                      ? project.issues
+                      : [{ error: project.error ?? "", item: undefined }]
+                    ).map(({ error, item }, index) => (
+                      <small key={index} title={item}>
+                        {item && (
+                          <b>
+                            {item.split(":scan:").at(-1)?.split("/").at(-1)}{" "}
+                            ·{" "}
+                          </b>
+                        )}
+                        {error}
+                        {syncIssueRecovery(error) && (
+                          <em>{syncIssueRecovery(error)}</em>
+                        )}
+                      </small>
+                    ))
+                  ))}
               </div>
               {project.status === "synced" ? (
                 <span>{step === "offline" ? "Saved" : "Synced"}</span>
               ) : step === "offline" ? (
                 <span>Paused</span>
-              ) : folderErrors ? (
+              ) : isFolderError(project.error) ? (
                 <Button
                   disabled={busy}
                   onClick={() => flow.restoreFolder(project.path)}
@@ -202,9 +225,11 @@ export function RecoveryStep({
             disabled={busy}
             onClick={() => flow.sync(true)}
           >
-            {step === "offline" || failed.length !== 1
-              ? "Try again"
-              : "Retry this project"}
+            {localExclusions
+              ? "Scan again"
+              : step === "offline" || failed.length !== 1
+                ? "Try again"
+                : "Retry this project"}
           </Button>,
         )}
       </>
@@ -225,5 +250,14 @@ export function RecoveryStep({
       </>
     );
   } else return null;
-  return <div className="onboarding-flow__recovery">{content}</div>;
+  return (
+    <div className="onboarding-flow__recovery">
+      {content}
+      {["folder", "empty", "access-error", "partial-access"].includes(step) && (
+        <Button variant="tertiary" disabled={busy} onClick={flow.defer}>
+          Set up later
+        </Button>
+      )}
+    </div>
+  );
 }

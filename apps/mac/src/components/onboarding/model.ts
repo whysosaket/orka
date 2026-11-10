@@ -43,6 +43,8 @@ export interface DiscoveredProject {
   sources: ("claude" | "codex")[];
   readable?: boolean;
   alreadyConnected?: boolean;
+  lastActiveAt?: number;
+  pendingChanges?: number;
   projectId?: string;
   status?:
     | "creating"
@@ -53,6 +55,7 @@ export interface DiscoveredProject {
     | "error"
     | "skipped";
   error?: string;
+  issues?: { error: string; item?: string }[];
   conflicts?: number;
   reviewPending?: number;
 }
@@ -74,14 +77,22 @@ export interface OnboardingDraft {
   sourceChoices?: Record<string, string>;
   matches?: Record<
     string,
-    { remoteKey?: string; projects: ProjectMatch[]; requiresChoice?: boolean }
+    {
+      remoteKey?: string;
+      projects: ProjectMatch[];
+      requiresChoice?: boolean;
+      suggestedId?: string | null;
+      connectedId?: string | null;
+    }
   >;
   reviewed?: boolean;
   completedAt?: string;
+  deferred?: boolean;
 }
 export interface OnboardingInfo {
   active: boolean;
   draft?: OnboardingDraft | null;
+  setup?: OnboardingDraft | null;
   location?: { ok: boolean; path: string; reason?: string };
 }
 export const initialDraft: OnboardingDraft = {

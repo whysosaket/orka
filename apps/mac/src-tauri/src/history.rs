@@ -12,7 +12,8 @@ use std::{
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-const MAX_FILE: u64 = 128 * 1024 * 1024;
+pub(crate) const MAX_FILE: u64 = 128 * 1024 * 1024;
+pub(crate) const SESSION_SIZE_ERROR: &str = "Session exceeds 128 MB; source preserved";
 const MAX_TOTAL: usize = 256 * 1024 * 1024;
 
 fn ordinal_reference(value: &Value) -> bool {
@@ -75,13 +76,28 @@ fn read(path: &Path, prefix: Option<u64>) -> Result<Vec<u8>> {
         .read_to_end(&mut bytes)
         .map_err(|e| e.to_string())?;
     if bytes.len() as u64 > MAX_FILE {
-        return Err("Session exceeds 128 MB; source preserved".into());
+        return Err(SESSION_SIZE_ERROR.into());
     }
     Ok(bytes)
 }
 
 pub fn read_session(path: &Path) -> Result<Vec<u8>> {
+    if path.extension().is_some_and(|ext| ext == "jsonl")
+        && fs::symlink_metadata(path).is_ok_and(|info| info.is_file() && info.len() > MAX_FILE)
+    {
+        return Err(SESSION_SIZE_ERROR.into());
+    }
     read(path, None)
+}
+
+pub(crate) fn session_cwd_prefix(path: &Path, tool: &str) -> Option<PathBuf> {
+    let mut prefix = Vec::new();
+    reader(path)
+        .ok()?
+        .take(65_536)
+        .read_to_end(&mut prefix)
+        .ok()?;
+    native::session_cwd(tool, &native::complete_records(&prefix).ok()?).ok()
 }
 
 pub fn first_line(path: &Path) -> Result<String> {
@@ -90,7 +106,7 @@ pub fn first_line(path: &Path) -> Result<String> {
         .read_line(&mut line)
         .map_err(|e| e.to_string())?;
     if line.len() as u64 > MAX_FILE {
-        return Err("Session exceeds 128 MB; source preserved".into());
+        return Err(SESSION_SIZE_ERROR.into());
     }
     Ok(line)
 }

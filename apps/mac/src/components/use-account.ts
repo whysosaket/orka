@@ -4,7 +4,12 @@ import type { ServiceMode, Snapshot } from "../types.js";
 import { normalizeServiceUrl, sameServiceUrl } from "./project-invite.js";
 
 export interface AuthCapabilities {
-  auth: { password: boolean; github: boolean; magicLink: boolean };
+  auth: {
+    password: boolean;
+    github: boolean;
+    magicLink: boolean;
+    emailCode?: boolean;
+  };
 }
 const buildCloudUrl =
   import.meta.env.VITE_ORKA_CLOUD_URL?.trim() || "https://api.tryorka.ai";
@@ -136,11 +141,14 @@ export function useAccount(config: Snapshot["config"]) {
     setPassword("");
     lastAuthAction.current = null;
   };
-  const complete = async (callback: string) => {
-    lastAuthAction.current = () => complete(callback);
+  const complete = async (
+    callback: string | null,
+    code: string | null = null,
+  ) => {
+    lastAuthAction.current = () => complete(callback, code);
     await invoke("complete_sign_in", {
       callback,
-      code: null,
+      code,
     });
     setPending(null);
     setPassword("");

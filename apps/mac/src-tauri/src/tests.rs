@@ -1888,6 +1888,127 @@ fn service_profiles_isolate_same_identity_and_preserve_legacy_cache() {
 }
 
 #[test]
+fn oversized_transcript_only_marks_its_project_even_with_plan_only_sharing() {
+    let f = Fixture::new();
+    let other = f._home.path().join("unrelated");
+    fs::create_dir(&other).unwrap();
+    let other = other.canonicalize().unwrap();
+    let dir = native::claude_home().unwrap().join("projects/fixture");
+    fs::create_dir_all(&dir).unwrap();
+    let transcript = dir.join("oversized.jsonl");
+    fs::write(
+        &transcript,
+        native::encode(&[json!({
+            "type":"user","cwd":f.root,"sessionId":uuid::Uuid::new_v4().to_string()
+        })]),
+    )
+    .unwrap();
+    let size = crate::history::MAX_FILE + 1;
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&transcript)
+        .unwrap()
+        .set_len(size)
+        .unwrap();
+    let mut project = f.project.clone();
+    project["sharing"] =
+        json!({"memory":false,"skill":false,"session":false,"plan":true,"env":false});
+    indexer::scan(&f.db, &project).unwrap();
+    let owner = project["id"].clone();
+    project["id"] = json!(uuid::Uuid::new_v4().to_string());
+    project["path"] = json!(other);
+    indexer::scan(&f.db, &project).unwrap();
+    let issues = db::rows(
+        &f.db,
+        "SELECT json_object('source',source) FROM errors WHERE error=?",
+        &[&crate::history::SESSION_SIZE_ERROR],
+    )
+    .unwrap();
+    assert_eq!(
+        issues,
+        vec![
+            json!({"source":format!("{}:scan:{}", owner.as_str().unwrap(), transcript.display())})
+        ]
+    );
+    assert_eq!(fs::metadata(transcript).unwrap().len(), size);
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
+fn dismissed_missing_folder_does_not_block_an_existing_projects_first_scan() {
+    let f = Fixture::new();
+    let service = "http://127.0.0.1:1";
+    db::set(&f.db, "config", &json!({"apiUrl":service})).unwrap();
+    let absent = f._home.path().join("missing-folder");
+    let draft = json!({"owner":db::get(&f.db,"user").unwrap(),"service":service,"active":false,
+        "draft":{"completedAt":"done","reviewed":true,"selected":[absent],
+                 "projects":[{"path":absent,"name":"missing","status":"error"}]}});
+    fs::write(
+        db::root().unwrap().join("onboarding.json"),
+        draft.to_string(),
+    )
+    .unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    // The fixture has no session, so the remote phase will fail after the local scan.
+    let error = runtime.block_on(sync::once()).unwrap_err();
+    assert!(error.starts_with("Sync authentication:"), "{error}");
+    assert!(db::get(
+        &f.db,
+        &format!("firstScan:{}", f.project["id"].as_str().unwrap())
+    )
+    .unwrap()
+    .is_string());
+    let saved = runtime
+        .block_on(crate::onboarding::onboarding_command(
+            "progress".into(),
+            json!({}),
+            None,
+        ))
+        .unwrap();
+    assert_eq!(
+        saved["projects"][0]["error"],
+        "Project folder is unavailable"
+    );
+}
+
+#[test]
+fn deferred_setup_resumes_its_saved_selection_without_starting_sync() {
+    let f = Fixture::new();
+    let service = "http://127.0.0.1:1";
+    let user = db::get(&f.db, "user").unwrap();
+    db::set(&f.db, "config", &json!({"apiUrl":service})).unwrap();
+    let context = json!({"user":user,"service":service});
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let call = |action: &str, input: Value, scope: Value| {
+        runtime.block_on(crate::onboarding::onboarding_command(
+            action.into(),
+            input,
+            Some(scope),
+        ))
+    };
+    let draft = json!({"step":"review","selected":[f.root],
+        "projects":[{"path":f.root,"name":"test"}],"reviewed":false});
+    call("checkpoint", draft.clone(), context.clone()).unwrap();
+    call("complete", json!({"defer":true}), context.clone()).unwrap();
+    let snapshot = crate::onboarding::snapshot(&f.db).unwrap();
+    assert_eq!(snapshot["active"], false);
+    assert_eq!(snapshot["setup"]["selected"], draft["selected"]);
+    assert!(db::get(&f.db, "syncRequest").unwrap().is_null());
+    assert!(call(
+        "resume-setup",
+        json!({}),
+        json!({"user":"another","service":service})
+    )
+    .is_err());
+    call("resume-setup", json!({}), context).unwrap();
+    let resumed = crate::onboarding::snapshot(&f.db).unwrap();
+    assert_eq!(resumed["active"], true);
+    assert_eq!(resumed["draft"]["selected"], draft["selected"]);
+    assert_eq!(resumed["draft"]["step"], "review");
+    assert!(db::get(&f.db, "syncRequest").unwrap().is_null());
+}
+
+#[test]
 fn broken_skill_and_stale_binding_do_not_block_healthy_files_or_queue_deletions() {
     let f = Fixture::new();
     let broken = f.root.join(".agents/skills/broken");
@@ -1909,10 +2030,18 @@ fn broken_skill_and_stale_binding_do_not_block_healthy_files_or_queue_deletions(
     indexer::scan(&f.db, &f.project).unwrap();
     assert_eq!(f.outbox().len(), 1);
     assert_eq!(f.outbox()[0]["resource"]["logicalPath"], "healthy");
-    let errors = db::rows(&f.db, "SELECT json_object('error',error) FROM errors", &[]).unwrap();
+    let errors = db::rows(
+        &f.db,
+        "SELECT json_object('error',error,'source',source) FROM errors",
+        &[],
+    )
+    .unwrap();
     assert!(errors
         .iter()
-        .any(|e| e["error"] == "Package contains symlink"));
+        .any(|e| e["error"] == "Package contains symlink"
+            && e["source"]
+                .as_str()
+                .is_some_and(|source| source.ends_with(":scan:skills/broken"))));
     assert!(errors.iter().any(|e| e["error"] == "Missing binding paths"));
     assert!(!f.outbox().iter().any(|r| r["resource"]["deleted"] == true));
     fs::remove_file(broken.join("link")).unwrap();
