@@ -41,7 +41,10 @@ test("the expanded sidebar shows the compact update card in Settings and across 
   const review = sidebar.getByRole("region", { name: "Available update" });
   await expect(settings).toBeVisible();
   await expect(review).toBeVisible();
-  await expect(review).toContainText("v0.3.1");
+  await expect(review.getByText("Orka v0.3.1", { exact: true })).toBeVisible();
+  await expect(
+    review.getByText("Hurray! An update is available."),
+  ).toBeVisible();
   await expect(review).not.toContainText(available.update.notes);
   await expect(review).not.toContainText("Installed 0.3.0");
   await expect(

@@ -97,9 +97,10 @@ export function SidebarUpdate({
   const card = (
     <>
       <div className="sidebar-update-header">
-        <strong>v{update.version}</strong>
+        <strong>Orka v{update.version}</strong>
         {collapsed ? <Popover.Close asChild>{close}</Popover.Close> : close}
       </div>
+      <p>Hurray! An update is available.</p>
       {error && <p role="alert">{error}</p>}
       <Button
         variant="primary"
