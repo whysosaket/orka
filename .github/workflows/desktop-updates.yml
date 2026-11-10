@@ -1,0 +1,110 @@
+name: Publish macOS update policy
+run-name: macOS update · ${{ inputs.operation }} ${{ inputs.version }}
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        required: true
+        options: [promote, withdraw, renew]
+      version:
+        description: Desktop version to promote or withdraw, without v
+        type: string
+      notes:
+        description: Optional notes in the signed release policy
+        type: string
+      minimum_version:
+        description: Optional permanent minimum version permitted for installation and restore
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: desktop-update-policy
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    environment: macos-update-publishing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: .node-version
+      - name: Verify published artifact and prepare policy input
+        if: inputs.operation == 'promote'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORKA_VERSION: ${{ inputs.version }}
+          ORKA_RELEASE_NOTES: ${{ inputs.notes }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          [[ "$ORKA_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ && "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]
+          gh release view "v$ORKA_VERSION" --json isDraft --jq '.isDraft' | grep -qx false
+          mkdir "$RUNNER_TEMP/desktop-release"
+          gh release download "v$ORKA_VERSION" --pattern 'Orka-update.zip' --dir "$RUNNER_TEMP/desktop-release"
+          cd "$RUNNER_TEMP/desktop-release"
+          ditto -x -k Orka-update.zip extracted
+          app=extracted/Orka.app
+          codesign --verify --deep --strict --all-architectures -R="anchor apple generic and identifier \"com.relay.portable-workspace\" and certificate leaf[subject.OU] = \"$APPLE_TEAM_ID\" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists" "$app"
+          xcrun stapler validate "$app"
+          spctl --assess --type execute "$app"
+          plist="$app/Contents/Info.plist"
+          [[ $(plutil -extract CFBundleShortVersionString raw "$plist") == "$ORKA_VERSION" ]]
+          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/portable-workspace-mac"
+          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/orka-desktop"
+          updater="$app/Contents/Helpers/Orka Updater.app"
+          codesign --verify --deep --strict --all-architectures -R="anchor apple generic and identifier \"com.relay.portable-workspace.recovery\" and certificate leaf[subject.OU] = \"$APPLE_TEAM_ID\" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists" "$updater"
+          [[ $(plutil -extract LSUIElement raw "$updater/Contents/Info.plist") == true ]]
+          lipo -verify_arch arm64 x86_64 "$updater/Contents/MacOS/orka-updater"
+          ORKA_EPOCH=$(plutil -extract OrkaUpdateDataEpoch raw "$plist")
+          ORKA_MIN_MACOS=$(plutil -extract LSMinimumSystemVersion raw "$plist")
+          export ORKA_EPOCH ORKA_MIN_MACOS
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const archive = readFileSync('Orka-update.zip');
+          const version = process.env.ORKA_VERSION;
+          writeFileSync('release.json', JSON.stringify({
+            version, notes: process.env.ORKA_RELEASE_NOTES,
+            url: `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/v${version}/Orka-update.zip`,
+            sha256: createHash('sha256').update(archive).digest('hex'), size: archive.length,
+            architectures: ['arm64', 'x86_64'], minimumMacOS: process.env.ORKA_MIN_MACOS + (process.env.ORKA_MIN_MACOS.split('.').length === 2 ? '.0' : ''),
+            dataEpoch: Number(process.env.ORKA_EPOCH)
+          }));
+          NODE
+      - name: Sign and publish the release policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORKA_OPERATION: ${{ inputs.operation || 'renew' }}
+          ORKA_WITHDRAW_VERSION: ${{ inputs.version }}
+          ORKA_MINIMUM_VERSION: ${{ inputs.minimum_version }}
+          ORKA_UPDATE_PUBLIC_KEY: ${{ vars.ORKA_UPDATE_PUBLIC_KEY }}
+          ORKA_UPDATE_SIGNING_KEY: ${{ secrets.ORKA_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          branch=desktop-updates
+          endpoint="repos/$GITHUB_REPOSITORY/contents/macos.json"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" --silent; then
+            if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then exit 0; fi
+            [[ "$ORKA_OPERATION" == promote ]]
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$branch" -f sha="$GITHUB_SHA" --silent
+          fi
+          previous=()
+          if gh api "$endpoint?ref=$branch" > "$work/previous.json"; then
+            jq -r .content "$work/previous.json" | base64 -D > "$work/policy.json"
+            previous=(-f "sha=$(jq -er .sha "$work/previous.json")")
+          else
+            [[ "$ORKA_OPERATION" == promote ]]
+            : > "$work/policy.json"
+          fi
+          node scripts/desktop-update-policy.mjs "$ORKA_OPERATION" "$work/policy.json" "$work/next.json" "$RUNNER_TEMP/desktop-release/release.json"
+          gh api --method PUT "$endpoint" -f branch="$branch" -f message="Publish desktop update policy ($ORKA_OPERATION)" \
+            -f content="$(base64 -i "$work/next.json" | tr -d '\n')" ${previous[@]+"${previous[@]}"} --silent

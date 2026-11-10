@@ -59,6 +59,19 @@ jobs:
       - run: npm run typecheck && npm test && npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:ui
+  mac-recovery:
+    name: macOS recovery (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/test-macos-recovery.sh
   mac:
     name: macOS desktop
     runs-on: macos-15

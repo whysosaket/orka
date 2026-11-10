@@ -1337,6 +1337,9 @@ async fn run_mode(foreground: bool) {
     let mut network_poll = Instant::now();
     let mut network = String::new();
     loop {
+        if !foreground && crate::updates::installation_pending() {
+            return;
+        }
         let Ok(db) = db::open() else {
             tokio::time::sleep(Duration::from_secs(1)).await;
             continue;

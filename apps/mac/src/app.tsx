@@ -54,6 +54,10 @@ import { SidebarQuickAccess } from "./components/sidebar-quick-access.js";
 import { Onboarding } from "./components/onboarding/onboarding.js";
 import { SignInForm } from "./components/sign-in-form.js";
 import { SyncMenu } from "./components/sync-menu.js";
+import {
+  SidebarUpdate,
+  useDesktopUpdates,
+} from "./components/desktop-updates.js";
 import { WorkspaceHeader } from "./components/workspace-header.js";
 import { countSyncIssues, groupSyncIssues } from "./components/sync-issues.js";
 import { useDeepLinks } from "./components/use-deep-links.js";
@@ -151,6 +155,7 @@ function WorkspaceApp({
     actionNotice,
   } = workspace;
   const { notify } = useToasts();
+  const updates = useDesktopUpdates();
   const account = useAccount(state.config);
   const workspaceScope = JSON.stringify([
     state.profile,
@@ -523,13 +528,22 @@ function WorkspaceApp({
             })
           }
         />
-        <SidebarQuickAccess
-          settingsActive={Boolean(settings)}
-          collapsed={sidebarCollapsed}
-          onSettings={() => openSettings("general")}
-          onCreate={() => leaveSettings(() => setup.show("create"))}
-          onJoin={() => leaveSettings(() => setup.show("join"))}
-        />
+        <div className="sidebar-footer">
+          {updates?.update && (
+            <SidebarUpdate
+              key={updates.update.sha256}
+              update={updates.update}
+              collapsed={sidebarCollapsed}
+            />
+          )}
+          <SidebarQuickAccess
+            settingsActive={Boolean(settings)}
+            collapsed={sidebarCollapsed}
+            onSettings={() => openSettings("general")}
+            onCreate={() => leaveSettings(() => setup.show("create"))}
+            onJoin={() => leaveSettings(() => setup.show("join"))}
+          />
+        </div>
       </motion.aside>
       <main>
         <WorkspaceHeader

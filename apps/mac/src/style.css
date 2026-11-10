@@ -410,8 +410,43 @@
   .project-section:disabled {
     color: var(--text-disabled);
   }
+  .sidebar-footer {
+    @apply mt-auto grid gap-2;
+  }
   .sidebar-bottom {
-    @apply relative mt-auto grid gap-2 text-xs text-secondary;
+    @apply relative grid gap-2 text-xs text-secondary;
+  }
+  .sidebar .sidebar-update-trigger {
+    @apply text-foreground;
+  }
+  .sidebar-update-trigger:hover,
+  .sidebar-update-trigger[data-state="open"] {
+    @apply bg-hover;
+  }
+  .sidebar-update-review {
+    @apply grid min-w-0 gap-2 rounded-xl border border-line bg-raised p-3 text-left;
+  }
+  .sidebar-update-popover {
+    @apply z-40 overflow-auto shadow-2xl;
+    width: 216px;
+    max-width: calc(100vw - 24px);
+    max-height: var(--radix-popover-content-available-height);
+  }
+  .sidebar-update-header {
+    @apply flex min-w-0 items-center justify-between gap-2 text-label-sm;
+  }
+  .sidebar-update-header strong {
+    @apply min-w-0 truncate;
+  }
+  .sidebar-update-review p {
+    @apply m-0 break-words text-xs text-muted;
+  }
+  .sidebar-update-changelog {
+    @apply justify-self-center text-xs text-secondary underline-offset-4;
+  }
+  .sidebar-update-changelog:hover,
+  .sidebar-update-changelog:focus-visible {
+    @apply text-foreground underline;
   }
   .sidebar .sync-status:hover,
   .sidebar .sync-status[data-state="open"] {

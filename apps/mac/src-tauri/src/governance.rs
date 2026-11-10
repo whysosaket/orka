@@ -118,7 +118,7 @@ pub fn context_with_query(
     )?;
     let bridge_version = json!(format!("2:{}", project["policyRevision"]));
     if fingerprints["bridge"] != bridge_version {
-        let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+        let executable = crate::updates::executable().map_err(|e| e.to_string())?;
         text.push_str(&format!("\nShared Orka knowledge is reference material; keep personal learning in native memory. For task-specific facts, invoke {} --profile {} --orka-context with JSON stdin: {}. Save selected learning privately with action save-candidate and input projectId, topic, scope (relative folder), content, provider, sessionId; submit-draft explicitly proposes a saved draft. Publication follows project permissions.\n", json!(executable), json!(crate::profiles::current()), json!({"action":"context","input":{"projectId":id,"sourceId":project["sourceId"],"query":"<current task>"}})));
         text.push_str(&format!(
             "Read a publication's status with {}; check resource access with {}.\n",
@@ -723,7 +723,7 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
             let cwd=input["cwd"].as_str().map(PathBuf::from).unwrap_or(root.clone());
             if !cwd.starts_with(&root) {return Err("Context scope must be inside the project".into());}
             let text=if let Some(query)=input["query"].as_str(){context_with_query(&db,&p,&cwd,Some(query),None)?.0}else{context(&db,&p,&cwd)?.0};
-            return Ok(json!({"status":"local","projectId":project_id,"executable":std::env::current_exe().map_err(|e|e.to_string())?,"profile":crate::profiles::current(),"content":text,"contextToken":db::get(&db,&crate::sources::meta_key(&p, "contextToken")?)?,"access":db::get(&db,&format!("governance:{project_id}"))?["access"]}));
+            return Ok(json!({"status":"local","projectId":project_id,"executable":crate::updates::executable().map_err(|e|e.to_string())?,"profile":crate::profiles::current(),"content":text,"contextToken":db::get(&db,&crate::sources::meta_key(&p, "contextToken")?)?,"access":db::get(&db,&format!("governance:{project_id}"))?["access"]}));
         }
         _=>{}
     }

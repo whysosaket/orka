@@ -148,7 +148,7 @@ pub fn open_profile(name: String) -> Result<()> {
     match lock.try_lock_exclusive() {
         Ok(()) => {
             FileExt::unlock(&lock).map_err(|e| e.to_string())?;
-            let mut child = Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
+            let mut child = Command::new(crate::updates::executable().map_err(|e| e.to_string())?)
                 .args(["--profile", &name])
                 .spawn()
                 .map_err(|e| e.to_string())?;

@@ -573,7 +573,7 @@ pub fn fork_session(db: &rusqlite::Connection, project: &Value, resource: &Value
 
 pub fn install_hooks(project: &Path) -> Result<()> {
     let base = project.canonicalize().map_err(|e| e.to_string())?;
-    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+    let executable = crate::updates::executable().map_err(|e| e.to_string())?;
     let quote = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
     for (tool, file) in [
         ("claude", ".claude/settings.local.json"),
