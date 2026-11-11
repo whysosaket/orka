@@ -257,7 +257,7 @@ docker compose logs --tail 100 api
 For source development, `sh ./orka-server build` builds the image without starting services.
 The helper builds during setup/upgrade; ordinary `start` uses the installed image.
 
-Contributors need Go 1.27.3, Node.js 24+ and PostgreSQL binaries for integration tests.
+Contributors need Go 1.27.4, Node.js 24+ and PostgreSQL binaries for integration tests.
 The server has its own dependency graph:
 
 ```sh
