@@ -160,6 +160,23 @@ pub fn open_legal_link(document: String) -> Result<()> {
 }
 
 #[tauri::command]
+pub async fn open_web_link(url: String) -> Result<()> {
+    let url = reqwest::Url::parse(&url).map_err(|_| "Invalid web link")?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("Only HTTP and HTTPS links can be opened".into());
+    }
+    let status = tokio::process::Command::new("/usr/bin/open")
+        .arg(url.as_str())
+        .status()
+        .await
+        .map_err(|_| "Cannot open your browser")?;
+    if !status.success() {
+        return Err("Cannot open your browser".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn auth_capabilities(api_url: String) -> Result<Value> {
     auth::capabilities(api_url).await
 }

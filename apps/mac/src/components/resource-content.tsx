@@ -1,4 +1,5 @@
 import React from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { diffLines } from "diff";
@@ -7,6 +8,7 @@ import { readSkillMarkdown } from "./skill-markdown.js";
 import { Button } from "./button.js";
 import { MermaidDiagram } from "./mermaid-diagram.js";
 import { LoadingRegion } from "./loading-region.js";
+import { useToasts } from "./toasts.js";
 
 const sampleInspection: Inspection = {
   content:
@@ -14,6 +16,37 @@ const sampleInspection: Inspection = {
   previous: "Earlier project notes",
   paths: [],
 };
+
+function MarkdownWebLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  const { notify } = useToasts();
+  const open = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (event.button > 1 || !isTauri()) return;
+    event.preventDefault();
+    void invoke("open_web_link", { url: href }).catch(() =>
+      notify({
+        kind: "error",
+        title: "Couldn’t open the link in your browser.",
+      }),
+    );
+  };
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={open}
+      onAuxClick={open}
+    >
+      {children}
+    </a>
+  );
+}
 
 /** Shared Markdown element overrides for synced content and session turns. */
 export const markdownComponents: Components = {
@@ -45,9 +78,7 @@ export const markdownComponents: Components = {
   // relative file references remain text until native file navigation exists.
   a: ({ href, children }) =>
     href && /^https?:\/\//i.test(href) ? (
-      <a href={href} target="_blank" rel="noopener noreferrer">
-        {children}
-      </a>
+      <MarkdownWebLink href={href}>{children}</MarkdownWebLink>
     ) : (
       <span title={href}>{children}</span>
     ),
