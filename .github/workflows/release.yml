@@ -3,6 +3,11 @@ run-name: Orka ${{ inputs.target }} · ${{ inputs.signing }}
 on:
   workflow_dispatch:
     inputs:
+      source_ref:
+        description: main or a release tag already merged into main
+        type: string
+        required: true
+        default: main
       target:
         description: Mac architecture (universal supports both Intel and Apple Silicon)
         type: choice
@@ -32,6 +37,7 @@ jobs:
     environment: ${{ inputs.signing == 'notarized' && 'macos-signing' || 'macos-development' }}
     timeout-minutes: 60
     env:
+      BUILD_SOURCE: ${{ inputs.source_ref || 'main' }}
       BUILD_TARGET: ${{ inputs.target }}
       SIGNING_MODE: ${{ inputs.signing }}
       BUNDLE_DIR: apps/mac/src-tauri/target/${{ inputs.target }}/release/bundle
@@ -47,6 +53,10 @@ jobs:
           APPLE_TEAM_ID: ${{ inputs.signing == 'notarized' && secrets.APPLE_TEAM_ID || '' }}
           ORKA_UPDATE_PUBLIC_KEY: ${{ vars.ORKA_UPDATE_PUBLIC_KEY }}
         run: |
+          [[ "$BUILD_SOURCE" == main || "$BUILD_SOURCE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo '::error::Select main or a versioned release tag.'
+            exit 1
+          }
           case "$BUILD_TARGET" in
             aarch64-apple-darwin|universal-apple-darwin|x86_64-apple-darwin) ;;
             *) echo '::error::Unsupported build target'; exit 1 ;;
@@ -71,7 +81,21 @@ jobs:
           esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ (inputs.source_ref || 'main') == 'main' && 'refs/heads/main' || format('refs/tags/{0}', inputs.source_ref) }}
+          fetch-depth: 0
           persist-credentials: false
+      - name: Validate reviewed source and record build provenance
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main || {
+            echo '::error::Build source must already be merged into main.'
+            exit 1
+          }
+          if [[ "$BUILD_SOURCE" != main ]]; then
+            version=$(node -p 'require("./apps/mac/src-tauri/tauri.conf.json").version')
+            [[ "$BUILD_SOURCE" == "v$version" ]]
+          fi
+          printf 'BUILD_COMMIT=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
@@ -90,19 +114,20 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             apps/mac/src-tauri/target/
+      - name: Remove cached bundles before building
+        run: rm -rf "$BUNDLE_DIR"
       - name: Validate managed cloud endpoint
         run: node -e 'const u = new URL(process.env.VITE_ORKA_CLOUD_URL); if (u.protocol !== "https:" || u.username || u.password || u.search || u.hash) process.exit(1)'
       - run: npm ci
       - name: Check build inputs
         run: npm run check:repository && npm run typecheck && npm test && npm run licenses:check
-      - name: Remove cached bundles before building
-        run: rm -rf "$BUNDLE_DIR"
       - name: Build development app and DMG
         if: inputs.signing == 'development'
         env:
           APPLE_SIGNING_IDENTITY: "-"
         run: npm run mac -- --ci --target "$BUILD_TARGET"
       - name: Build app for recovery packaging
+        id: recovery_app
         if: inputs.signing == 'notarized'
         env:
           APPLE_SIGNING_IDENTITY: "-"
@@ -122,12 +147,23 @@ jobs:
           work=$(mktemp -d)
           export ORKA_SIGNING_KEYCHAIN="$work/signing.keychain-db"
           password=$(openssl rand -hex 32)
-          trap 'security delete-keychain "$ORKA_SIGNING_KEYCHAIN" 2>/dev/null || true; rm -rf "$work"' EXIT
+          previous_keychains=()
+          while IFS= read -r keychain; do
+            previous_keychains+=("$keychain")
+          done < <(security list-keychains -d user | sed -e 's/^ *"//' -e 's/"$//')
+          cleanup_signing() {
+            security list-keychains -d user -s ${previous_keychains[@]+"${previous_keychains[@]}"} || true
+            security delete-keychain "$ORKA_SIGNING_KEYCHAIN" 2>/dev/null || true
+            rm -rf "$work"
+          }
+          trap cleanup_signing EXIT
           security create-keychain -p "$password" "$ORKA_SIGNING_KEYCHAIN"
           security unlock-keychain -p "$password" "$ORKA_SIGNING_KEYCHAIN"
+          security list-keychains -d user -s "$ORKA_SIGNING_KEYCHAIN" ${previous_keychains[@]+"${previous_keychains[@]}"}
           printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$work/signing.p12"
           security import "$work/signing.p12" -k "$ORKA_SIGNING_KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$ORKA_SIGNING_KEYCHAIN" >/dev/null
+          security find-identity -v -p codesigning "$ORKA_SIGNING_KEYCHAIN"
           scripts/package-recovery.sh "$BUNDLE_DIR/macos/Orka.app" "$BUNDLE_DIR/dmg"
       - name: Verify app signature
         run: codesign --verify --deep --strict "$BUNDLE_DIR/macos/Orka.app"
@@ -180,7 +216,7 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           fs.writeFileSync('artifacts/manual-build/build.json', JSON.stringify({
-            commit: process.env.GITHUB_SHA,
+            commit: process.env.BUILD_COMMIT,
             version: JSON.parse(fs.readFileSync('apps/mac/src-tauri/tauri.conf.json', 'utf8')).version,
             target: process.env.BUILD_TARGET,
             signing: process.env.SIGNING_MODE,
@@ -191,7 +227,7 @@ jobs:
           (cd artifacts/manual-build && shasum -a 256 -- ./* > ../SHA256SUMS && mv ../SHA256SUMS .)
           {
             echo '## Orka build ready'
-            echo "- Source: $GITHUB_SHA"
+            echo "- Source: $BUILD_COMMIT"
             echo "- Target: $BUILD_TARGET"
             echo "- Signing: $SIGNING_MODE"
             echo '- Download the artifact below for the DMG, preserved app archive, build metadata and checksums.'
@@ -220,5 +256,29 @@ jobs:
         with:
           name: orka-unverified-installer-${{ github.run_number }}
           path: apps/mac/src-tauri/target/${{ inputs.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Preserve app for signing recovery
+        if: failure() && inputs.signing == 'notarized' && steps.recovery_app.outcome == 'success'
+        run: |
+          if [[ -d "$BUNDLE_DIR/macos/Orka.app" ]]; then
+            mkdir -p "$RUNNER_TEMP/signing-recovery"
+            tar -czf "$RUNNER_TEMP/signing-recovery/Orka.app.tar.gz" -C "$BUNDLE_DIR/macos" Orka.app
+            node <<'NODE'
+          const fs = require('fs');
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/signing-recovery/build-input.json', JSON.stringify({
+            commit: process.env.BUILD_COMMIT,
+            target: process.env.BUILD_TARGET,
+            signing: 'unverified',
+          }, null, 2) + '\n');
+          NODE
+          fi
+      - name: Upload app for signing recovery
+        if: failure() && inputs.signing == 'notarized' && steps.recovery_app.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: orka-signing-recovery-${{ github.run_number }}
+          path: ${{ runner.temp }}/signing-recovery/
           if-no-files-found: ignore
           retention-days: 7
