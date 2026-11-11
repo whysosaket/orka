@@ -80,6 +80,8 @@ async function fixture(page: Page, failCreate = false, browserInvites = true) {
                 requests: [],
               };
             if (command === "cloud_action") {
+              if (args.action === "invite-capabilities")
+                return { email: false };
               if (args.action === "invite")
                 return {
                   token: inviteToken,
@@ -401,7 +403,7 @@ for (const browserInvites of [true, false]) {
       .click();
     await page
       .getByRole("dialog", { name: "Add Member", exact: true })
-      .getByRole("button", { name: "Copy link", exact: true })
+      .getByRole("button", { name: "Copy joining link", exact: true })
       .click();
     await expect
       .poll(() =>
