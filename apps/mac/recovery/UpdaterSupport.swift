@@ -30,10 +30,15 @@ extension Installation {
 
     private func hasTrustedUpdater() -> Bool {
         guard (try? updater.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == false,
-              (try? verify(updater, id: recoveryID)) != nil, let info = Bundle(url: updater)?.infoDictionary else { return false }
-        // Keep the independently installed helper across desktop releases with the same trust configuration.
+              (try? verify(updater, id: recoveryID)) != nil,
+              let info = NSDictionary(contentsOf: updater.appendingPathComponent("Contents/Info.plist")),
+              let embeddedInfo = NSDictionary(contentsOf: embeddedUpdater.appendingPathComponent("Contents/Info.plist")),
+              let version = info["CFBundleVersion"] as? String,
+              let embeddedVersion = embeddedInfo["CFBundleVersion"] as? String else { return false }
+        // Reuse the independent helper only while it has the current updater fixes and trust configuration.
         return info["OrkaUpdateFeed"] as? String == feed?.url.absoluteString
             && info["OrkaUpdatePublicKey"] as? String == feed?.key.base64EncodedString()
+            && compareVersion(version, embeddedVersion) != .orderedAscending
     }
 
     func updaterProcess(_ mode: String, arguments: [String] = []) throws -> Process {
@@ -69,6 +74,7 @@ extension Installation {
 func installApprovedUpdate(_ installation: Installation, version: String, sha256: String, profile: String) throws -> Never {
     let caller = getppid()
     try installation.verifyDesktopCaller(caller)
+    signal(SIGPIPE, SIG_IGN)
     let application = NSApplication.shared
     application.setActivationPolicy(.prohibited)
     Task {
@@ -79,7 +85,11 @@ func installApprovedUpdate(_ installation: Installation, version: String, sha256
             guard let release = feed.candidate(policy, current: current), release.version == version, release.sha256 == sha256 else {
                 throw UpdateError("This update changed or is no longer available. Review the available update again.")
             }
-            try await installation.install(release, replacing: current)
+            try await installation.install(release, replacing: current, progress: { progress in
+                if let data = try? JSONEncoder().encode(progress) {
+                    try? FileHandle.standardOutput.write(contentsOf: data + Data("\n".utf8))
+                }
+            })
             try installation.openDesktop(arguments: ["--profile", profile])
             exit(0)
         } catch {

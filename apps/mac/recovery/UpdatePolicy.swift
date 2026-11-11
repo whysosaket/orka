@@ -96,7 +96,7 @@ func hostArchitecture() -> String {
     return arm == 1 ? "arm64" : "x86_64"
 }
 
-final class HTTPSOnly: NSObject, URLSessionTaskDelegate {
+class HTTPSOnly: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         completionHandler(request.url.map(isHTTPS) == true ? request : nil)

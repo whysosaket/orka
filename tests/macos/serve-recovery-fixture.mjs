@@ -4,7 +4,8 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:https";
 import { join } from "node:path";
 
-const [work, port = "38477"] = process.argv.slice(2);
+const [work, port = "38477", firstVersion = "0.3.1", hotfixVersion = "0.3.2"] =
+  process.argv.slice(2);
 assert(work, "Pass the isolated signed-drill directory");
 const downloads = join(work, "downloads");
 const key = createPrivateKey(readFileSync(join(work, "feed-key.pem")));
@@ -23,8 +24,8 @@ const makeRelease = (version) => {
     dataEpoch: 1,
   };
 };
-const first = makeRelease("0.3.1");
-const hotfix = makeRelease("0.3.2");
+const first = makeRelease(firstVersion);
+const hotfix = makeRelease(hotfixVersion);
 const policy = (sequence, release, withdrawn = []) => {
   const payload = Buffer.from(
     JSON.stringify({
@@ -49,7 +50,11 @@ writeFileSync(
 );
 const revoke = join(downloads, "revoke-after-download");
 const corrupt = join(downloads, "corrupt-download");
-const paths = new Set(["/macos.json", "/Orka-0.3.1.zip", "/Orka-0.3.2.zip"]);
+const paths = new Set([
+  "/macos.json",
+  `/Orka-${firstVersion}.zip`,
+  `/Orka-${hotfixVersion}.zip`,
+]);
 createServer(
   {
     key: readFileSync(join(work, "tls-key.pem")),
@@ -61,7 +66,7 @@ createServer(
     if (!paths.has(pathname) || !existsSync(path))
       return res.writeHead(404).end();
     const bytes = readFileSync(path);
-    if (pathname === "/Orka-0.3.1.zip") {
+    if (pathname === `/Orka-${firstVersion}.zip`) {
       if (existsSync(revoke)) {
         unlinkSync(revoke);
         writeFileSync(manifest, policy(2, null, [first.version]));

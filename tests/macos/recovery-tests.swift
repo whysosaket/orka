@@ -11,7 +11,9 @@ struct RecoveryTests {
         defer { try? files.removeItem(at: scratch) }
         try policyTests(scratch)
         try lockTests(scratch)
-        if CommandLine.arguments.count == 2 {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--plugin-app" {
+            try await pluginMaintenanceTests(URL(fileURLWithPath: CommandLine.arguments[2]), scratch: scratch)
+        } else if CommandLine.arguments.count == 2 {
             try await signedDrill(URL(fileURLWithPath: CommandLine.arguments[1]), scratch: scratch)
         }
         print("macOS recovery checks passed")
@@ -60,12 +62,49 @@ struct RecoveryTests {
         print("runtime and installer mutual exclusion passed")
     }
 
+    static func pluginMaintenanceTests(_ source: URL, scratch: URL) async throws {
+        let app = scratch.appendingPathComponent("Orka.app")
+        try run("/usr/bin/ditto", [source.path, app.path])
+        let installation = try Installation(app: app, info: Bundle(url: app)!.infoDictionary!)
+        defer { try? FileManager.default.removeItem(at: installation.state) }
+        let plugin = Process()
+        plugin.executableURL = app.appendingPathComponent("Contents/MacOS/\(launcherName)")
+        plugin.arguments = ["--orka-plugin"]
+        let input = Pipe()
+        let output = Pipe()
+        plugin.standardInput = input
+        plugin.standardOutput = output
+        plugin.standardError = FileHandle.nullDevice
+        try plugin.run()
+        defer { if plugin.isRunning { plugin.terminate(); plugin.waitUntilExit() } }
+        try input.fileHandleForWriting.write(contentsOf: Data("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n".utf8))
+        let response = output.fileHandleForReading.availableData
+        let reply = try JSONSerialization.jsonObject(with: response) as? [String: Any]
+        try require(reply?["id"] as? Int == 1, "plugin serves requests before maintenance")
+        try rejects { _ = try FileLock(installation.runningLock, operation: LOCK_EX | LOCK_NB) }
+        let maintenance = try FileLock(installation.maintenanceLock, operation: LOCK_EX | LOCK_NB)
+        defer { withExtendedLifetime(maintenance) {} }
+        for _ in 0..<20 {
+            if !plugin.isRunning { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        try require(!plugin.isRunning, "an idle plugin must exit for installation instead of holding the runtime lock")
+        try require(plugin.terminationStatus == 0, "plugin exits cleanly for maintenance")
+        let exclusive = try FileLock(installation.runningLock, operation: LOCK_EX | LOCK_NB)
+        withExtendedLifetime(exclusive) {}
+        print("real plugin requests, idle maintenance exit, and runtime lock release passed")
+    }
+
     static func signedDrill(_ work: URL, scratch: URL) async throws {
         let files = FileManager.default
         let copy = scratch.appendingPathComponent("installation")
         try run("/usr/bin/ditto", [work.appendingPathComponent("installation/Orka.app").path, copy.appendingPathComponent("Orka.app").path])
         let app = copy.appendingPathComponent("Orka.app")
-        let info = Bundle(url: app)!.infoDictionary!
+        var info = Bundle(url: app)!.infoDictionary!
+        if let trust = NSDictionary(contentsOf: work.appendingPathComponent("trust.plist")) {
+            info["OrkaUpdateFeed"] = trust["OrkaUpdateFeed"]
+            info["OrkaUpdatePublicKey"] = trust["OrkaUpdatePublicKey"]
+        }
         let root = try Data(contentsOf: work.appendingPathComponent("tls.der"))
         let installation = try Installation(app: app, info: info, supportDirectory: scratch.appendingPathComponent("isolated-support")) {
             let config = URLSessionConfiguration.ephemeral
@@ -80,6 +119,8 @@ struct RecoveryTests {
         try installation.verify(installation.embeddedUpdater, id: recoveryID)
         try installation.provisionUpdater()
         try installation.verify(installation.updater, id: recoveryID)
+        try require(helperVersion(installation.updater) == helperVersion(installation.embeddedUpdater),
+                    "newer embedded helper replaces the older installed helper")
         try require(installation.updater != installation.embeddedUpdater, "the updater is installed outside the replaced bundle")
         try require(Bundle(url: installation.updater)?.object(forInfoDictionaryKey: "LSUIElement") as? Bool == true,
                     "the provisioned updater is a background app")
@@ -108,11 +149,20 @@ struct RecoveryTests {
         try files.removeItem(at: manifest)
         try files.moveItem(at: hotfix, to: manifest)
         let approved = try await feed.refresh().release!
-        try await installation.install(approved, replacing: current)
+        let progress = ProgressLog()
+        try await installation.install(approved, replacing: current, progress: progress.record)
+        let events = progress.events
+        try require(events.first?.phase == "downloading", "download begins before verification")
+        try require(events.contains { $0.phase == "downloading" && ($0.downloadedBytes ?? 0) > 0 },
+                    "real HTTPS download emits byte progress")
+        try require(events.contains { $0.phase == "verifying" } && events.last?.phase == "restarting",
+                    "verification and restart progress follow the download")
         let installed = try InstalledBuild(at: app)
         try require(installed.version == approved.version, "hotfix replaced Orka at the same path")
         try installation.provisionUpdater()
         try installation.verify(installation.updater, id: recoveryID)
+        try require(helperVersion(installation.updater) == helperVersion(installation.embeddedUpdater),
+                    "hotfix provisions the newer embedded helper")
         try require(installation.restoreCandidate(current: installed) == current, "verified original remains available")
         try files.removeItem(at: manifest)
         try await installation.restore(current, replacing: installed)
@@ -124,6 +174,10 @@ struct RecoveryTests {
     static func signed(_ policy: Policy, _ key: Curve25519.Signing.PrivateKey) throws -> Data {
         let payload = try JSONEncoder().encode(policy)
         return try JSONEncoder().encode(SignedPolicy(payload: payload, signature: key.signature(for: payload)))
+    }
+
+    static func helperVersion(_ app: URL) -> String? {
+        NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))?["CFBundleVersion"] as? String
     }
 
     static func require(_ predicate: @autoclosure () throws -> Bool, _ message: String) throws {
@@ -140,6 +194,23 @@ struct RecoveryTests {
 struct TestFailure: LocalizedError {
     let errorDescription: String?
     init(_ detail: String) { errorDescription = detail }
+}
+
+final class ProgressLog {
+    private let lock = NSLock()
+    private var values: [UpdateProgress] = []
+
+    func record(_ progress: UpdateProgress) {
+        lock.lock()
+        defer { lock.unlock() }
+        values.append(progress)
+    }
+
+    var events: [UpdateProgress] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
 }
 
 final class TestTLS: NSObject, URLSessionTaskDelegate {

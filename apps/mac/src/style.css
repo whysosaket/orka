@@ -442,6 +442,13 @@
   .sidebar-update-review p {
     @apply m-0 break-words text-xs text-muted;
   }
+  .sidebar-update-progress {
+    @apply grid gap-2;
+  }
+  .sidebar-update-progress progress {
+    @apply block h-1 w-full overflow-hidden rounded-full;
+    accent-color: var(--text-primary);
+  }
   .sidebar-update-changelog {
     @apply justify-self-center text-xs text-secondary underline-offset-4;
   }

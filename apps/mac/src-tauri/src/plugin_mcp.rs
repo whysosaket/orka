@@ -1,6 +1,8 @@
 use crate::{db::Result, selective_sharing};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+use std::sync::mpsc::{sync_channel, RecvTimeoutError};
+use std::time::Duration;
 
 pub fn tools() -> Value {
     let mut result = Vec::new();
@@ -57,9 +59,26 @@ fn validate(schema: &Value, input: &Value) -> Result<()> {
 
 pub fn run() -> Result<()> {
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
-    let stdin = io::stdin();
+    let (requests, incoming) = sync_channel(1);
+    std::thread::spawn(move || {
+        for line in io::stdin().lock().lines() {
+            if requests.send(line).is_err() {
+                break;
+            }
+        }
+    });
     let mut stdout = io::stdout().lock();
-    for line in stdin.lock().lines() {
+    loop {
+        // Idle MCP connections must release the launcher's runtime lock for an update.
+        // Finish an active request before checking maintenance again.
+        if crate::updates::installation_pending() {
+            return Ok(());
+        }
+        let line = match incoming.recv_timeout(Duration::from_millis(200)) {
+            Ok(line) => line,
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => break,
+        };
         let line = line.map_err(|e| e.to_string())?;
         if line.len() > 2_000_000 {
             return Err("Plugin request exceeds size limit".into());
