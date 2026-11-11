@@ -81,15 +81,19 @@ struct Installation {
         return backup
     }
 
-    func install(_ release: Release, replacing current: InstalledBuild) async throws {
+    func install(_ release: Release, replacing current: InstalledBuild,
+                 progress: @escaping (UpdateProgress) -> Void = { _ in }) async throws {
         guard let feed else { throw UpdateError("Updates are unavailable for this build.") }
         let transaction = try FileLock(state.appendingPathComponent("installer.lock"), operation: LOCK_EX | LOCK_NB)
         defer { withExtendedLifetime(transaction) {} }
         let session = makeSession()
         defer { session.finishTasksAndInvalidate() }
-        let (archive, response) = try await session.download(from: release.url)
+        progress(UpdateProgress(phase: "downloading", downloadedBytes: 0, totalBytes: release.size))
+        let download = UpdateDownload(size: release.size, progress: progress)
+        let (archive, response) = try await download.download(from: release.url, using: session)
         defer { try? files.removeItem(at: archive) }
         try checkResponse(response)
+        progress(UpdateProgress(phase: "verifying"))
         let size = try archive.resourceValues(forKeys: [.fileSizeKey]).fileSize
         guard size == release.size, digest(try Data(contentsOf: archive, options: .mappedIfSafe)) == release.sha256 else {
             throw UpdateError("The downloaded update failed verification.")
@@ -103,6 +107,7 @@ struct Installation {
         guard try InstalledBuild(at: next) == InstalledBuild(version: release.version, dataEpoch: release.dataEpoch) else {
             throw UpdateError("The downloaded app does not match the approved release.")
         }
+        progress(UpdateProgress(phase: "restarting"))
         try await replace(with: next, current: current, keepPrevious: true) {
             let policy = try await feed.refresh(bypassCache: true)
             guard feed.candidate(policy, current: current) == release else {

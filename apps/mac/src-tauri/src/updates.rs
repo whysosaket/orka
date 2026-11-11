@@ -1,6 +1,11 @@
 use crate::db::Result;
 use serde_json::{json, Value};
-use std::{path::PathBuf, process::Command};
+use std::{
+    io::{BufRead, BufReader},
+    path::PathBuf,
+    process::{Command, Stdio},
+};
+use tauri::Emitter;
 
 pub fn executable() -> std::io::Result<PathBuf> {
     let executable = std::env::current_exe()?;
@@ -93,17 +98,30 @@ pub async fn update_status(app: tauri::AppHandle) -> Result<Value> {
 }
 
 #[tauri::command]
-pub async fn update_install(version: String, sha256: String) -> Result<()> {
+pub async fn update_install(app: tauri::AppHandle, version: String, sha256: String) -> Result<()> {
     bundled_app().ok_or("Updates are unavailable for this build.")?;
     tauri::async_runtime::spawn_blocking(move || {
-        let result = Command::new(executable().map_err(|error| error.to_string())?)
+        let mut child = Command::new(executable().map_err(|error| error.to_string())?)
             .args([
                 "--orka-install-update",
                 &version,
                 &sha256,
                 crate::profiles::current(),
             ])
-            .output()
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        if let Some(stdout) = child.stdout.take() {
+            for line in BufReader::new(stdout).lines() {
+                let line = line.map_err(|error| error.to_string())?;
+                if let Ok(progress) = serde_json::from_str::<Value>(&line) {
+                    let _ = app.emit_to("main", "desktop-update-progress", progress);
+                }
+            }
+        }
+        let result = child
+            .wait_with_output()
             .map_err(|error| error.to_string())?;
         if result.status.success() {
             Ok(())

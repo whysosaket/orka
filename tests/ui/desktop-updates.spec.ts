@@ -134,3 +134,56 @@ test("the collapsed sidebar anchors the review beside its icon and shows install
   await expect(review).toHaveCount(0);
   await expect(trigger).toBeFocused();
 });
+
+test("an update shows download progress, verification, restart, and a retry after failure", async ({
+  page,
+}, info) => {
+  await settingsFixture(page, {
+    update: available,
+    updateInstallDelay: 3000,
+    updateInstallError:
+      "Quit Orka and finish any running sync, then try again.",
+  });
+  const review = page.getByRole("region", { name: "Available update" });
+  await review.getByRole("button", { name: "Update and Restart" }).click();
+  await expect(review.getByRole("status")).toHaveText("Preparing update…");
+  await expect(
+    review.getByRole("button", { name: "Updating…" }),
+  ).toBeDisabled();
+  await expect(
+    review.getByRole("button", { name: "Close update" }),
+  ).toBeDisabled();
+  const sendProgress = async (phase: string, downloadedBytes?: number) => {
+    await page.evaluate(
+      (payload) => {
+        const emit = Reflect.get(window, "settingsEmit") as (
+          event: string,
+          payload: unknown,
+        ) => void;
+        emit("desktop-update-progress", payload);
+      },
+      { phase, downloadedBytes, totalBytes: 1000 },
+    );
+  };
+  await sendProgress("downloading", 420);
+  await expect(review.getByRole("status")).toHaveText("Downloading… 42%");
+  await expect(review.getByRole("progressbar")).toHaveAttribute("value", "42");
+  await page.screenshot({
+    path: info.outputPath("update-download-progress.png"),
+  });
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await page.getByRole("button", { name: "Update available" }).click();
+  const popover = page.getByRole("dialog", { name: "Available update" });
+  await expect(popover.getByRole("status")).toHaveText("Downloading… 42%");
+  await sendProgress("verifying");
+  await expect(popover.getByRole("status")).toHaveText("Verifying update…");
+  await expect(popover.getByRole("progressbar")).not.toHaveAttribute("value");
+  await sendProgress("restarting");
+  await expect(popover.getByRole("status")).toHaveText("Restarting Orka…");
+  await expect(popover.getByRole("alert")).toHaveText(
+    "Quit Orka and finish any running sync, then try again.",
+  );
+  await expect(popover.getByRole("progressbar")).toHaveCount(0);
+  await popover.getByRole("button", { name: "Update and Restart" }).click();
+  await expect(popover.getByRole("status")).toHaveText("Preparing update…");
+});

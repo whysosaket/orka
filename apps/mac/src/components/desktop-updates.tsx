@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import * as Popover from "@radix-ui/react-popover";
 import { DownloadIcon, XIcon } from "@primer/octicons-react";
 import { Button } from "./button.js";
@@ -7,6 +8,12 @@ import { IconButton } from "./icon-button.js";
 
 interface UpdateStatus {
   update?: { version: string; sha256: string };
+}
+
+interface UpdateProgress {
+  phase: "downloading" | "verifying" | "restarting";
+  downloadedBytes?: number;
+  totalBytes?: number;
 }
 
 export function useDesktopUpdates() {
@@ -43,13 +50,20 @@ export function SidebarUpdate({
   const [dismissed, setDismissed] = useState(false);
   const pending = useRef(false);
   const [installing, setInstalling] = useState(false);
+  const [progress, setProgress] = useState<UpdateProgress>();
   const [error, setError] = useState("");
   const install = async () => {
     if (pending.current) return;
     pending.current = true;
     setInstalling(true);
+    setProgress(undefined);
     setError("");
+    let unlisten: (() => void) | undefined;
     try {
+      unlisten = await listen<UpdateProgress>(
+        "desktop-update-progress",
+        ({ payload }) => setProgress(payload),
+      );
       await invoke("update_install", {
         version: update.version,
         sha256: update.sha256,
@@ -61,10 +75,29 @@ export function SidebarUpdate({
           : "Couldn’t install the update. Try again.",
       );
     } finally {
+      unlisten?.();
       pending.current = false;
       setInstalling(false);
     }
   };
+
+  const percent =
+    progress?.phase === "downloading" && progress.totalBytes
+      ? Math.min(
+          100,
+          Math.floor(
+            ((progress.downloadedBytes ?? 0) / progress.totalBytes) * 100,
+          ),
+        )
+      : undefined;
+  const progressLabel =
+    progress?.phase === "downloading"
+      ? `Downloading… ${percent ?? 0}%`
+      : progress?.phase === "verifying"
+        ? "Verifying update…"
+        : progress?.phase === "restarting"
+          ? "Restarting Orka…"
+          : "Preparing update…";
 
   const changelog = `https://github.com/whysosaket/orka/releases/tag/v${encodeURIComponent(update.version)}`;
   const openChangelog = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -81,6 +114,7 @@ export function SidebarUpdate({
       size="sm"
       variant="tertiary"
       aria-label="Close update"
+      disabled={installing}
       onClick={
         collapsed
           ? undefined
@@ -102,13 +136,19 @@ export function SidebarUpdate({
       </div>
       <p>Hurray! An update is available.</p>
       {error && <p role="alert">{error}</p>}
+      {installing && (
+        <div className="sidebar-update-progress">
+          <p role="status">{progressLabel}</p>
+          <progress aria-label="Update progress" max={100} value={percent} />
+        </div>
+      )}
       <Button
         variant="primary"
         size="sm"
         disabled={installing}
         onClick={() => void install()}
       >
-        {installing ? "Preparing…" : "Update and Restart"}
+        {installing ? "Updating…" : "Update and Restart"}
       </Button>
       <a
         className="sidebar-update-changelog"
