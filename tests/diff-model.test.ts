@@ -225,6 +225,39 @@ await test("unchanged binary inspection omissions do not look like outgoing addi
   );
 });
 
+await test("executable permission changes remain reviewable with identical bytes", () => {
+  for (const binary of [false, true]) {
+    for (const executable of [false, true]) {
+      const files = {
+        "scripts/run.sh": binary ? "Binary asset" : "echo ready\n",
+      };
+      const entry = { path: "scripts/run.sh", hash: "same", binary };
+      const changes = changedFiles(files, files, {
+        beforeManifest: [{ ...entry, executable: !executable }],
+        afterManifest: [{ ...entry, executable }],
+      });
+      assert.equal(changes.length, 1);
+      assert.equal(changes[0].status, "modified");
+      assert.equal(
+        changes[0].executableChange,
+        executable ? "added" : "removed",
+      );
+      assert.deepEqual(summarizeDiff(changes[0].before, changes[0].after), {
+        additions: 0,
+        deletions: 0,
+        ranges: "",
+      });
+      assert.deepEqual(
+        changedFiles(files, files, {
+          beforeManifest: [{ ...entry, executable }],
+          afterManifest: [{ ...entry, executable }],
+        }),
+        [],
+      );
+    }
+  }
+});
+
 await test("explicit text metadata distinguishes literal Binary asset text", () => {
   const changes = changedFiles(
     { "notes.txt": "Binary asset" },

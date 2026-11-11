@@ -244,6 +244,56 @@ fn submit_draft_rejects_unreviewed_local_or_shared_changes_before_side_effects()
 }
 
 #[test]
+fn submit_draft_rejects_an_older_capture_and_tracks_recaptured_skill_content() {
+    let f = governed_fixture();
+    let first = shared(&f, "skill", "current-capture", "First local edit\n");
+    persist(&f, &first);
+    let older_id = governance::capture(&f.db, &f.project, &first, &json!([])).unwrap();
+    let mut older = command(&f, "draft", json!({"id":older_id})).unwrap()["draft"].clone();
+    let created = older["createdAt"].clone();
+    older["updatedAt"] = json!("2020-01-01T00:00:00.000Z");
+    db::upsert(
+        &f.db,
+        "drafts",
+        &older_id,
+        f.project["id"].as_str().unwrap(),
+        &older,
+    )
+    .unwrap();
+
+    let mut second = first.clone();
+    second["files"][0]["hash"] = json!(db::blob(b"Second local edit\n").unwrap());
+    let newer_id = governance::capture(&f.db, &f.project, &second, &json!([])).unwrap();
+    let mut newer = command(&f, "draft", json!({"id":newer_id})).unwrap()["draft"].clone();
+    newer["updatedAt"] = json!("2021-01-01T00:00:00.000Z");
+    db::upsert(
+        &f.db,
+        "drafts",
+        &newer_id,
+        f.project["id"].as_str().unwrap(),
+        &newer,
+    )
+    .unwrap();
+    let error = "Local or shared files changed; review the update again";
+    for publish in [false, true] {
+        assert_eq!(command(&f, "submit-draft", json!({"id":older_id,"publishIfAllowed":publish,"reviewedFiles":first["files"],"reviewedRevision":1})).unwrap_err(), error);
+        assert!(f.outbox().is_empty());
+    }
+
+    assert_eq!(
+        governance::capture(&f.db, &f.project, &first, &json!([])).unwrap(),
+        older_id
+    );
+    let recaptured = command(&f, "draft", json!({"id":older_id})).unwrap()["draft"].clone();
+    assert_eq!(recaptured["createdAt"], created);
+    assert!(recaptured["updatedAt"].as_str().unwrap() > newer["updatedAt"].as_str().unwrap());
+    assert_eq!(recaptured["resource"]["files"], first["files"]);
+    assert_eq!(command(&f, "submit-draft", json!({"id":newer_id,"publishIfAllowed":true,"reviewedFiles":second["files"],"reviewedRevision":1})).unwrap_err(), error);
+    assert!(f.outbox().is_empty());
+    assert_eq!(command(&f, "submit-draft", json!({"id":older_id,"publishIfAllowed":true,"reviewedFiles":first["files"],"reviewedRevision":1})).unwrap()["status"], "queued");
+}
+
+#[test]
 fn submit_draft_accepts_matching_review_and_preserves_unguarded_callers() {
     for (guarded, shared_revision) in [(true, 0), (true, 1), (false, 1)] {
         let f = governed_fixture();

@@ -7,7 +7,11 @@ import {
   type Icon as OcticonIcon,
 } from "@primer/octicons-react";
 import { Icon } from "./icon.js";
-import { summarizeDiff, type FileChangeStatus } from "./diff-model.js";
+import {
+  summarizeDiff,
+  type FileChange,
+  type FileChangeStatus,
+} from "./diff-model.js";
 import { tokenizeMarkdown, type Token } from "./markdown-tokens.js";
 import { supportsPierreDiffs } from "./pierre-diffs-compat.js";
 
@@ -120,6 +124,7 @@ export interface FileDiffCardProps {
   status?: FileChangeStatus;
   binary?: boolean;
   comparisonUnavailable?: boolean;
+  executableChange?: FileChange["executableChange"];
 }
 
 /** One unified, read-only comparison with collapsible unchanged regions. */
@@ -130,6 +135,7 @@ export function FileDiffCard({
   status = "modified",
   binary = false,
   comparisonUnavailable = false,
+  executableChange,
 }: FileDiffCardProps) {
   const kind = fileKind(path);
   const textPreview = !binary && kind.label !== "PDF";
@@ -178,10 +184,15 @@ export function FileDiffCard({
           )}
         </div>
       </header>
+      {executableChange && (
+        <p className="diff-card-summary">
+          Executable permission {executableChange}.
+        </p>
+      )}
       {!removed && !textPreview && (
         <p className="diff-card-summary">No text preview for this file.</p>
       )}
-      {!removed && textPreview && (
+      {!removed && textPreview && before !== after && (
         <div className="diff-lines" role="group" aria-label="File changes">
           {supported ? (
             <Suspense

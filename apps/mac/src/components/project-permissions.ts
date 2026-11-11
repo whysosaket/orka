@@ -36,7 +36,11 @@ export interface InstallPreview {
   after: Record<string, string>;
   beforeManifest?: FileManifestEntry[];
   afterManifest?: FileManifestEntry[];
-  copies?: { path: string; files: Record<string, string> }[];
+  copies?: {
+    path: string;
+    files: Record<string, string>;
+    manifest?: FileManifestEntry[];
+  }[];
 }
 export type ProjectCall = <T>(
   action: string,

@@ -71,11 +71,13 @@ export interface FileChange {
   binary?: boolean;
   /** Older native previews do not include enough data to compare binary bytes. */
   comparisonUnavailable?: boolean;
+  executableChange?: "added" | "removed";
 }
 
 export interface FileManifestEntry {
   path: string;
   hash: string;
+  executable?: boolean;
   /** Explicit encoding information avoids treating literal text as a sentinel. */
   binary?: boolean;
 }
@@ -117,7 +119,20 @@ export function changedFiles(
       : previous !== undefined;
     const hasFile = newManifest ? newManifest.has(path) : next !== undefined;
     const hasIdentities = Boolean(oldManifest && newManifest);
-    if (previousFile && nextFile && previousFile.hash === nextFile.hash)
+    const executableChange: FileChange["executableChange"] =
+      previousFile &&
+      nextFile &&
+      Boolean(previousFile.executable) !== Boolean(nextFile.executable)
+        ? nextFile.executable
+          ? "added"
+          : "removed"
+        : undefined;
+    if (
+      previousFile &&
+      nextFile &&
+      previousFile.hash === nextFile.hash &&
+      !executableChange
+    )
       continue;
     const binary =
       previousFile?.binary === true ||
@@ -134,15 +149,17 @@ export function changedFiles(
         after: "",
         binary: true,
         comparisonUnavailable: !hasIdentities && hadFile && hasFile,
+        ...(executableChange ? { executableChange } : {}),
       });
       continue;
     }
-    if (previous === next) continue;
+    if (previous === next && !executableChange) continue;
     changes.push({
       path,
       status: !hadFile ? "added" : !hasFile ? "removed" : "modified",
       before: previous ?? "",
       after: next ?? "",
+      ...(executableChange ? { executableChange } : {}),
     });
   }
   return changes;

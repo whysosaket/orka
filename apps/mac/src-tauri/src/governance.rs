@@ -200,6 +200,13 @@ pub fn capture(
         params![id, project_id, draft.to_string()],
     )
     .map_err(|e| e.to_string())?;
+    if resource["kind"] == "skill" {
+        db.execute(
+            "UPDATE drafts SET value=json_set(value,'$.updatedAt',?) WHERE id=? AND project=?",
+            params![db::now(), id, project_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     if resource["kind"] == "memory" {
         db.execute("UPDATE drafts SET value=json_set(value,'$.status','dismissed','$.dismissalReason','source_replaced') WHERE project=? AND id<>? AND json_extract(value,'$.status')='local' AND json_extract(value,'$.resource.resourceId')=?", params![project_id,id,resource["resourceId"].as_str()]).map_err(|e| e.to_string())?;
     }
@@ -692,6 +699,12 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
                 if !files.is_array() || files != &draft["resource"]["files"]
                     || (!draft["submission"].is_null() && files != &draft["submission"]["resource"]["files"]) {
                     return Err("Local or shared files changed; review the update again".into());
+                }
+                if draft["resource"]["kind"] == "skill" {
+                    let latest = db::rows(&db,"SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.resource.resourceId')=? ORDER BY coalesce(json_extract(value,'$.updatedAt'),json_extract(value,'$.createdAt')) DESC, rowid DESC LIMIT 1", &[&project_id, &draft["resource"]["resourceId"].as_str().ok_or("Missing resource")?])?;
+                    if latest.first().is_none_or(|current| current["id"] != draft["id"]) {
+                        return Err("Local or shared files changed; review the update again".into());
+                    }
                 }
             }
             if let Some(revision) = input.get("reviewedRevision") {

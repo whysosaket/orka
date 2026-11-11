@@ -18,7 +18,16 @@ pub fn snapshot() -> Result<Value> {
     daemon["running"] = json!(db::daemon_running()?);
     let visible = format!("SELECT id FROM projects WHERE {}", projects::ACTIVE);
     let scoped = |table: &str| {
-        db::rows(&db, &format!("SELECT value FROM {table} WHERE project IN ({visible}) ORDER BY json_extract(value,'$.updatedAt') DESC"), &[])
+        let order = if table == "drafts" {
+            "coalesce(json_extract(value,'$.updatedAt'),json_extract(value,'$.createdAt')) DESC, rowid DESC"
+        } else {
+            "json_extract(value,'$.updatedAt') DESC"
+        };
+        db::rows(
+            &db,
+            &format!("SELECT value FROM {table} WHERE project IN ({visible}) ORDER BY {order}"),
+            &[],
+        )
     };
     let mut projects = db::rows(
         &db,

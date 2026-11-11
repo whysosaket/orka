@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import type { InstallPreview } from "../../../apps/mac/src/components/project-permissions.js";
 
 /**
  * One governed project with a shared, multi-file skill. Options select the
@@ -27,6 +28,7 @@ export type SkillFixtureOptions = {
   /** Stay on the Skills index instead of opening the skill. */
   open?: false;
   previewFailure?: "once";
+  preview?: Partial<InstallPreview>;
 };
 
 const sharedSkill = [
@@ -357,6 +359,13 @@ export async function skillFixture(
                     : installation === "blocked" || installation === "modified"
                       ? localFiles
                       : { ...approved, "SKILL.md": previousSkill };
+                const beforeManifest = Object.keys(before).map((path) => ({
+                  path,
+                  hash: path.endsWith(".pdf")
+                    ? `hash-${path}`
+                    : `before-${path}`,
+                  binary: path.endsWith(".pdf"),
+                }));
                 return {
                   token: `preview-token-${previewFailures}`,
                   revision: 3,
@@ -364,13 +373,7 @@ export async function skillFixture(
                     installation === "blocked" || installation === "modified",
                   before,
                   after: installation === "removal" ? {} : approved,
-                  beforeManifest: Object.keys(before).map((path) => ({
-                    path,
-                    hash: path.endsWith(".pdf")
-                      ? `hash-${path}`
-                      : `before-${path}`,
-                    binary: path.endsWith(".pdf"),
-                  })),
+                  beforeManifest,
                   afterManifest:
                     installation === "removal"
                       ? []
@@ -379,7 +382,14 @@ export async function skillFixture(
                           hash: `hash-${path}`,
                           binary: path.endsWith(".pdf"),
                         })),
-                  copies: [{ path: binding.paths[0], files: before }],
+                  copies: [
+                    {
+                      path: binding.paths[0],
+                      files: before,
+                      manifest: beforeManifest,
+                    },
+                  ],
+                  ...options.preview,
                 };
               }
               if (action === "apply-install") {

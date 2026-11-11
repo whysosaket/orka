@@ -1,5 +1,10 @@
 import { test, expect, type Locator } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
+import type {
+  Inspection,
+  LocalDraft,
+  Snapshot,
+} from "../../apps/mac/src/types.js";
 import {
   calls,
   detail,
@@ -8,6 +13,10 @@ import {
   skillFixture,
   toast,
 } from "./fixtures/skill-detail.js";
+
+type NativeFixture = {
+  invoke: (name: string, args?: Record<string, unknown>) => Promise<unknown>;
+};
 
 async function backgroundChannels(line: Locator) {
   return line.evaluate((element) => {
@@ -1330,6 +1339,7 @@ test("a binary-only incoming update remains installable and omits unchanged bina
           { path: "review.pdf", hash: "new", binary: true },
           { path: "unchanged.pdf", hash: "same", binary: true },
         ],
+        copies: undefined,
       };
     };
   });
@@ -1392,6 +1402,249 @@ test("an up-to-date preview needs no install action", async ({ page }) => {
   await expect(dialog.locator(".reader-state-title")).toHaveText("Up to date");
   await expect(dialog).toContainText("This Mac has the approved version.");
   await expect(dialog.locator(".review-footer")).toHaveCount(0);
+});
+
+for (const primary of ["approved", "older", "missing"] as const) {
+  test(`incoming review includes a divergent second copy when the first is ${primary}`, async ({
+    page,
+  }) => {
+    const approved = { "SKILL.md": "Approved instructions\n" };
+    const manifest = [{ path: "SKILL.md", hash: "approved", binary: false }];
+    const first: Record<string, string> =
+      primary === "missing"
+        ? {}
+        : {
+            "SKILL.md":
+              primary === "approved"
+                ? approved["SKILL.md"]
+                : "Older instructions\n",
+          };
+    const firstManifest =
+      primary === "missing" ? [] : [{ ...manifest[0], hash: primary }];
+    const second = { "SKILL.md": "Private Claude instructions\n" };
+    await skillFixture(page, {
+      installation: "blocked",
+      preview: {
+        dirty: true,
+        before: primary === "missing" ? second : first,
+        after: approved,
+        beforeManifest:
+          primary === "missing"
+            ? [{ ...manifest[0], hash: "private" }]
+            : firstManifest,
+        afterManifest: manifest,
+        copies: [
+          {
+            path: "/test/orka/.agents/skills/example",
+            files: first,
+            manifest: firstManifest,
+          },
+          {
+            path: "/test/orka/.claude/skills/example",
+            files: second,
+            manifest: [{ ...manifest[0], hash: "private" }],
+          },
+        ],
+      },
+    });
+    await rail(page)
+      .getByRole("button", { name: /^Review local update/ })
+      .click();
+    const dialog = page.getByRole("dialog", {
+      name: "Review local update",
+      exact: true,
+    });
+    await expect(dialog.getByText("Up to date", { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(
+      dialog.getByText("Local copy: /test/orka/.claude/skills/example", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole("group", { name: "File changes" }).last(),
+    ).toContainText("Private Claude instructions");
+    await expect(dialog.locator(".diff-card-path")).toHaveCount(
+      primary === "approved" ? 1 : 2,
+    );
+    await dialog
+      .getByRole("button", { name: "Keep edits and install", exact: true })
+      .click();
+    expect(await governanceCalls(page, "apply-install")).toMatchObject([
+      { token: "preview-token-0", preserveLocal: true },
+    ]);
+    await expect(dialog).toHaveCount(0);
+  });
+}
+
+for (const access of ["publish", "suggest"] as const) {
+  test(`an executable-only local edit can ${access}`, async ({ page }) => {
+    await skillFixture(page, {
+      access,
+      installation: "modified",
+      draft: "local",
+      files: ["SKILL.md", "scripts/candidates.sh"],
+    });
+    await page.evaluate(() => {
+      const native = (
+        window as unknown as { __TAURI_INTERNALS__: NativeFixture }
+      ).__TAURI_INTERNALS__;
+      const invoke = native.invoke;
+      native.invoke = async (name, args) => {
+        const result = await invoke(name, args);
+        if (name !== "governance_command" || args?.action !== "draft")
+          return result;
+        const detail = result as { draft: LocalDraft };
+        const files: Record<string, string> = {};
+        const manifest = [];
+        for (const path of ["SKILL.md", "scripts/candidates.sh"]) {
+          files[path] = (
+            (await invoke("inspect_resource", {
+              id: "skill-a",
+              file: path,
+              conflictId: null,
+            })) as Inspection
+          ).content!;
+          manifest.push({
+            path,
+            hash: `hash-${path}`,
+            size: 10,
+            executable: path.endsWith(".sh"),
+            binary: false,
+          });
+        }
+        return {
+          files,
+          manifest,
+          draft: {
+            ...detail.draft,
+            resource: { ...detail.draft.resource, files: manifest },
+          },
+        };
+      };
+    });
+    await rail(page)
+      .getByRole("button", { name: "Review local edits", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", {
+      name: "Review local edits",
+      exact: true,
+    });
+    await expect(
+      dialog.getByText("Executable permission added.", { exact: true }),
+    ).toBeVisible();
+    await expect(dialog.locator(".diff-card-path")).toHaveText([
+      "scripts/candidates.sh",
+    ]);
+    await expect(
+      dialog.locator(".diff-count--added, .diff-count--removed, .diff-lines"),
+    ).toHaveCount(0);
+    await dialog
+      .getByRole("button", {
+        name: access === "publish" ? "Publish update" : "Send for approval",
+        exact: true,
+      })
+      .click();
+    expect(await governanceCalls(page, "submit-draft")).toMatchObject([
+      {
+        id: "draft-1",
+        reviewedFiles: expect.arrayContaining([
+          expect.objectContaining({
+            path: "scripts/candidates.sh",
+            executable: true,
+          }),
+        ]),
+      },
+    ]);
+    await expect(dialog).toHaveCount(0);
+  });
+}
+
+test("a newer capture invalidates an open review and becomes the reviewed submission", async ({
+  page,
+}) => {
+  await skillFixture(page, { installation: "modified", draft: "local" });
+  await rail(page)
+    .getByRole("button", { name: "Review local edits", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review local edits",
+    exact: true,
+  });
+  await expect(
+    dialog.getByRole("button", { name: "Publish update", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const native = (window as unknown as { __TAURI_INTERNALS__: NativeFixture })
+      .__TAURI_INTERNALS__;
+    const invoke = native.invoke;
+    const newer = (older: LocalDraft): LocalDraft => ({
+      ...older,
+      id: "newest-capture",
+      createdAt: "2026-10-27T09:00:00Z",
+      resource: {
+        ...older.resource,
+        files: older.resource.files.map((file) => ({
+          ...file,
+          hash: `newest-${file.path}`,
+        })),
+      },
+    });
+    native.invoke = async (name, args) => {
+      const result = await invoke(name, args);
+      if (name === "snapshot") {
+        const snapshot = result as Snapshot;
+        return {
+          ...snapshot,
+          drafts: [...snapshot.drafts!, newer(snapshot.drafts![0])],
+        };
+      }
+      if (name === "governance_command" && args?.action === "draft") {
+        const detail = result as {
+          draft: LocalDraft;
+          files: Record<string, string>;
+        };
+        const draft = newer(detail.draft);
+        return {
+          ...detail,
+          draft,
+          manifest: draft.resource.files,
+          files: {
+            ...detail.files,
+            "SKILL.md":
+              detail.files["SKILL.md"] + "\n- Latest capture instructions.\n",
+          },
+        };
+      }
+      return result;
+    };
+  });
+  await expect(
+    dialog.getByRole("button", { name: "Review latest", exact: true }),
+  ).toBeVisible({ timeout: 5000 });
+  expect(await governanceCalls(page, "submit-draft")).toHaveLength(0);
+  await dialog
+    .getByRole("button", { name: "Review latest", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("group", { name: "File changes" }).first(),
+  ).toContainText("Latest capture instructions.");
+  expect((await governanceCalls(page, "draft")).at(-1)).toMatchObject({
+    id: "newest-capture",
+  });
+  await dialog
+    .getByRole("button", { name: "Publish update", exact: true })
+    .click();
+  expect(await governanceCalls(page, "submit-draft")).toMatchObject([
+    {
+      id: "newest-capture",
+      reviewedFiles: expect.arrayContaining([
+        expect.objectContaining({ hash: "newest-SKILL.md" }),
+      ]),
+    },
+  ]);
+  await expect(dialog).toHaveCount(0);
 });
 
 test("compact windows fold the rail into the reader and keep the drawer usable", async ({

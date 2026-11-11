@@ -49,7 +49,7 @@ import {
 export type ReviewMode = "outgoing" | "incoming";
 
 interface Loaded {
-  changes: FileChange[];
+  changes: (FileChange & { copyPath?: string })[];
   /** Incoming reviews: the approved revision and its preview token. */
   revision: number;
   token?: string;
@@ -230,11 +230,25 @@ export function SkillReviewOverlay({
         const preview = await call<InstallPreview>("preview-install", {
           resourceId: currentResource.resourceId,
         });
+        const copies = preview.copies?.length
+          ? preview.copies
+          : [
+              {
+                path: "",
+                files: preview.before,
+                manifest: preview.beforeManifest,
+              },
+            ];
         loaded = {
-          changes: changedFiles(preview.before, removal ? {} : preview.after, {
-            beforeManifest: preview.beforeManifest,
-            afterManifest: removal ? [] : preview.afterManifest,
-          }),
+          changes: copies.flatMap((copy) =>
+            changedFiles(copy.files, removal ? {} : preview.after, {
+              beforeManifest: copy.manifest,
+              afterManifest: removal ? [] : preview.afterManifest,
+            }).map((change) => ({
+              ...change,
+              copyPath: copies.length > 1 ? copy.path : undefined,
+            })),
+          ),
           revision: preview.revision,
           token: preview.token,
           dirty: preview.dirty,
@@ -373,8 +387,10 @@ export function SkillReviewOverlay({
   const refreshDraft = () =>
     run(
       async () => {
-        if (phase.status !== "ready" || !phase.draft) return;
-        await call("refresh-draft", { id: phase.draft.id });
+        if (phase.status !== "ready") return;
+        const draft = skillDraft(latest.current.state, latest.current.resource);
+        if (draft && actionableDraftStatuses.includes(draft.status))
+          await call("refresh-draft", { id: draft.id });
         await onRefresh();
         await load();
       },
@@ -617,16 +633,27 @@ export function SkillReviewOverlay({
                         on this Mac will be updated as well.
                       </p>
                     )}
-                    {loaded.changes.map((change) => (
-                      <FileDiffCard
-                        key={change.path}
-                        path={change.path}
-                        before={change.before}
-                        after={change.after}
-                        status={change.status}
-                        binary={change.binary}
-                        comparisonUnavailable={change.comparisonUnavailable}
-                      />
+                    {loaded.changes.map((change, index) => (
+                      <React.Fragment
+                        key={JSON.stringify([change.copyPath, change.path])}
+                      >
+                        {change.copyPath &&
+                          change.copyPath !==
+                            loaded.changes[index - 1]?.copyPath && (
+                            <p className="review-note">
+                              Local copy: {change.copyPath}
+                            </p>
+                          )}
+                        <FileDiffCard
+                          path={change.path}
+                          before={change.before}
+                          after={change.after}
+                          status={change.status}
+                          binary={change.binary}
+                          comparisonUnavailable={change.comparisonUnavailable}
+                          executableChange={change.executableChange}
+                        />
+                      </React.Fragment>
                     ))}
                   </div>
                 )

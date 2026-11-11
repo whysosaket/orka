@@ -37,16 +37,20 @@ export function skillDraft(
   state: Pick<Snapshot, "drafts">,
   resource: Pick<ProjectResource, "resourceId" | "projectId">,
 ): LocalDraft | undefined {
-  const drafts = (state.drafts ?? []).filter(
-    (draft) =>
-      draft.projectId === resource.projectId &&
-      draft.resource.resourceId === resource.resourceId &&
-      !["dismissed", "published"].includes(draft.status),
-  );
-  return (
-    drafts.find((draft) => actionableDraftStatuses.includes(draft.status)) ??
-    drafts.find((draft) => draft.status === "proposed")
-  );
+  const draft = (state.drafts ?? [])
+    .filter(
+      (draft) =>
+        draft.projectId === resource.projectId &&
+        draft.resource.resourceId === resource.resourceId,
+    )
+    .sort((a, b) =>
+      (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt),
+    )[0];
+  return draft &&
+    (actionableDraftStatuses.includes(draft.status) ||
+      draft.status === "proposed")
+    ? draft
+    : undefined;
 }
 
 /**
