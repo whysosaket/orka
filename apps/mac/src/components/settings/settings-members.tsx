@@ -1,6 +1,5 @@
 import { RepositoryRequests } from "../repository-connections.js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import {
   HistoryIcon,
   KebabHorizontalIcon,
@@ -14,7 +13,7 @@ import {
 import { Button } from "../button.js";
 import { IconButton } from "../icon-button.js";
 import { PermissionSelect } from "../permission-select.js";
-import { CopyLinkButton } from "../copy-link-button.js";
+import { ProjectInviteDialog } from "../project-invite-dialog.js";
 import { ActionPopover } from "../resource-actions.js";
 import { Overlay } from "../overlay.js";
 import { LoadingRegion } from "../loading-region.js";
@@ -197,7 +196,7 @@ export function SettingsMembers({
   const [busy, setBusy] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
-  const [invite, setInvite] = useState<string | null>(null),
+  const [invite, setInvite] = useState(false),
     [confirmation, setConfirmation] = useState<{
       action: "remove-member" | "transfer-ownership";
       member: ProjectMember;
@@ -247,25 +246,6 @@ export function SettingsMembers({
       if (active.current) setBusy("");
     }
   }
-  async function createInvite() {
-    if (locked.current || staleAuthority) return;
-    locked.current = true;
-    setBusy("invite");
-    setError("");
-    try {
-      const result = await invoke<{ token: string; url?: string }>(
-        "cloud_action",
-        { action: "invite", input: { projectId } },
-      );
-      if (active.current)
-        setInvite(result.url ?? `orka://join/${result.token}`);
-    } catch (error) {
-      if (active.current) setError(String(error));
-    } finally {
-      locked.current = false;
-      if (active.current) setBusy("");
-    }
-  }
   return (
     <>
       <SettingsHeading
@@ -276,13 +256,9 @@ export function SettingsMembers({
             <Button
               className="settings-add-member"
               disabled={Boolean(busy) || staleAuthority}
-              onClick={() => void createInvite()}
+              onClick={() => setInvite(true)}
             >
-              {busy === "invite" ? (
-                <ActivityIndicator />
-              ) : (
-                <PersonAddIcon size={16} />
-              )}
+              <PersonAddIcon size={16} />
               Add Member
             </Button>
           )
@@ -368,23 +344,12 @@ export function SettingsMembers({
       )}
       <RepositoryRequests project={project} state={state} />
       {invite && (
-        <Overlay
-          open
+        <ProjectInviteDialog
           title="Add Member"
-          className="settings-confirm"
-          onClose={() => setInvite(null)}
-        >
-          <h2>Add Member</h2>
-          <p>
-            This one-use join link expires after 24 hours. People join as
-            Members; the Owner can promote them afterward.
-          </p>
-          <TextInvite value={invite} />
-          <div className="settings-confirm-actions">
-            <Button onClick={() => setInvite(null)}>Done</Button>
-            <CopyLinkButton value={invite} onError={setError} />
-          </div>
-        </Overlay>
+          projectId={projectId}
+          projectName={project.name}
+          onClose={() => setInvite(false)}
+        />
       )}
       {confirmation && (
         <Overlay
@@ -443,16 +408,5 @@ export function SettingsMembers({
         </Overlay>
       )}
     </>
-  );
-}
-function TextInvite({ value }: { value: string }) {
-  return (
-    <textarea
-      className="settings-invite"
-      aria-label="Join link"
-      value={value}
-      readOnly
-      rows={3}
-    />
   );
 }

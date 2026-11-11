@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/whysosaket/orka-api",
   "commit": "2f54775db40de0879f8e2ce11cc7b1eeb70af506",
-  "candidate": false,
-  "sourceTreeSha256": "0e01d78475001cd9c427b21b48f73c0add8079c6788e6eebf9d3d341f4a7ef8f",
+  "candidate": true,
+  "sourceTreeSha256": "cf871486cfbf67dba7f86ce836d68e6e2638971528cf4fc61956f27159115002",
   "files": [
     {
       "path": ".dockerignore",
@@ -11,7 +11,7 @@
     },
     {
       "path": ".env.example",
-      "sha256": "097a58c67871d301824607537ce2dcdc77eb739d595f268e5f7896bde400a7c4",
+      "sha256": "6c9cafdfa7f9e8b721b7970b3935ab2a0a621b5d15989b01ac8c13a7f0f33c95",
       "mode": 420
     },
     {
@@ -71,7 +71,7 @@
     },
     {
       "path": "deploy/ec2/.env.example",
-      "sha256": "e4429ef126990bfde6210a02d1471ef3895f130e50cc49f9e03510701413da4d",
+      "sha256": "73844379c8aea4e0f3666da65cee51846471a93746ac6d6807b897e8d62c2da2",
       "mode": 420
     },
     {
@@ -101,7 +101,7 @@
     },
     {
       "path": "deploy/ec2/compose.yml",
-      "sha256": "a8598bdf49a3ebdaf95470e25fb12d558e6331c5d2f7d269266b5a57d1600e39",
+      "sha256": "6c49601443de0d3b13ae954ac5708d93118ea2408049540c253c68f276b84875",
       "mode": 420
     },
     {
@@ -131,7 +131,7 @@
     },
     {
       "path": "deploy/self-hosted/.env.example",
-      "sha256": "60a9d4d47223ca055832d7b7192769bc90ac3bb8bf4c2ad684f8274a683c7927",
+      "sha256": "5cb63dbf00f0b29273329e0dc1ed1fdb633e3f25611ec06e3d057193b54ac6b4",
       "mode": 420
     },
     {
@@ -146,12 +146,12 @@
     },
     {
       "path": "docs/authentication.md",
-      "sha256": "cec7a044780da9e335974fbe635c846ce810a2454952ccefc36d12184e82cabd",
+      "sha256": "8b6122f94cb40ddd4f0f7b477739236c8cdd6b37783ea2d5390f44a1e866afc8",
       "mode": 420
     },
     {
       "path": "docs/compatibility.md",
-      "sha256": "0698b5a2b16ea58eeb125c5ea074b356015f0e5d1d37eb63b4b6292b3dce481b",
+      "sha256": "7e6413c5e938db48784e8a3923d2150d192ed1cf6d843b3ebb941bd730f16d5a",
       "mode": 420
     },
     {
@@ -216,7 +216,7 @@
     },
     {
       "path": "internal/server/api.go",
-      "sha256": "dd2ae17e13a6c6d1a5d36ce684f6507a7bc44cc323f3eb32a9cbc0a764ee1e69",
+      "sha256": "37c8fb2a863df6e3e27b7940cdb47694079709dad092645a28c6a7ea7485eaa6",
       "mode": 420
     },
     {
@@ -272,6 +272,16 @@
     {
       "path": "internal/server/governance.go",
       "sha256": "d3058eede90e52063b7ee0ca69a1ca6e7241daac5a87e7a1e72f8f9c4a5f2cc4",
+      "mode": 420
+    },
+    {
+      "path": "internal/server/invitations_test.go",
+      "sha256": "2132a430f18c20d9cd151a7d8278caedb0126337c707d7aeef0fa3f6a2f34285",
+      "mode": 420
+    },
+    {
+      "path": "internal/server/invitations.go",
+      "sha256": "d50c4d9d65443c932cdd44d1e41cde4d0b3c5294e151b2591e34c18c7cc3349f",
       "mode": 420
     },
     {
@@ -510,6 +520,11 @@
       "mode": 420
     },
     {
+      "path": "packages/server-core/migrations/003_email_invitations.sql",
+      "sha256": "4bcd0c39c28b23a611c85e2c503ddeec449f6f3b72ccad4b2f3389ca04823ac9",
+      "mode": 420
+    },
+    {
       "path": "packages/server-core/migrations/assets.go",
       "sha256": "c251e8ed88aad92c47371cd7fa6f1ccc56bdb7f4660a9f41398b6e0876318127",
       "mode": 420
@@ -526,7 +541,7 @@
     },
     {
       "path": "scripts/check-repository.ts",
-      "sha256": "7291c5406270a046f7ded26e95f96c320667faca1dfb5281b85ecf4e66a3a15e",
+      "sha256": "a38d9b7bb64e41b56864e316b41575f45a998aee4cedc79b0d5df02872835010",
       "mode": 420
     },
     {
@@ -601,7 +616,7 @@
     },
     {
       "path": "tests/acceptance/image-e2e.ts",
-      "sha256": "907949c89cba9c90be4107123abd678be21f6e4974e6312ca3dbfd5a66397436",
+      "sha256": "d7a0172833b69bd10b13818ee44a50d1eb01bae31a887b6e002fd7b002a674d2",
       "mode": 420
     },
     {
@@ -761,7 +776,7 @@
     },
     {
       "path": "tests/migrations.integration.ts",
-      "sha256": "0a0127b4516747f48be9a94d50e4ac56d35f3606c6afc4502ab1c08107da5059",
+      "sha256": "c653219fba9c0c84cb716727089f3d7156843c2982fb0a2c2770f41c65ecadd3",
       "mode": 420
     },
     {
@@ -781,7 +796,7 @@
     },
     {
       "path": "tests/project-invite.integration.ts",
-      "sha256": "756194c3b040b528dee8ab6e973de39a9aaf1a439bf766c9cd7406ee73f15151",
+      "sha256": "2b67f36bba7baba379102b8a384fc544294546a8753d7a448ed4c2b5339a8ddf",
       "mode": 420
     },
     {

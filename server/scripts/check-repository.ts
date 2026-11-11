@@ -12,7 +12,11 @@ assert.deepEqual(
   readdirSync("packages/server-core/migrations").filter((name) =>
     name.endsWith(".sql"),
   ),
-  ["001_initial.sql", "002_github_repositories.sql"],
+  [
+    "001_initial.sql",
+    "002_github_repositories.sql",
+    "003_email_invitations.sql",
+  ],
 );
 const forbidden = files.filter((path) => {
   const name = basename(path);

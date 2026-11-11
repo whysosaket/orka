@@ -59,6 +59,7 @@ assert.deepEqual(
   [
     "packages/server-core/migrations/001_initial.sql",
     "packages/server-core/migrations/002_github_repositories.sql",
+    "packages/server-core/migrations/003_email_invitations.sql",
   ],
 );
 assert.equal(

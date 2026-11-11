@@ -100,6 +100,11 @@ await writeFile(
           GITHUB_REPOS_TOKEN_KEY: randomBytes(32).toString("hex"),
           GITHUB_REPOS_WEBHOOK_SECRET: "fixture-github-webhook-".repeat(3),
           MAGIC_LINK_ENABLED: "true",
+          SMTP_HOST: "mail",
+          SMTP_PORT: "1025",
+          SMTP_FROM: "login@example.test",
+          SMTP_USER: "",
+          SMTP_PASSWORD: "",
           MCP_ENABLED: "true",
           ...(managed
             ? {
@@ -396,6 +401,35 @@ try {
       })
     ).status,
     403,
+  );
+  assert.equal(instance.invites.email, true);
+  const emailed = await post(
+    "/v2/invites",
+    { projectId: project, email: "other@example.test" },
+    session.access_token,
+  );
+  assert.equal(emailed.status, 200, await emailed.clone().text());
+  const invitationHtml = await email();
+  const invitationUrl = invitationHtml.match(
+    /href="([^"]+\/join\/[a-f0-9]{48})"/,
+  )?.[1];
+  assert.ok(invitationUrl);
+  const invitationToken = new URL(invitationUrl).pathname.split("/").at(-1)!;
+  assert.equal((await fetch(invitationUrl)).status, 200);
+  assert.equal(
+    (await post("/v2/join", { token: invitationToken }, session.access_token))
+      .status,
+    403,
+  );
+  assert.equal(
+    (await post("/v2/join", { token: invitationToken }, other.access_token))
+      .status,
+    200,
+  );
+  assert.equal(
+    (await post("/v2/join", { token: invitationToken }, other.access_token))
+      .status,
+    400,
   );
   const inviteResponse = await post(
     "/v2/invites",

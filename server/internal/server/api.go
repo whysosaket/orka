@@ -85,7 +85,7 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 		return nil, true, nil
 	}
 	if path == "/v2/instance" && method == http.MethodGet {
-		return Object{"version": 1, "onboarding": 1, "profile": Object{"version": 2, "jobRole": true, "avatarUpload": true, "conditionalSave": 1}, "mode": a.Settings.Mode, "repositories": Object{"github": choose(a.Repositories.Settings.Enabled, 1, 0)}, "auth": Object{"password": a.Settings.Password, "github": a.Settings.GitHub, "magicLink": a.Settings.MagicLink, "profileRedirect": true, "emailCode": a.Settings.MagicLink}}, false, nil
+		return Object{"version": 1, "onboarding": 1, "invites": Object{"email": a.invitationEmailAvailable()}, "profile": Object{"version": 2, "jobRole": true, "avatarUpload": true, "conditionalSave": 1}, "mode": a.Settings.Mode, "repositories": Object{"github": choose(a.Repositories.Settings.Enabled, 1, 0)}, "auth": Object{"password": a.Settings.Password, "github": a.Settings.GitHub, "magicLink": a.Settings.MagicLink, "profileRedirect": true, "emailCode": a.Settings.MagicLink}}, false, nil
 	}
 	if path == "/integrations/github/webhook" && method == http.MethodPost {
 		raw, err := readBytes(w, r, 1_000_000)
@@ -291,18 +291,27 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 			return Object{"id": s.createProject(q, user, text(input["name"]), number(input["governance"]) == 1, input["remoteKey"], input["requestId"], true)}
 		})
 	case path == "/v2/invites" && method == http.MethodPost:
-		input, err := parse(scopeShape(nil))
+		input, err := parse(scopeShape(map[string]Field{"email": optional(trimmed(strField(1, 254)))}))
 		if err != nil {
 			return nil, false, err
 		}
-		return tx(func(q *Queries) any { return s.createInvite(q, user, text(input["projectId"]), a.Settings.PublicURL) })
+		email := ""
+		if input["email"] != nil {
+			email, err = normalizeInvitationEmail(text(input["email"]))
+			if err != nil {
+				return nil, false, err
+			}
+		}
+		return tx(func(q *Queries) any { return a.createInvite(q, user, text(input["projectId"]), email) })
 	case path == "/v2/join" && method == http.MethodPost:
 		input, err := parse(map[string]Field{"token": strField(48, 48)})
 		if err != nil || !regexp.MustCompile(`^[a-f0-9]{48}$`).MatchString(text(input["token"])) {
 			return nil, false, bad("Invalid request")
 		}
 		return tx(func(q *Queries) any {
-			return s.joinProject(q, user, text(input["token"]), r.Header.Get("X-Orka-Governance") == "1")
+			return s.joinProject(q, user, text(input["token"]), r.Header.Get("X-Orka-Governance") == "1", func() (string, error) {
+				return a.invitationAccountEmail(r.Context(), strings.TrimPrefix(authorization, "Bearer "), user)
+			})
 		})
 	case path == "/v2/devices" && method == http.MethodPost:
 		input, err := parse(map[string]Field{"id": uuidField(), "name": strField(1, 100), "hardwareFamily": optional(enumField("laptop", "all-in-one", "mac-mini", "mac-studio", "mac-pro", "generic"))})
@@ -434,29 +443,57 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 	}
 	return nil, false, &HTTPError{Status: 404, Message: "Not found"}
 }
-func (s *Store) createInvite(q *Queries, user, project, origin string) any {
-	q.Exec("select id from orka.projects where id=$1 for share", project)
+func (a *API) createInvite(q *Queries, user, project, email string) any {
+	s, origin := a.Store, a.Settings.PublicURL
+	p := q.One("select name from orka.projects where id=$1 for update", project)
 	s.member(q, user, project)
 	if !q.Require(q.One("select 1 from orka.members m join orka.projects p on p.id=m.project_id where m.project_id=$1 and m.user_id=$2 and (m.role='owner' or (m.role='admin' and p.role_policies is not null))", project, user) != nil, 403, "Only project owners can invite members") {
 		return nil
+	}
+	if email != "" {
+		if !q.Require(a.invitationEmailAvailable(), 409, "Email invitations are unavailable on this service. Use a joining link.") {
+			return nil
+		}
+		q.Exec("delete from orka.invitation_deliveries where project_id=$1 and created_at<=now()-interval '1 hour'", project)
+		recent := q.One("select 1 from orka.invitation_deliveries where project_id=$1 and email_hash=$2 and created_at>now()-interval '60 seconds'", project, bytesHash([]byte(email)))
+		volume := q.One("select count(*) as count from orka.invitation_deliveries where project_id=$1", project)
+		if !q.Require(recent == nil && number(volume["count"]) < 30, 429, "Invitation limit reached. Wait before sending another email or use a joining link.") {
+			return nil
+		}
 	}
 	token, err := randomToken(24)
 	if !q.Check(err) {
 		return nil
 	}
-	q.Exec("insert into orka.invites values($1,$2,now()+interval '1 day')", bytesHash([]byte(token)), project)
+	hash := bytesHash([]byte(token))
+	q.Exec("insert into orka.invites(token_hash,project_id,expires_at,email) values($1,$2,now()+interval '1 day',$3)", hash, project, choose(email == "", nil, email))
+	if email != "" {
+		if q.Err() != nil || !q.Check(a.sendInvitation(q.ctx, email, text(p["name"]), origin+"/join/"+token, hash)) {
+			return nil
+		}
+		q.Exec("insert into orka.invitation_deliveries(token_hash,project_id,email_hash) values($1,$2,$3)", hash, project, bytesHash([]byte(email)))
+	}
 	s.appendLog(q, project, Object{"action": "invite.created", "actor": user}, true, nil)
+	if email != "" {
+		return Object{"sent": true, "email": email}
+	}
 	result := Object{"token": token}
 	if origin != "" {
 		result["url"] = origin + "/join/" + token
 	}
 	return result
 }
-func (s *Store) joinProject(q *Queries, user, token string, supported bool) any {
+func (s *Store) joinProject(q *Queries, user, token string, supported bool, verifiedEmail func() (string, error)) any {
 	hash := bytesHash([]byte(token))
-	candidate := q.One("select project_id from orka.invites where token_hash=$1", hash)
+	candidate := q.One("select project_id,email from orka.invites where token_hash=$1", hash)
 	if !q.Require(candidate != nil, 400, "Invite expired or already used") {
 		return nil
+	}
+	if email := text(candidate["email"]); email != "" {
+		address, err := verifiedEmail()
+		if !q.Check(err) || !q.Require(address == email, 403, "Sign in with the verified email address this invitation was sent to.") {
+			return nil
+		}
 	}
 	project := text(candidate["project_id"])
 	p := q.One("select id,governed from orka.projects where id=$1 and archived_at is null for update", project)

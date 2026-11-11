@@ -214,6 +214,10 @@ pub fn sync_now() -> Result<()> {
 }
 #[tauri::command]
 pub async fn cloud_action(action: String, input: Value) -> Result<Value> {
+    if action == "invite-capabilities" {
+        let caps = sync::api("GET", "/v2/instance", None).await?;
+        return Ok(json!({"email": caps["invites"]["email"] == true}));
+    }
     cloud_action_scoped(action, input, None).await
 }
 pub(crate) async fn cloud_action_scoped(
@@ -311,7 +315,9 @@ pub(crate) async fn cloud_action_scoped(
             r["repositorySetup"] = json!(true);
         }
     }
-    sync_now()?;
+    if adding {
+        sync_now()?;
+    }
     Ok(r)
 }
 

@@ -61,3 +61,31 @@ Unknown/disabled-signup email requests have the same success response; delivery 
 `RESEND_API_URL` is only an explicit test/provider endpoint override; production leaves it unset. Tests use a capture provider and a loopback hook bridge because GoTrue forbids non-local plain HTTP hooks. Production always uses the configured public HTTPS hook.
 
 Sources: [GoTrue v2.196.0](https://github.com/supabase/auth/tree/v2.196.0), [PKCE](https://supabase.com/docs/guides/auth/sessions/pkce-flow), [send-email hook](https://supabase.com/docs/guides/auth/auth-hooks/send-email-hook).
+
+## Project email invitations
+
+The desktop prefers email when `/v2/instance` advertises `invites.email`.
+`POST /v2/invites` accepts an optional `email` and returns `{ sent: true, email }`
+after the provider accepts delivery. Omitting email retains `{ token, url? }` and
+the existing single-use joining-link flow. Missing delivery configuration falls
+back to joining links; delivery errors preserve that option.
+
+The Go server reuses `EMAIL_PROVIDER`, `PUBLIC_URL`, and either
+`RESEND_API_KEY`/`RESEND_FROM` or `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_FROM`
+and optional `SMTP_USER`/`SMTP_PASSWORD`. The shared Compose definition passes
+SMTP settings to both GoTrue and the API. Port 465 uses implicit TLS; other ports
+negotiate STARTTLS when available. No new provider keys or desktop secrets are
+introduced, and project invitations do not require magic-link sign-in.
+
+Migration `003_email_invitations.sql` adds a nullable recipient and delivery
+cooldown records. Existing links keep a null recipient. Email invitations require
+the matching confirmed account email from GoTrue, expire after 24 hours, and are
+consumed only by authenticated joining after sharing review. Previewing an email
+link does not accept it. Send limits are one per recipient/project per minute and
+30 per project per hour; consumption does not reset them. Failed sends roll back
+the token. Provider acceptance does not prove mailbox delivery.
+
+Invitations retain the configured signup policy and do not provision or merge
+accounts. With signup disabled, operators still create accounts. Deploy the Go
+backend/migration before the desktop. Before downgrading to older joining code,
+revoke outstanding email invitations so recipient restrictions cannot be bypassed.

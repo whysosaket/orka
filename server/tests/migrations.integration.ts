@@ -43,13 +43,18 @@ await test("a fresh server installs the baseline and GitHub migration atomically
         new URL("../packages/server-core/migrations/", import.meta.url),
       )
     ).filter((name) => name.endsWith(".sql")),
-    ["001_initial.sql", "002_github_repositories.sql"],
+    [
+      "001_initial.sql",
+      "002_github_repositories.sql",
+      "003_email_invitations.sql",
+    ],
   );
   await database(async (pool) => {
     await Promise.all([migrate(pool), migrate(pool)]);
     assert.deepEqual(await ledger(pool), [
       initialMigration,
       "002_github_repositories.sql",
+      "003_email_invitations.sql",
     ]);
     assert.equal(
       (
@@ -57,7 +62,7 @@ await test("a fresh server installs the baseline and GitHub migration atomically
           "select count(*) from pg_tables where schemaname='orka'",
         )
       ).rows[0].count,
-      "43",
+      "44",
     );
     const project = randomUUID(),
       owner = randomUUID();
@@ -77,6 +82,7 @@ await test("a fresh server installs the baseline and GitHub migration atomically
     assert.deepEqual(await ledger(pool), [
       initialMigration,
       "002_github_repositories.sql",
+      "003_email_invitations.sql",
     ]);
   });
 });
@@ -108,11 +114,24 @@ await test("an existing baseline upgrades GitHub tables without replacing projec
       "insert into orka.project_sources values($1,$2,'Existing source')",
       [project, source],
     );
+    await pool.query(
+      "insert into orka.invites(token_hash,project_id,expires_at) values('legacy-invite',$1,now()+interval '1 day')",
+      [project],
+    );
     await Promise.all([migrate(pool), migrate(pool)]);
     assert.deepEqual(await ledger(pool), [
       initialMigration,
       "002_github_repositories.sql",
+      "003_email_invitations.sql",
     ]);
+    assert.equal(
+      (
+        await pool.query(
+          "select email from orka.invites where token_hash='legacy-invite'",
+        )
+      ).rows[0].email,
+      null,
+    );
     assert.deepEqual(
       (
         await pool.query(
@@ -152,6 +171,7 @@ await test("baseline failure rolls back its DDL and ledger without touching pre-
     assert.deepEqual(await ledger(pool), [
       initialMigration,
       "002_github_repositories.sql",
+      "003_email_invitations.sql",
     ]);
   });
 });
@@ -176,6 +196,7 @@ await test("resetting a completed historical ledger is explicit and preserves ap
     assert.deepEqual(await ledger(pool), [
       initialMigration,
       "002_github_repositories.sql",
+      "003_email_invitations.sql",
     ]);
     assert.equal(
       (

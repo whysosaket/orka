@@ -5,8 +5,7 @@ import { TextField } from "../text-field.js";
 import { Icon } from "../icon.js";
 import {
   ArrowRightIcon,
-  CheckIcon,
-  CopyIcon,
+  PersonAddIcon,
   FileDirectoryIcon,
 } from "@primer/octicons-react";
 import { PermissionSelect } from "../permission-select.js";
@@ -23,6 +22,7 @@ import {
   type OnboardingStep,
 } from "./model.js";
 import { useOnboarding } from "./use-onboarding.js";
+import { ProjectInviteDialog } from "../project-invite-dialog.js";
 import "./onboarding.css";
 import { RepositoryOnboarding } from "../repository-onboarding.js";
 import { useRepositoryCommand } from "../repository-connections.js";
@@ -60,6 +60,10 @@ export function Onboarding({
     };
   }, [repositoryCall]);
   const [showProgress, setShowProgress] = useState(true);
+  const [inviteProject, setInviteProject] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [search, setSearch] = useState("");
   const title = useRef<HTMLHeadingElement>(null);
   const continueAfterSync = useEffectEvent(() =>
@@ -590,25 +594,17 @@ export function Onboarding({
                     <Button
                       size="sm"
                       disabled={busy}
-                      aria-disabled={busy || Boolean(flow.copyingInvite)}
-                      aria-busy={flow.copyingInvite === project.projectId}
-                      title="Create a one-use invite that expires in 24 hours"
+                      title="Invite a teammate by email or joining link"
                       onClick={() => {
                         if (project.projectId)
-                          void flow.invite(project.projectId);
+                          setInviteProject({
+                            id: project.projectId,
+                            name: project.name,
+                          });
                       }}
                     >
-                      <Icon
-                        icon={
-                          flow.copied === project.projectId
-                            ? CheckIcon
-                            : CopyIcon
-                        }
-                        size="sm"
-                      />
-                      {flow.copied === project.projectId
-                        ? "Copied"
-                        : "Copy invite"}
+                      <Icon icon={PersonAddIcon} size="sm" />
+                      Invite teammate
                     </Button>
                   </div>
                 ))}
@@ -759,6 +755,14 @@ export function Onboarding({
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+      {step === "invite" && inviteProject && (
+        <ProjectInviteDialog
+          key={`${state.user}:${state.config?.apiUrl}:${inviteProject.id}`}
+          projectId={inviteProject.id}
+          projectName={inviteProject.name}
+          onClose={() => setInviteProject(null)}
+        />
+      )}
     </main>
   );
 }
