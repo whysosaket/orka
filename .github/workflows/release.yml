@@ -81,7 +81,7 @@ jobs:
           esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.source_ref || github.sha }}
+          ref: ${{ (inputs.source_ref || 'main') == 'main' && 'refs/heads/main' || format('refs/tags/{0}', inputs.source_ref) }}
           fetch-depth: 0
           persist-credentials: false
       - name: Validate reviewed source and record build provenance
@@ -152,14 +152,14 @@ jobs:
             previous_keychains+=("$keychain")
           done < <(security list-keychains -d user | sed -e 's/^ *"//' -e 's/"$//')
           cleanup_signing() {
-            security list-keychains -d user -s "${previous_keychains[@]}" || true
+            security list-keychains -d user -s ${previous_keychains[@]+"${previous_keychains[@]}"} || true
             security delete-keychain "$ORKA_SIGNING_KEYCHAIN" 2>/dev/null || true
             rm -rf "$work"
           }
           trap cleanup_signing EXIT
           security create-keychain -p "$password" "$ORKA_SIGNING_KEYCHAIN"
           security unlock-keychain -p "$password" "$ORKA_SIGNING_KEYCHAIN"
-          security list-keychains -d user -s "$ORKA_SIGNING_KEYCHAIN" "${previous_keychains[@]}"
+          security list-keychains -d user -s "$ORKA_SIGNING_KEYCHAIN" ${previous_keychains[@]+"${previous_keychains[@]}"}
           printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$work/signing.p12"
           security import "$work/signing.p12" -k "$ORKA_SIGNING_KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$ORKA_SIGNING_KEYCHAIN" >/dev/null
