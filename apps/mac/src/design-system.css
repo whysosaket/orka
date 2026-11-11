@@ -2,10 +2,14 @@
 @layer base {
   :root {
     --status-connected: #4ade80;
+    --status-connected-dot: #43be6f;
+    --status-connected-bg: rgb(74 222 128 / 12%);
     --status-error: #f87171;
     --status-error-bg: rgb(248 113 113 / 12%);
     --status-info: #60a5fa;
     --status-info-bg: rgb(96 165 250 / 12%);
+    --status-warning: #fbbf24;
+    --status-warning-bg: rgb(251 191 36 / 12%);
     /* Resource category colors from Orka Figma, Sync resource grid 211:836. */
     --resource-icon-memory: #4ade80;
     --resource-icon-session: #60a5fa;
@@ -21,6 +25,7 @@
     --shadow-workspace: 0 8px 32px #0008, 0 2px 8px #0006;
     --shadow-modal: 0 24px 80px #0008;
     --shadow-drawer: -16px 0 64px #0006;
+    --shadow-tooltip: 0 8px 12px rgb(0 0 0 / 30%);
     --overlay-scrim: #000b;
     --scrollbar-thumb: #404040;
     --radius-none: 0px;
@@ -35,8 +40,8 @@
     --surface-secondary: #121212;
     --surface-tertiary: #1c1c1c;
     --surface-stroke: #252525;
-    --interaction-hover: #2e2e2e;
-    --interaction-selected: #303030;
+    --interaction-hover: #252525;
+    --interaction-selected: #2e2e2e;
     --border-subtle: var(--surface-stroke);
     --text-primary: #f2f2f2;
     --text-danger: #f17878;
@@ -108,6 +113,18 @@
     --orka-copper-500: #aa6c42;
     --orka-copper-400: #c4865a;
     --orka-copper-800: #472b1e;
+    /* Skill source and comparison readers, from Orka Figma 1491:5544 and 1463:4745. */
+    --font-mono:
+      "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --code-punctuation: var(--orka-copper-400);
+    --code-keyword: var(--status-info);
+    --code-string: #d4a27d;
+    --diff-added: var(--status-connected);
+    --diff-removed: var(--status-error);
+    --diff-added-bg: var(--status-connected-bg);
+    --diff-removed-bg: var(--status-error-bg);
+    --diff-added-emphasis: rgb(74 222 128 / 24%);
+    --diff-removed-emphasis: rgb(248 113 113 / 24%);
     --button-primary-bg: var(--orka-neutral-100);
     --button-primary-bg-hover: var(--orka-neutral-200);
     --button-primary-bg-pressed: var(--orka-neutral-400);
@@ -652,4 +669,13 @@
       animation: none;
     }
   }
+}
+/* Display-size Inter includes the optical axis used by the current Figma titles. */
+@font-face {
+  font-family: "Orka Display Inter";
+  src: url("@fontsource-variable/inter/files/inter-latin-standard-normal.woff2")
+    format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
 }

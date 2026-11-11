@@ -55,12 +55,23 @@ Text and icon buttons keep their resting size on hover. Background, color, and p
 Both icon components are separate files. Standalone Icon variants select primary, secondary, or tertiary text tones; `inherit` is the default so icons inside a white button use its dark label color. An optional `label` exposes a standalone icon to assistive technology; otherwise it is decorative. IconButton requires an accessible name and supports all three action treatments in all three sizes.
 
 | Size | Button / icon-button height | Inline icon container | Octicon glyph | Icon/text gap |
-| --- | --- | --- | --- | --- |
-| lg | 48px | 24px | 20px | 8px |
-| md | 40px | 20px | 16px | 8px |
-| sm | 32px | 18px | 14px | 6px |
+| ---- | --------------------------- | --------------------- | ------------- | ------------- |
+| lg   | 48px                        | 24px                  | 20px          | 8px           |
+| md   | 40px                        | 20px                  | 16px          | 8px           |
+| sm   | 32px                        | 18px                  | 14px          | 6px           |
 
 Icon-only controls are square. Inline containers match the label line height. Octicon glyphs are filled with currentColor and stay centered. Within Button, the parent control's size determines the icon dimensions.
+
+## Skill reader
+
+The Skills detail (`apps/mac/src/components/skill-detail.tsx`) is a document column beside a 360px rail with Skill info and Files; below an 840px reader width it folds into one column with a meta line and a Files popover. Styles live in `apps/mac/src/components/skill-detail.css` as un-layered rules so they win over the shared `.resource-detail` layout.
+
+- `SkillDetail`: title card from SKILL.md frontmatter, status pill, Formatted/Markdown segmented control for Markdown files, and the Skill info actions as separate `IconButton`s with accessible labels and `SkillActionTooltip` hover/focus descriptions.
+- `SourceCard` and `FileDiffCard` (`file-diff.tsx`): read-only source with line numbers and Markdown tinting. Text comparisons use the actual `@pierre/diffs` React `FileDiff` through `pierre-diff.tsx`, with an Orka header, unified rows, green additions, red deletions, syntax highlighting, word emphasis, and expandable unchanged regions. Shadow-root styles consume Orka semantic tokens and IBM Plex Mono; rendering is read-only and all editing remains external. The bundled Shiki JavaScript engine requires no remote service, worker, or relaxed CSP. Older WebViews that lack Pierre’s CSS/JavaScript capabilities show a clear preview-unavailable message and retain Open in editor; the app’s macOS 12 minimum stays unchanged. Binary files keep their existing summary cards.
+- `ReaderState` (`skill-state.tsx`): illustrated empty, error, and comparison states; the PNGs live in `apps/mac/public/skill-states`.
+- `SkillReviewOverlay` (`skill-review-overlay.tsx`): the 640px right drawer for Review local edits (`submit-draft` publishes for Can edit, sends for approval for Suggest changes, and has no submit action for View only) and Review local update (`preview-install` → `apply-install` with the reviewed token). Both outgoing actions guard the reviewed files and shared revision; publication uses `publishIfAllowed`. Visibility rules are in `skill-review-state.ts`.
+
+Render the loading region's children as a component, not inline elements: the skeleton pass clones element children through `React.Children.map`, which turns a Markdown string child into an array.
 
 ## Preview and validation
 
@@ -70,7 +81,7 @@ The button-state matrix compares default, hover, pressed, keyboard focus, and di
 
 `dark-options.html` shows the approved three-surface Pitch palette. The app uses Pitch only; it does not gain a theme picker.
 
- Native UI inspection is separate from browser fixture evidence; no cross-Mac sync claim is implied.
+Native UI inspection is separate from browser fixture evidence; no cross-Mac sync claim is implied.
 
 ## Inputs and native review
 

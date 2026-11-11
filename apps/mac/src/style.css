@@ -3,6 +3,7 @@
 @import "./components/settings/settings.css";
 
 @import "./components/toasts.css";
+@import "./components/skill-detail.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

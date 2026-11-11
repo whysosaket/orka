@@ -540,9 +540,9 @@ for (const viewport of [
     await expect(
       page.getByRole("heading", { name: "Code review", exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".detail-facts .skill-origin-badge")).toHaveText(
-      "Global",
-    );
+    await expect(
+      page.locator(".skill-title-card .skill-origin-badge"),
+    ).toHaveText("Global");
     await expect(
       page.getByText(
         "This skill will share automatically when permissions allow. Sync retries while offline.",

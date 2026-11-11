@@ -465,17 +465,25 @@ pub fn reconcile_requests(db: &Connection, project: &str, requests: &Value) -> R
     Ok(())
 }
 fn texts(files: &Value) -> Result<Value> {
+    Ok(preview_files(files)?.0)
+}
+// Preserve the text-only response for existing consumers while exposing the
+// hashes and decode result needed to distinguish binary-only changes.
+fn preview_files(files: &Value) -> Result<(Value, Value)> {
     let mut result = serde_json::Map::new();
+    let mut manifest = Vec::new();
     for f in files.as_array().ok_or("Missing files")? {
         let bytes = db::blob_read(f["hash"].as_str().ok_or("Missing hash")?)?;
+        let content = String::from_utf8(bytes);
+        let mut entry = f.clone();
+        entry["binary"] = json!(content.is_err());
         result.insert(
             f["path"].as_str().ok_or("Missing file path")?.into(),
-            String::from_utf8(bytes)
-                .map(Value::String)
-                .unwrap_or(json!("Binary asset")),
+            content.map(Value::String).unwrap_or(json!("Binary asset")),
         );
+        manifest.push(entry);
     }
-    Ok(Value::Object(result))
+    Ok((Value::Object(result), json!(manifest)))
 }
 fn related_knowledge(db: &Connection, project: &str, draft: &Value) -> Result<Vec<Value>> {
     fn words(text: &str) -> std::collections::BTreeSet<String> {
@@ -562,20 +570,32 @@ pub fn install_preview(db: &Connection, id: &str) -> Result<Value> {
     });
     let root = Path::new(p["path"].as_str().ok_or("Connect a folder")?);
     let mut copies = Vec::new();
+    let mut first_existing = None;
     for raw in b["paths"].as_array().ok_or("Missing installation paths")? {
         let path = Path::new(raw.as_str().ok_or("Invalid installation path")?);
         packages::safe_directory(root, path.parent().ok_or("Missing parent")?)?;
-        let files = if !path.exists() {
+        let exists = path.exists();
+        let files = if !exists {
             vec![]
         } else if r["kind"] == "skill" {
             packages::directory(path)?
         } else {
             vec![packages::file(path, "content.md")?]
         };
-        copies.push(json!({"path":path,"files":texts(&json!(files))?}));
+        let (files, manifest) = preview_files(&json!(files))?;
+        if exists && first_existing.is_none() {
+            first_existing = Some(copies.len());
+        }
+        copies.push(json!({"path":path,"files":files,"manifest":manifest}));
     }
+    let before = first_existing.and_then(|i| copies.get(i));
+    let (after, after_manifest) = preview_files(&if r["deleted"] == true {
+        json!([])
+    } else {
+        r["files"].clone()
+    })?;
     Ok(
-        json!({"token":token,"revision":r["revision"],"dirty":dirty,"guards":guards,"copies":copies,"before":copies.first().map(|c|c["files"].clone()).unwrap_or(json!({})),"after":texts(&r["files"])?}),
+        json!({"token":token,"revision":r["revision"],"dirty":dirty,"guards":guards,"before":before.map(|c|c["files"].clone()).unwrap_or(json!({})),"beforeManifest":before.map(|c|c["manifest"].clone()).unwrap_or(json!([])),"after":after,"afterManifest":after_manifest,"copies":copies}),
     )
 }
 async fn remote(action: &str, input: &Value) -> Result<Value> {
@@ -665,7 +685,23 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
             let mut draft=db::rows(&db,"SELECT value FROM drafts WHERE id=? AND project=?",&[&id,&project_id])?.into_iter().next().ok_or("Draft unavailable")?;
             if action=="draft" {
                 let related=related_knowledge(&db,project_id,&draft)?;
-                return Ok(json!({"draft":draft,"files":texts(&draft["resource"]["files"])?,"related":related}));
+                let (files,manifest)=preview_files(&draft["resource"]["files"])?;
+                return Ok(json!({"draft":draft,"files":files,"manifest":manifest,"related":related}));
+            }
+            if let Some(files) = input.get("reviewedFiles") {
+                if !files.is_array() || files != &draft["resource"]["files"]
+                    || (!draft["submission"].is_null() && files != &draft["submission"]["resource"]["files"]) {
+                    return Err("Local or shared files changed; review the update again".into());
+                }
+            }
+            if let Some(revision) = input.get("reviewedRevision") {
+                let resource_id = draft["resource"]["resourceId"].as_str().ok_or("Missing resource")?;
+                let current = db::rows(&db, "SELECT value FROM resources WHERE id=? AND project=?", &[&resource_id, &project_id])?
+                    .first().and_then(|resource| resource["revision"].as_u64()).unwrap_or(0);
+                if revision.as_u64() != Some(current)
+                    || (!draft["submission"].is_null() && revision != &draft["submission"]["baseRevision"]) {
+                    return Err("Local or shared files changed; review the update again".into());
+                }
             }
             if input["publishIfAllowed"] == true {
                 return crate::global_skills::queue_share(&db, &p, id);

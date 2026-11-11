@@ -3,7 +3,6 @@ import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { diffLines } from "diff";
 import type { Inspection } from "../types.js";
-import { readSkillMarkdown } from "./skill-markdown.js";
 import { Button } from "./button.js";
 import { MermaidDiagram } from "./mermaid-diagram.js";
 import { LoadingRegion } from "./loading-region.js";
@@ -75,7 +74,6 @@ type ResourceContentProps = {
   changes: boolean;
   markdown: boolean;
   conversation: boolean;
-  skillDocument?: boolean;
   error?: string;
   onRetry?: () => void;
 };
@@ -112,7 +110,6 @@ function LoadedResourceContent({
   changes,
   markdown,
   conversation,
-  skillDocument = false,
 }: ResourceContentProps & { inspection: Inspection }) {
   if (inspection.content === null)
     return (
@@ -159,7 +156,7 @@ function LoadedResourceContent({
   return (
     <article className="markdown-content" aria-label="Rendered Markdown">
       <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {skillDocument ? readSkillMarkdown(content).body : content}
+        {content}
       </Markdown>
     </article>
   );

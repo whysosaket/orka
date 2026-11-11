@@ -1,16 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Resource } from "@portable/protocol";
 import type { Inspection } from "../types.js";
 
-type SkillSummary = { name: string; description: string };
+export type SkillSummary = { name: string; description: string };
 export type SkillSummaries = Record<string, SkillSummary | null>;
 export const skillSummaryKey = (skill: Resource) =>
-  `${skill.resourceId}:${skill.revision}:${skill.files.find((file) => file.path === "SKILL.md")?.hash ?? ""}`;
-const cache = new Map<string, SkillSummary | null>();
-const pending = new Map<string, Promise<SkillSummary | null>>();
+  `${skill.projectId}:${skill.resourceId}:${skill.revision}:${skill.files.find((file) => file.path === "SKILL.md")?.hash ?? ""}`;
+type SummaryCache = {
+  scope: string;
+  values: Map<string, SkillSummary | null>;
+  pending: Map<string, Promise<SkillSummary | null>>;
+};
 
-function loadSummary(id: string, key: string): Promise<SkillSummary | null> {
+function loadSummary(
+  id: string,
+  key: string,
+  store: SummaryCache,
+): Promise<SkillSummary | null> {
+  const { values: cache, pending } = store;
   if (cache.has(key)) return Promise.resolve(cache.get(key)!);
   if (pending.has(key)) return pending.get(key)!;
   const request = invoke<Inspection>("inspect_resource", {
@@ -37,7 +45,20 @@ function loadSummary(id: string, key: string): Promise<SkillSummary | null> {
 }
 
 /** Resolve the entire collection before search and sorting, with bounded reads. */
-export function useSkillSummaries(resources: Resource[]): SkillSummaries {
+export function useSkillSummaries(
+  resources: Resource[],
+  scope: string,
+): SkillSummaries {
+  // A successful collection read can also support a failed detail preview.
+  // Separate stores prevent metadata crossing accounts, services, or profiles.
+  const store = useMemo<SummaryCache>(
+    () => ({
+      scope,
+      values: new Map(),
+      pending: new Map(),
+    }),
+    [scope],
+  );
   const manifest = JSON.stringify(
     resources
       .filter((resource) => resource.kind === "skill")
@@ -46,30 +67,40 @@ export function useSkillSummaries(resources: Resource[]): SkillSummaries {
         key: skillSummaryKey(skill),
       })),
   );
-  const [summaries, setSummaries] = useState<SkillSummaries>({});
+  const [result, setResult] = useState<{
+    store: SummaryCache;
+    summaries: SkillSummaries;
+  }>(() => ({ store, summaries: {} }));
   useEffect(() => {
     const items: { id: string; key: string }[] = JSON.parse(manifest);
     let cancelled = false;
     let index = 0;
-    setSummaries(
-      Object.fromEntries(
+    setResult({
+      store,
+      summaries: Object.fromEntries(
         items
-          .filter(({ key }) => cache.has(key))
-          .map(({ key }) => [key, cache.get(key)!]),
+          .filter(({ key }) => store.values.has(key))
+          .map(({ key }) => [key, store.values.get(key)!]),
       ),
-    );
+    });
     async function worker() {
       while (!cancelled && index < items.length) {
         const item = items[index++];
-        const summary = await loadSummary(item.id, item.key);
+        const summary = await loadSummary(item.id, item.key, store);
         if (!cancelled)
-          setSummaries((current) => ({ ...current, [item.key]: summary }));
+          setResult((current) => ({
+            store,
+            summaries: {
+              ...(current.store === store ? current.summaries : {}),
+              [item.key]: summary,
+            },
+          }));
       }
     }
     void Promise.all(Array.from({ length: 4 }, () => worker()));
     return () => {
       cancelled = true;
     };
-  }, [manifest]);
-  return summaries;
+  }, [manifest, store]);
+  return result.store === store ? result.summaries : {};
 }

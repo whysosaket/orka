@@ -1,11 +1,17 @@
 import React from "react";
 import type { SessionConflict } from "@portable/protocol";
-import type { Project, ProjectResource as Resource } from "../types.js";
+import type {
+  Project,
+  ProjectResource as Resource,
+  Snapshot,
+} from "../types.js";
 import { displayText } from "./resource-presentation.js";
 import { DetailHeader } from "./detail-header.js";
 import { ResourceContent } from "./resource-content.js";
 import { SessionView } from "./session-view.js";
+import { SkillDetail } from "./skill-detail.js";
 import { useSkillMetadata } from "./skill-metadata.js";
+import type { SkillSummary } from "./use-skill-summaries.js";
 import { useResourceActions, type Run } from "./use-resource-actions.js";
 import type { ResourceView } from "./use-resource-view.js";
 
@@ -14,6 +20,8 @@ export interface ResourceDetailProps {
   resource: Resource;
   /** The cleaned index title; SKILL.md frontmatter overrides it for skills. */
   displayTitle: string;
+  /** Metadata already read for this exact revision in the Skills collection. */
+  skillSummary?: SkillSummary | null;
   project: Project;
   user: string | null;
   deviceId: string;
@@ -23,6 +31,10 @@ export interface ResourceDetailProps {
   conflicts: SessionConflict[];
   view: ResourceView;
   act: Run;
+  /** The workspace snapshot; skills read bindings, drafts, and access from it. */
+  state: Snapshot;
+  offline?: boolean;
+  onRefresh: () => Promise<void>;
   onBack: () => void;
   onNotice: (message: string) => void;
   onGovernance?: () => void;
@@ -31,8 +43,28 @@ export interface ResourceDetailProps {
 
 /** Option D: one full-width reading shell for memories, skills, and sessions. */
 export function ResourceDetail(props: ResourceDetailProps) {
-  const { resource, view, act, onNotice, displayTitle, ...shared } = props;
-  const skill = useSkillMetadata(resource);
+  const {
+    resource,
+    view,
+    act,
+    onNotice,
+    displayTitle,
+    state,
+    offline = false,
+    onRefresh,
+    ...shared
+  } = props;
+  const inspectedSkill = useSkillMetadata(resource, props.scope);
+  const skill =
+    inspectedSkill ??
+    (props.skillSummary
+      ? {
+          ...props.skillSummary,
+          body: "",
+          invalid: false,
+          key: `${props.scope}:${resource.resourceId}:${resource.revision}`,
+        }
+      : null);
   const title = displayText(skill?.name || displayTitle);
   const actions = useResourceActions({
     act,
@@ -46,6 +78,26 @@ export function ResourceDetail(props: ResourceDetailProps) {
       props.project.sources,
     ]),
   });
+  if (resource.kind === "skill")
+    return (
+      <SkillDetail
+        resource={resource}
+        title={title}
+        skill={skill}
+        project={props.project}
+        user={props.user}
+        busy={props.busy}
+        accessRequest={props.accessRequest}
+        view={view}
+        actions={actions}
+        state={state}
+        offline={offline}
+        onRefresh={onRefresh}
+        onNotice={onNotice}
+        onError={props.onError}
+        onGovernance={props.onGovernance}
+      />
+    );
   const header = (
     <DetailHeader
       {...shared}
@@ -78,14 +130,10 @@ export function ResourceDetail(props: ResourceDetailProps) {
         }
       />
     );
-  const skillDocument = resource.kind === "skill" && view.file === "SKILL.md";
   const body = (
     <div className="detail-body">
       {view.changes && (
         <p className="detail-notice">Comparing with the previous revision</p>
-      )}
-      {skillDocument && !view.changes && skill?.description && (
-        <p className="detail-lede">{skill.description}</p>
       )}
       <ResourceContent
         inspection={view.inspection}
@@ -93,26 +141,14 @@ export function ResourceDetail(props: ResourceDetailProps) {
         onRetry={view.retryInspection}
         changes={view.changes}
         markdown={view.canRenderMarkdown && !view.rawMarkdown}
-        skillDocument={skillDocument}
         conversation={false}
       />
     </div>
   );
   return (
     <section
-      // Literal class names: Tailwind emits layered rules only for names it can see.
-      className={
-        resource.kind === "skill"
-          ? "resource-detail resource-detail--skill"
-          : "resource-detail resource-detail--memory"
-      }
-      aria-label={
-        resource.kind === "skill"
-          ? "Skill details"
-          : resource.kind === "plan"
-            ? "Plan details"
-            : "Memory details"
-      }
+      className="resource-detail resource-detail--memory"
+      aria-label={resource.kind === "plan" ? "Plan details" : "Memory details"}
     >
       {header}
       {body}

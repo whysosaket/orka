@@ -374,7 +374,9 @@ test("sessions list in a table, open a reading view, and page turns on demand", 
   await expect(page.locator(".session-view")).toHaveCount(0);
 });
 
-test("skills use one file selector at every width", async ({ page }) => {
+test("skills switch files from the rail or the compact selector", async ({
+  page,
+}) => {
   await resourceFixture(page);
   await page.getByRole("button", { name: /^Skills/ }).click();
   const grid = page.locator(".skill-grid");
@@ -392,32 +394,24 @@ test("skills use one file selector at every width", async ({ page }) => {
   await page.getByRole("button", { name: /Review checklist/ }).click();
   const view = page.locator(".resource-detail--skill");
   await expect(view.locator("h2").first()).toHaveText("Review checklist");
-  await expect(view.locator(".detail-lede")).toHaveText("How we write.");
+  await expect(view.locator(".skill-description")).toHaveText("How we write.");
   await expect(view).toContainText("Some content");
   await expect(page.locator(".skill-grid")).toHaveCount(0);
-  await expect(view).toHaveCSS("max-width", "870px");
-  await expect(page.locator(".detail-rail")).toHaveCount(0);
-  // The Files chip menu switches the inspected file.
-  await page.getByRole("button", { name: "2 files", exact: true }).click();
-  await page
-    .getByLabel("Files", { exact: true })
+  await expect(view).toHaveAttribute("data-layout", "wide");
+  // The Files card switches the inspected file; the title card stays put.
+  const rail = view.getByRole("complementary", { name: "Skill information" });
+  await rail
     .getByRole("button", { name: "references/tokens.md", exact: true })
     .click();
   await expect(view).toContainText("Token reference content");
-  await expect(view.locator(".detail-lede")).toHaveCount(0);
-  await page.getByRole("button", { name: "2 files", exact: true }).click();
-  await page
-    .getByLabel("Files", { exact: true })
-    .getByRole("button", { name: "SKILL.md", exact: true })
-    .click();
-  await expect(view.locator(".detail-lede")).toHaveText("How we write.");
-  // At the minimum window the rail hides and the chip remains the switcher.
+  await expect(view.locator(".skill-description")).toHaveText("How we write.");
+  await rail.getByRole("button", { name: "SKILL.md", exact: true }).click();
+  await expect(view).toContainText("Some content");
+  // At the minimum window the rail folds away and a Files popover switches.
   await page.setViewportSize({ width: 900, height: 640 });
-  await expect(page.locator(".detail-rail")).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "2 files", exact: true }),
-  ).toBeVisible();
-  await expect(view).toHaveCSS("max-width", "870px");
+  await expect(view).toHaveAttribute("data-layout", "compact");
+  await expect(rail).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Files, 2" })).toBeVisible();
   await expect(heading(page)).toHaveText("Skills");
   await backButton(page, "Skills").click();
   await expect(grid.locator(".skill-card")).toHaveCount(2);
@@ -453,9 +447,8 @@ test("a failed file read clears old content and retries only on request", async 
       return original(name, args);
     };
   });
-  await page.getByRole("button", { name: "2 files", exact: true }).click();
   await page
-    .getByLabel("Files", { exact: true })
+    .getByRole("complementary", { name: "Skill information" })
     .getByRole("button", { name: "references/tokens.md", exact: true })
     .click();
   await expect(view.getByRole("status")).toHaveText("Loading content…");
@@ -470,7 +463,7 @@ test("a failed file read clears old content and retries only on request", async 
   ).toHaveCount(0);
   await page.evaluate(() => (window as any).rejectFileRead());
   await expect(view.getByRole("alert")).toContainText(
-    "File temporarily unavailable",
+    "Couldn’t load references/tokens.md",
   );
   await expect(
     view.getByRole("article", { name: "Rendered Markdown" }),
@@ -515,9 +508,8 @@ for (const outcome of ["success", "failure"] as const)
         return original(name, args);
       };
     }, outcome);
-    await page.getByRole("button", { name: "2 files", exact: true }).click();
     await page
-      .getByLabel("Files", { exact: true })
+      .getByRole("complementary", { name: "Skill information" })
       .getByRole("button", { name: "references/tokens.md", exact: true })
       .click();
     await expect(view.getByRole("status")).toHaveText("Loading content…");
@@ -525,9 +517,8 @@ for (const outcome of ["success", "failure"] as const)
       "aria-busy",
       "true",
     );
-    await page.getByRole("button", { name: "2 files", exact: true }).click();
     await page
-      .getByLabel("Files", { exact: true })
+      .getByRole("complementary", { name: "Skill information" })
       .getByRole("button", { name: "SKILL.md", exact: true })
       .click();
     await expect(view).toContainText("Some content");

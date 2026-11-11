@@ -491,11 +491,11 @@ async function calls(page: Page, action: string) {
     action,
   );
 }
-async function openUpdates(page: Page) {
+async function openUpdates(page: Page, name = "Review local update") {
   await management(page)
     .getByRole("button", { name: "Review update", exact: true })
     .click();
-  return page.getByRole("dialog", { name: "Review local update", exact: true });
+  return page.getByRole("dialog", { name, exact: true });
 }
 test("request approval sends the exact reviewed hash and reports stale proposals", async ({
   page,
@@ -564,11 +564,11 @@ test("shared skill removals stay reviewable and preserve private edits", async (
   page,
 }) => {
   await fixture(page, true, true);
-  const dialog = await openUpdates(page);
-  await dialog.getByRole("button", { name: "Review local removal" }).click();
-  await expect(dialog.getByLabel("File changes")).toContainText("Local edits");
+  const dialog = await openUpdates(page, "Review skill removal");
+  await expect(dialog.getByRole("heading", { name: "SKILL.md" })).toBeVisible();
+  await expect(dialog.locator(".diff-card-removed")).toHaveText("Removed");
   await dialog
-    .getByRole("button", { name: "Preserve edits and remove reviewed version" })
+    .getByRole("button", { name: "Keep edits and remove", exact: true })
     .click();
   expect((await calls(page, "apply-install"))[0]).toMatchObject({
     resourceId: "skill",
@@ -582,21 +582,19 @@ test("local installation rejects changes made after reviewing the preview", asyn
 }) => {
   await fixture(page);
   const dialog = await openUpdates(page);
-  await dialog
-    .getByRole("button", { name: "Review local update", exact: true })
-    .click();
   await expect(dialog.getByLabel("File changes")).toContainText("Local edits");
   await page.evaluate(() => {
     (window as unknown as { governanceStale: boolean }).governanceStale = true;
   });
   await dialog
-    .getByRole("button", {
-      name: "Preserve edits and install reviewed version",
-    })
+    .getByRole("button", { name: "Keep edits and install", exact: true })
     .click();
-  await expect(dialog.getByRole("alert")).toContainText(
-    "review the update again",
+  await expect(dialog.getByRole("status")).toHaveText(
+    "Files changed since this preview.",
   );
+  await expect(
+    dialog.getByRole("button", { name: "Review latest", exact: true }),
+  ).toBeVisible();
 });
 
 test("a member with no shared access can request a collection from its empty page", async ({

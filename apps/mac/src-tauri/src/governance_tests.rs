@@ -121,6 +121,196 @@ fn governed_skills_install_and_update_automatically_and_bind_conflict_review_to_
 }
 
 #[test]
+fn install_preview_identifies_binary_only_updates_without_confusing_literal_text() {
+    let f = governed_fixture();
+    let mut r = shared(&f, "skill", "binary-preview", "Unchanged instructions\n");
+    let old_hash = db::blob(&[0xff, 0, 1]).unwrap();
+    let new_hash = db::blob(&[0xff, 0, 2]).unwrap();
+    r["files"].as_array_mut().unwrap().extend([
+        json!({"path":"assets/reference.pdf","hash":old_hash,"size":3,"executable":false}),
+        json!({"path":"literal.txt","hash":db::blob(b"Binary asset").unwrap(),"size":12,"executable":false}),
+    ]);
+    persist(&f, &r);
+    sync::materialize(&f.db, &f.project, &r).unwrap();
+    r["revision"] = json!(2);
+    r["files"][1]["hash"] = json!(new_hash);
+    persist(&f, &r);
+
+    let preview = command(&f, "preview-install", json!({"resourceId":r["resourceId"]})).unwrap();
+    // Text-only consumers previously saw an empty diff for these different bytes.
+    assert_eq!(preview["before"], preview["after"]);
+    let entry = |manifest: &Value, path: &str| {
+        manifest
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["path"] == path)
+            .unwrap()
+            .clone()
+    };
+    let before = entry(&preview["beforeManifest"], "assets/reference.pdf");
+    let after = entry(&preview["afterManifest"], "assets/reference.pdf");
+    assert_eq!(before["hash"], old_hash);
+    assert_eq!(after["hash"], new_hash);
+    assert_eq!(before["binary"], true);
+    assert_eq!(after["binary"], true);
+    assert_eq!(after["size"], 3);
+    assert_eq!(after["executable"], false);
+    assert_eq!(
+        entry(&preview["afterManifest"], "literal.txt")["binary"],
+        false
+    );
+    assert_eq!(preview["copies"][0]["manifest"], preview["beforeManifest"]);
+    assert_eq!(preview["dirty"], false);
+
+    let id = governance::capture(&f.db, &f.project, &r, &json!([])).unwrap();
+    let draft = command(&f, "draft", json!({"id":id})).unwrap();
+    assert_eq!(draft["files"]["assets/reference.pdf"], "Binary asset");
+    assert_eq!(
+        entry(&draft["manifest"], "assets/reference.pdf")["binary"],
+        true
+    );
+    assert_eq!(entry(&draft["manifest"], "literal.txt")["binary"], false);
+}
+
+#[test]
+fn install_preview_uses_the_first_existing_copy_and_empty_manifest_for_removal() {
+    let f = governed_fixture();
+    let mut r = shared(&f, "skill", "remaining-copy", "Installed instructions\n");
+    persist(&f, &r);
+    sync::materialize(&f.db, &f.project, &r).unwrap();
+    fs::remove_dir_all(f.root.join(".agents/skills/remaining-copy")).unwrap();
+
+    let preview = command(&f, "preview-install", json!({"resourceId":r["resourceId"]})).unwrap();
+    assert_eq!(preview["copies"][0]["files"], json!({}));
+    assert_eq!(preview["copies"][0]["manifest"], json!([]));
+    assert_eq!(preview["before"]["SKILL.md"], "Installed instructions\n");
+    assert_eq!(preview["beforeManifest"], preview["copies"][1]["manifest"]);
+
+    // A tombstone can retain its old files; removal still has no proposed content.
+    r["deleted"] = json!(true);
+    r["revision"] = json!(2);
+    persist(&f, &r);
+    let removed = command(&f, "preview-install", json!({"resourceId":r["resourceId"]})).unwrap();
+    assert_eq!(removed["beforeManifest"], preview["beforeManifest"]);
+    assert_eq!(removed["after"], json!({}));
+    assert_eq!(removed["afterManifest"], json!([]));
+}
+
+#[test]
+fn submit_draft_rejects_unreviewed_local_or_shared_changes_before_side_effects() {
+    let f = governed_fixture();
+    let mut r = shared(&f, "skill", "guarded-review", "Reviewed content\n");
+    persist(&f, &r);
+    let id = governance::capture(&f.db, &f.project, &r, &json!([])).unwrap();
+    let reviewed_files = r["files"].clone();
+    let reviewed_revision = r["revision"].clone();
+    let mut draft = command(&f, "draft", json!({"id":id})).unwrap()["draft"].clone();
+    draft["resource"]["files"][0]["hash"] = json!(db::blob(b"New local content\n").unwrap());
+    db::upsert(
+        &f.db,
+        "drafts",
+        &id,
+        f.project["id"].as_str().unwrap(),
+        &draft,
+    )
+    .unwrap();
+    let error = "Local or shared files changed; review the update again";
+    for publish in [false, true] {
+        assert_eq!(
+            command(&f, "submit-draft", json!({"id":id,"publishIfAllowed":publish,"reviewedFiles":reviewed_files,"reviewedRevision":reviewed_revision})).unwrap_err(),
+            error
+        );
+        assert_eq!(
+            command(&f, "draft", json!({"id":id})).unwrap()["draft"],
+            draft
+        );
+        assert!(f.outbox().is_empty());
+    }
+
+    r["revision"] = json!(2);
+    persist(&f, &r);
+    for publish in [false, true] {
+        assert_eq!(
+            command(&f, "submit-draft", json!({"id":id,"publishIfAllowed":publish,"reviewedFiles":draft["resource"]["files"],"reviewedRevision":reviewed_revision})).unwrap_err(),
+            error
+        );
+        assert_eq!(
+            command(&f, "draft", json!({"id":id})).unwrap()["draft"],
+            draft
+        );
+        assert!(f.outbox().is_empty());
+    }
+}
+
+#[test]
+fn submit_draft_accepts_matching_review_and_preserves_unguarded_callers() {
+    for (guarded, shared_revision) in [(true, 0), (true, 1), (false, 1)] {
+        let f = governed_fixture();
+        let r = shared(&f, "skill", "guarded-publish", "Reviewed content\n");
+        if shared_revision > 0 {
+            persist(&f, &r);
+        }
+        let id = governance::capture(&f.db, &f.project, &r, &json!([])).unwrap();
+        let mut input = json!({"id":id,"publishIfAllowed":true});
+        if guarded {
+            input["reviewedFiles"] = r["files"].clone();
+            input["reviewedRevision"] = json!(shared_revision);
+        }
+        assert_eq!(
+            command(&f, "submit-draft", input.clone()).unwrap()["status"],
+            "queued"
+        );
+        let queued = f.outbox();
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0]["resource"]["files"], r["files"]);
+        assert_eq!(queued[0]["baseRevision"], shared_revision);
+        assert_eq!(
+            command(&f, "submit-draft", input).unwrap()["status"],
+            "queued"
+        );
+        assert_eq!(f.outbox(), queued);
+    }
+}
+
+#[test]
+fn submit_draft_rejects_a_cached_submission_that_differs_from_the_review() {
+    let f = governed_fixture();
+    let r = shared(&f, "skill", "cached-review", "Reviewed content\n");
+    persist(&f, &r);
+    let id = governance::capture(&f.db, &f.project, &r, &json!([])).unwrap();
+    let mut draft = command(&f, "draft", json!({"id":id})).unwrap()["draft"].clone();
+    draft["submission"] = json!({"resource":r,"baseRevision":1});
+    draft["submission"]["resource"]["files"][0]["hash"] =
+        json!(db::blob(b"Old submitted bytes\n").unwrap());
+    for mismatch in ["files", "revision"] {
+        if mismatch == "revision" {
+            draft["submission"]["resource"]["files"] = r["files"].clone();
+            draft["submission"]["baseRevision"] = json!(0);
+        }
+        db::upsert(
+            &f.db,
+            "drafts",
+            &id,
+            f.project["id"].as_str().unwrap(),
+            &draft,
+        )
+        .unwrap();
+        for publish in [false, true] {
+            assert_eq!(
+                command(&f, "submit-draft", json!({"id":id,"publishIfAllowed":publish,"reviewedFiles":r["files"],"reviewedRevision":1})).unwrap_err(),
+                "Local or shared files changed; review the update again"
+            );
+            assert_eq!(
+                command(&f, "draft", json!({"id":id})).unwrap()["draft"],
+                draft
+            );
+            assert!(f.outbox().is_empty());
+        }
+    }
+}
+
+#[test]
 fn governed_skill_auto_install_respects_sharing_access_and_folder_identity() {
     let mut f = governed_fixture();
     let mut r = shared(&f, "skill", "automatic", "Shared skill\n");
