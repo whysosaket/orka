@@ -24,6 +24,8 @@ export interface WorkspaceHeaderProps {
   onToggle: (instant: boolean) => void;
   status?: React.ReactNode;
   repositoryFilter?: React.ReactNode;
+  /** A control shown in place of the visible title, such as Back to Skills. */
+  leading?: React.ReactNode;
 }
 
 /** Compact Figma shell header; the existing sync menu owns its diagnostics. */
@@ -34,12 +36,18 @@ export function WorkspaceHeader({
   onToggle,
   status,
   repositoryFilter,
+  leading,
 }: WorkspaceHeaderProps) {
   const reduced = useReducedMotion();
   const instantTransition = reduced || instant ? { duration: 0 } : null;
   return (
-    <header className="workspace-header" data-tauri-drag-region>
+    <header
+      className={`workspace-header${leading ? " workspace-header--detail" : ""}`}
+      data-collapsed={collapsed}
+      data-tauri-drag-region
+    >
       <div className="workspace-heading" data-tauri-drag-region>
+        {leading}
         <Button
           className="ui-icon-button sidebar-toggle"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -66,7 +74,9 @@ export function WorkspaceHeader({
             </motion.span>
           </span>
         </Button>
-        <h1 data-tauri-drag-region>{title}</h1>
+        <h1 data-tauri-drag-region className={leading ? "sr-only" : undefined}>
+          {title}
+        </h1>
       </div>
       <div className="workspace-header-actions" data-tauri-drag-region>
         {repositoryFilter}

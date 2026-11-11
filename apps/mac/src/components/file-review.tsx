@@ -25,7 +25,6 @@ export function FileReview({
               }}
               changes
               markdown={false}
-              conversation={false}
             />
           </section>
         ),

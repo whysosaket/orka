@@ -540,9 +540,9 @@ for (const viewport of [
     await expect(
       page.getByRole("heading", { name: "Code review", exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".detail-facts .skill-origin-badge")).toHaveText(
-      "Global",
-    );
+    await expect(
+      page.locator(".skill-title-card .skill-origin-badge"),
+    ).toHaveText("Global");
     await expect(
       page.getByText(
         "This skill will share automatically when permissions allow. Sync retries while offline.",
@@ -818,24 +818,44 @@ for (const reducedMotion of ["no-preference", "reduce"] as const) {
   });
 }
 
-test("review is available only when permissions require approval", async ({
+test("first approval keeps one status pill and the local editor action", async ({
   page,
 }) => {
   await fixture(page, "approval");
   const card = page.locator(".skill-card");
   await expect(card).toContainText("Awaiting approval");
   await card.click();
+  const detail = page.getByRole("region", { name: "Skill details" });
+  const info = detail.getByRole("region", { name: "Skill info", exact: true });
+  await expect(detail.locator(".skill-status")).toHaveText([
+    "Awaiting approval",
+  ]);
+  await expect(info.getByRole("term")).toHaveText(["Updated by", "Updated at"]);
+  await expect(info.locator(".skill-info-note")).toHaveCount(0);
+  await expect(info.getByRole("button")).toHaveText(["Open in editor"]);
   await expect(
-    page.getByText(
+    detail.getByText(
       "Project permissions require approval before this skill can be shared.",
     ),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Review changes", exact: true })
-    .click();
+  ).toHaveCount(0);
   await expect(
-    page.getByRole("heading", { name: "Pending reviews", exact: true }),
+    detail.getByRole("button", {
+      name: /View changes|Review changes|Copy skill link|Export ZIP|Publish update|Send for approval/,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    detail.getByRole("button", { name: "SKILL.md", exact: true }),
   ).toBeVisible();
+  await info
+    .getByRole("button", { name: "Open in editor", exact: true })
+    .click();
+  expect(
+    await page.evaluate(() =>
+      (window as any).invokeCalls
+        .filter((call: any) => call.name === "open_editor")
+        .map((call: any) => call.args),
+    ),
+  ).toEqual([{ id: "codex", file: "SKILL.md" }]);
 });
 
 for (const mode of ["paused", "blocked"]) {

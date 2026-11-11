@@ -114,6 +114,7 @@ export interface LocalDraft {
   status: string;
   automaticSharing?: boolean;
   createdAt: string;
+  updatedAt?: string;
   request?: ReviewRequest;
 }
 export interface Inspection {

@@ -51,12 +51,14 @@ function updatedTime(value: string, now: number) {
 }
 
 export function ProjectHome({
+  scope,
   project,
   resources,
   user,
   onNavigate,
   onOpen,
 }: {
+  scope: string;
   project: Project;
   resources: Resource[];
   user?: string | null;
@@ -83,7 +85,7 @@ export function ProjectHome({
   );
   // Reuse the reading views' bounded, cached metadata lookups for these six rows.
   const sessionTitles = useSessionTitles(recent, true);
-  const skillSummaries = useSkillSummaries(recent);
+  const skillSummaries = useSkillSummaries(recent, scope);
   const now = Date.now();
 
   return (

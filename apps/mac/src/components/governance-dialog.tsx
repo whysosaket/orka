@@ -79,9 +79,8 @@ export function GovernanceDialog({
       (r) =>
         r.projectId === project.id &&
         (!r.deleted ||
-          ((r.kind === "skill" ||
-            (r.kind === "memory" &&
-              r.logicalPath.startsWith("instructions/"))) &&
+          (r.kind === "memory" &&
+            r.logicalPath.startsWith("instructions/") &&
             state.bindings.some(
               (b) =>
                 b.base?.resourceId === r.resourceId &&
@@ -188,94 +187,93 @@ export function GovernanceDialog({
                       </Button>
                     </section>
                   )}
-                  {(selected.kind === "skill" ||
-                    (selected.kind === "memory" &&
-                      selected.logicalPath.startsWith("instructions/"))) && (
-                    <section>
-                      <h4>
-                        {"deleted" in selected && selected.deleted
-                          ? "Review approved removal on this Mac"
-                          : "Install an approved version on this Mac"}
-                      </h4>
-                      <Button
-                        size="sm"
-                        disabled={
-                          busy ||
-                          !sourcePath(
-                            project,
-                            "sourceId" in selected
-                              ? (selected.sourceId as string)
-                              : undefined,
-                          )
-                        }
-                        onClick={() =>
-                          void run(async () => {
-                            setPreview(
-                              await call<Preview>("preview-install", {
-                                resourceId: selectedResource,
-                              }),
-                            );
-                          })
-                        }
-                      >
-                        {"deleted" in selected && selected.deleted
-                          ? "Review local removal"
-                          : "Review local update"}
-                      </Button>
-                      {preview && (
-                        <>
-                          <FileReview
-                            files={preview.after}
-                            before={preview.before}
-                          />
-                          {preview.copies
-                            ?.slice(1)
-                            .filter(
-                              (c) =>
-                                JSON.stringify(c.files) !==
-                                JSON.stringify(preview.before),
+                  {selected.kind === "memory" &&
+                    selected.logicalPath.startsWith("instructions/") && (
+                      <section>
+                        <h4>
+                          {"deleted" in selected && selected.deleted
+                            ? "Review approved removal on this Mac"
+                            : "Install an approved version on this Mac"}
+                        </h4>
+                        <Button
+                          size="sm"
+                          disabled={
+                            busy ||
+                            !sourcePath(
+                              project,
+                              "sourceId" in selected
+                                ? (selected.sourceId as string)
+                                : undefined,
                             )
-                            .map((c) => (
-                              <section key={c.path}>
-                                <h4>Other local copy: {c.path}</h4>
-                                <FileReview
-                                  files={preview.after}
-                                  before={c.files}
-                                />
-                              </section>
-                            ))}
-                          {preview.dirty && (
-                            <p>
-                              Your local edits will be saved privately on this
-                              Mac before installation.
-                            </p>
-                          )}
-                          <Button
-                            disabled={busy}
-                            onClick={() =>
-                              void run(async () => {
-                                await call("apply-install", {
+                          }
+                          onClick={() =>
+                            void run(async () => {
+                              setPreview(
+                                await call<Preview>("preview-install", {
                                   resourceId: selectedResource,
-                                  token: preview.token,
-                                  preserveLocal: true,
-                                });
-                                setPreview(null);
-                                setMessage(
-                                  "deleted" in selected && selected.deleted
-                                    ? "Reviewed version removed"
-                                    : "Reviewed update installed",
-                                );
-                              })
-                            }
-                          >
-                            {"deleted" in selected && selected.deleted
-                              ? "Preserve edits and remove reviewed version"
-                              : "Preserve edits and install reviewed version"}
-                          </Button>
-                        </>
-                      )}
-                    </section>
-                  )}
+                                }),
+                              );
+                            })
+                          }
+                        >
+                          {"deleted" in selected && selected.deleted
+                            ? "Review local removal"
+                            : "Review local update"}
+                        </Button>
+                        {preview && (
+                          <>
+                            <FileReview
+                              files={preview.after}
+                              before={preview.before}
+                            />
+                            {preview.copies
+                              ?.slice(1)
+                              .filter(
+                                (c) =>
+                                  JSON.stringify(c.files) !==
+                                  JSON.stringify(preview.before),
+                              )
+                              .map((c) => (
+                                <section key={c.path}>
+                                  <h4>Other local copy: {c.path}</h4>
+                                  <FileReview
+                                    files={preview.after}
+                                    before={c.files}
+                                  />
+                                </section>
+                              ))}
+                            {preview.dirty && (
+                              <p>
+                                Your local edits will be saved privately on this
+                                Mac before installation.
+                              </p>
+                            )}
+                            <Button
+                              disabled={busy}
+                              onClick={() =>
+                                void run(async () => {
+                                  await call("apply-install", {
+                                    resourceId: selectedResource,
+                                    token: preview.token,
+                                    preserveLocal: true,
+                                  });
+                                  setPreview(null);
+                                  setMessage(
+                                    "deleted" in selected && selected.deleted
+                                      ? "Reviewed version removed"
+                                      : "Reviewed update installed",
+                                  );
+                                })
+                              }
+                            >
+                              {"deleted" in selected && selected.deleted
+                                ? "Preserve edits and remove reviewed version"
+                                : "Preserve edits and install reviewed version"}
+                            </Button>
+                          </>
+                        )}
+                      </section>
+                    )}
                 </>
               )}
             </section>

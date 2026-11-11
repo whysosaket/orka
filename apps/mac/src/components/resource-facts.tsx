@@ -13,7 +13,6 @@ import { Icon } from "./icon.js";
 import { SourceLabel } from "./source-label.js";
 import { ActionPopover } from "./resource-actions.js";
 import { useMemberLabel } from "./member-names.js";
-import { skillSharing } from "./skill-sharing.js";
 
 const plural = (count: number, noun: string) =>
   `${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -40,17 +39,15 @@ function FactChip({
   );
 }
 
-/** A fact that opens a menu: primary text, a chevron, and a selected fill while open or pressed. */
+/** A fact that opens a menu: primary text, a chevron, and a selected fill while open. */
 function FactMenu({
   icon,
   menuLabel,
-  pressed,
   menu,
   children,
 }: {
   icon: OcticonIcon;
   menuLabel: string;
-  pressed?: boolean;
   menu: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -60,11 +57,7 @@ function FactMenu({
       label={menuLabel}
       className="fact-menu"
       trigger={
-        <button
-          type="button"
-          className="fact-chip fact-chip--menu"
-          aria-pressed={pressed}
-        >
+        <button type="button" className="fact-chip fact-chip--menu">
           <Icon icon={icon} size="xs" variant="tertiary" />
           {children}
           <Icon icon={ChevronDownIcon} size="xs" variant="tertiary" />
@@ -79,7 +72,7 @@ function FactMenu({
 export interface ResourceFactsProps {
   resource: Resource;
   user: string | null;
-  /** The inspected file for memories and skills; omit for sessions. */
+  /** The inspected file for memories and plans; omit for sessions. */
   file?: { selected: string; onSelect: (path: string) => void };
 }
 
@@ -96,13 +89,8 @@ export function ResourceFacts({ resource, user, file }: ResourceFactsProps) {
           <FactChip label="Repository">{resource.repositoryName}</FactChip>
         )}
         <FactChip label="Source">
-          {resource.local ? (
-            skillSharing(resource).label
-          ) : (
-            <SourceLabel source={resource.source} />
-          )}
+          <SourceLabel source={resource.source} />
         </FactChip>
-        {resource.global && <span className="skill-origin-badge">Global</span>}
         <FactChip
           icon={ClockIcon}
           label="Updated"

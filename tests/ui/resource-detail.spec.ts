@@ -669,7 +669,17 @@ for (const [width, height, memberCatalog] of [
           exact: collection !== "Skills",
         })
         .click();
-      await expect(page.locator(".fact-chip-author")).toHaveText(author);
+      // Skills show the author in the rail facts, or in the compact meta line.
+      if (collection !== "Skills")
+        await expect(page.locator(".fact-chip-author")).toHaveText(author);
+      else if (width === 900)
+        await expect(page.locator(".skill-meta")).toContainText(
+          `Updated by ${author}`,
+        );
+      else
+        await expect(page.locator(".skill-facts dd").first()).toHaveText(
+          author,
+        );
       await expect(page.locator("body")).not.toContainText(
         "11111111-1111-4111-8111-111111111111",
       );
@@ -930,7 +940,7 @@ test("another owner's session shows the copy note and hides Remove from history"
   await expect(menu(page)).toContainText("Remove from history");
 });
 
-test("ZIP export stays in More for skills and moves into the session launcher", async ({
+test("ZIP export sits in Skill info for skills and moves into the session launcher", async ({
   page,
 }) => {
   await detailFixture(page);
@@ -945,9 +955,20 @@ test("ZIP export stays in More for skills and moves into the session launcher", 
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /^Skills/ }).click();
   await page.getByRole("button", { name: /Review checklist/ }).click();
-  await more(page).click();
-  await expect(menu(page)).toContainText("Export ZIP");
-  await page.keyboard.press("Escape");
+  const skillInfo = page.getByRole("complementary", {
+    name: "Skill information",
+  });
+  await expect(
+    skillInfo.getByRole("button", { name: "Export ZIP", exact: true }),
+  ).toBeVisible();
+  await expect(
+    skillInfo.getByRole("button", { name: "Copy skill link", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".resource-detail--skill").getByRole("button", {
+      name: "More resource actions",
+    }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: /^Sessions/ }).click();
   await page
     .getByRole("button", { name: "Polish navigation", exact: true })
@@ -1013,20 +1034,39 @@ for (const size of [
     expect(await page.evaluate(() => (window as any).popoverExits)).toBe(1);
 
     await page.getByRole("button", { name: /Review checklist/ }).click();
-    const files = page.getByRole("button", { name: "2 files" });
-    const filesMenu = page.getByRole("dialog", { name: "Files", exact: true });
-    await files.click();
-    await expect(filesMenu).toHaveCSS("animation-duration", "0.16s");
-    await filesMenu
-      .getByRole("button", { name: "references/tokens.md" })
-      .click();
-    await expect(filesMenu).toHaveCount(0);
-    await expect(files).toBeFocused();
+    if (size.width === 900) {
+      // Compact readers keep the file list in a popover beside the view tabs.
+      const files = page.getByRole("button", { name: "Files, 2" });
+      const filesMenu = page.getByRole("dialog", {
+        name: "Files",
+        exact: true,
+      });
+      await files.click();
+      await expect(filesMenu).toHaveCSS("animation-duration", "0.16s");
+      await filesMenu
+        .getByRole("button", { name: "references/tokens.md" })
+        .click();
+      await expect(filesMenu).toHaveCount(0);
+      await expect(files).toBeFocused();
+    } else {
+      await page
+        .getByRole("complementary", { name: "Skill information" })
+        .getByRole("button", { name: "references/tokens.md" })
+        .click();
+    }
     await expect
       .poll(() => calls(page, "inspect_resource"))
       .toContainEqual(
         expect.objectContaining({ file: "references/tokens.md" }),
       );
+    // The More menu remains on memories; the skill reader exposes its actions directly.
+    await page
+      .getByRole("button", { name: "Back to Skills", exact: true })
+      .click();
+    await page.getByRole("button", { name: /^Memories/ }).click();
+    await page
+      .getByRole("button", { name: "Design decisions", exact: true })
+      .click();
 
     await more(page).press("Enter");
     await expect(menu(page)).toHaveCSS("animation-name", "none");
@@ -1163,7 +1203,7 @@ test("Back returns focus to the opened row, or to the search field when filtered
   await expect(search).toHaveValue("archi");
 });
 
-test("the simplified skill reader keeps the document heading order", async ({
+test("the skill reader keeps the document heading order beside its rail", async ({
   page,
 }) => {
   await detailFixture(page);
@@ -1171,7 +1211,9 @@ test("the simplified skill reader keeps the document heading order", async ({
   await page.getByRole("button", { name: /Review checklist/ }).click();
   const view = page.locator(".resource-detail--skill");
   await expect(view).toContainText("Some content");
-  await expect(view.locator(".detail-rail")).toHaveCount(0);
+  await expect(
+    view.getByRole("complementary", { name: "Skill information" }),
+  ).toBeVisible();
   const accessibility = await new AxeBuilder({ page })
     .include(".resource-detail--skill")
     .withRules(["heading-order"])
@@ -1228,6 +1270,104 @@ for (const failure of ["error", "null content"] as const) {
     await page.waitForTimeout(200);
     expect(await page.evaluate(() => (window as any).failedSkillReads)).toBe(1);
     await expect(page.locator(".skill-card")).toContainText("Review checklist");
+  });
+}
+
+for (const dimension of ["profile", "user", "service"] as const) {
+  test(`skill summaries share pending reads without leaking across ${dimension} changes`, async ({
+    page,
+  }) => {
+    await page.clock.install();
+    await detailFixture(page, {
+      skillContent: "---\nname: Original scope\n---\nOriginal instructions\n",
+    });
+    await page.getByRole("button", { name: /^Skills/ }).click();
+    await expect(page.locator(".skill-card")).toContainText("Original scope");
+    await page.evaluate((dimension) => {
+      const w = window as any;
+      const original = w.__TAURI_INTERNALS__.invoke;
+      w.summaryStage = 0;
+      w.pendingSummaryReads = 0;
+      w.nextScopeSummaryReads = 0;
+      w.__TAURI_INTERNALS__.invoke = async (name: string, args: any) => {
+        const value = await original(name, args);
+        if (name === "snapshot" && w.summaryStage > 0) {
+          const next = {
+            ...value,
+            resources: value.resources.map((resource: any) =>
+              resource.resourceId === "skill-e"
+                ? {
+                    ...resource,
+                    revision: resource.revision + 1,
+                    files: resource.files.map((file: any) =>
+                      file.path === "SKILL.md"
+                        ? { ...file, hash: "updated-skill-metadata" }
+                        : file,
+                    ),
+                  }
+                : resource,
+            ),
+          };
+          if (w.summaryStage === 2) {
+            if (dimension === "profile") next.profile = "another-profile";
+            else if (dimension === "user") next.user = "another-user";
+            else
+              next.config = {
+                ...next.config,
+                apiUrl: "https://another-service.local",
+              };
+          }
+          return next;
+        }
+        if (name === "inspect_resource" && args.id === "skill-e") {
+          if (w.summaryStage === 1) {
+            w.pendingSummaryReads++;
+            return new Promise((resolve) => {
+              w.finishOldSummary = () =>
+                resolve({
+                  ...value,
+                  content:
+                    "---\nname: Late previous scope\n---\nOld instructions\n",
+                });
+            });
+          }
+          if (w.summaryStage === 2) {
+            w.nextScopeSummaryReads++;
+            return {
+              ...value,
+              content: "---\nname: New scope\n---\nNew instructions\n",
+            };
+          }
+        }
+        return value;
+      };
+      w.summaryStage = 1;
+    }, dimension);
+    await page.clock.runFor(3100);
+    await expect
+      .poll(() => page.evaluate(() => (window as any).pendingSummaryReads))
+      .toBe(1);
+    // Home and Skills reuse the same request even while the read is unresolved.
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+    await page.getByRole("button", { name: /^Skills/ }).click();
+    expect(await page.evaluate(() => (window as any).pendingSummaryReads)).toBe(
+      1,
+    );
+
+    await page.evaluate(() => {
+      (window as any).summaryStage = 2;
+    });
+    await page.clock.runFor(3100);
+    await expect(page.locator(".skill-card")).toContainText("New scope");
+    expect(
+      await page.evaluate(() => (window as any).nextScopeSummaryReads),
+    ).toBe(1);
+    await page.evaluate(() => (window as any).finishOldSummary());
+    await page.clock.runFor(100);
+    await expect(page.locator(".skill-card")).toContainText("New scope");
+    await expect(page.locator(".skill-card")).not.toContainText(
+      "Late previous scope",
+    );
   });
 }
 

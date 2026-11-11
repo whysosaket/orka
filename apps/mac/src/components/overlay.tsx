@@ -13,6 +13,7 @@ export function Overlay({
   children,
   onEscapeKeyDown,
   onCloseAutoFocus,
+  onKeyDownCapture,
   dismissOnBackdrop = false,
 }: {
   open: boolean;
@@ -23,6 +24,7 @@ export function Overlay({
   children: React.ReactNode;
   onEscapeKeyDown?: (event: KeyboardEvent) => void;
   onCloseAutoFocus?: (event: Event) => void;
+  onKeyDownCapture?: React.KeyboardEventHandler<HTMLDivElement>;
   dismissOnBackdrop?: boolean;
 }) {
   const { transition, reduced } = useUiMotion();
@@ -61,6 +63,7 @@ export function Overlay({
           asChild
           className={`${drawer ? "drawer" : "modal toast-host-modal"} ${className}`}
           aria-describedby={undefined}
+          onKeyDownCapture={onKeyDownCapture}
           onEscapeKeyDown={(event) => {
             if (!dismissToastOnEscape(event)) onEscapeKeyDown?.(event);
           }}

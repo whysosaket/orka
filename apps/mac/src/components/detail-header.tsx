@@ -16,7 +16,6 @@ import { SegmentedControl } from "./segmented-control.js";
 import type { ResourceActionHandlers } from "./use-resource-actions.js";
 import { SessionLauncher } from "./session-launcher.js";
 import type { ResourceView } from "./use-resource-view.js";
-import { skillSharing } from "./skill-sharing.js";
 import { sourcePath } from "./project-sources.js";
 
 const collectionNames: Record<Resource["kind"], string> = {
@@ -29,7 +28,7 @@ const collectionNames: Record<Resource["kind"], string> = {
 export interface DetailHeaderProps {
   scope: string;
   resource: Resource;
-  /** The display title, with SKILL.md frontmatter already applied. */
+  /** The cleaned resource title. Skills use their own detail header. */
   title: string;
   project: Project;
   user: string | null;
@@ -129,9 +128,8 @@ export function DetailHeader({
             {!resource.local &&
               project.governed &&
               onGovernance &&
-              (resource.kind === "skill" ||
-                (resource.kind === "memory" &&
-                  resource.logicalPath.startsWith("instructions/"))) && (
+              resource.kind === "memory" &&
+              resource.logicalPath.startsWith("instructions/") && (
                 <Button
                   size="sm"
                   variant="tertiary"
@@ -216,19 +214,6 @@ export function DetailHeader({
           session ? undefined : { selected: view.file, onSelect: view.setFile }
         }
       />
-      {resource.local && (
-        <div className="detail-note">
-          <span>{skillSharing(resource).message}</span>{" "}
-          {project.governed &&
-            project.sharing?.skill !== false &&
-            skillSharing(resource).reviewable &&
-            onGovernance && (
-              <Button size="sm" variant="tertiary" onClick={onGovernance}>
-                Review changes
-              </Button>
-            )}
-        </div>
-      )}
       {session && actions.launchError && (
         <p className="detail-note detail-launch-error" role="alert">
           {actions.launchError}
