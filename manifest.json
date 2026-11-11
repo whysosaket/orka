@@ -1,0 +1,361 @@
+{
+  "schemaVersion": 1,
+  "title": "PR #18 native Mac app evidence",
+  "sourceCommit": "77c4c2cd1bc032717930d243f24d60a0be97e2da",
+  "sourceModified": false,
+  "testedAt": "2026-11-11T17:44:05.733Z",
+  "runtime": {
+    "app": "Packaged Tauri app",
+    "webview": "WKWebView",
+    "frontend": "Compiled production frontend",
+    "nativeIPC": "Real",
+    "profileData": "Isolated synthetic fixtures",
+    "build": "Tauri debug .app with compiled production frontend; ad-hoc signed",
+    "os": {
+      "name": "macOS",
+      "version": "27.2.1",
+      "build": "26B131"
+    },
+    "testOnlyOverrides": "App name, bundle identity, window dimensions, ad-hoc signature",
+    "bundles": [
+      {
+        "windowPoints": {
+          "width": 1160,
+          "height": 800
+        },
+        "binarySha256": "1ebd0814f2bd0cb0844bc8f24b0471bd86d245144b1e5b2aa1fe708217fd790f"
+      },
+      {
+        "windowPoints": {
+          "width": 900,
+          "height": 640
+        },
+        "binarySha256": "4c334624aee3b8bc4946f8815bdbce4f54b935f8fb2e295f110ad4e40aca24b2"
+      }
+    ]
+  },
+  "verification": [
+    {
+      "name": "Native runtime",
+      "result": "passed",
+      "detail": "Packaged Tauri app running in WKWebView, using the compiled production frontend and real native IPC."
+    },
+    {
+      "name": "Toast focus",
+      "result": "passed",
+      "detail": "Escape and pointer dismissal returned focus to the session launch action. Space requested another launch. Native accessibility snapshots and seven recorded launch events support the interaction checks."
+    },
+    {
+      "name": "Diff and access states",
+      "result": "passed",
+      "detail": "Actual @pierre/diffs shows green additions, red deletions, syntax colors, inline emphasis, and expandable context. Can edit shows Publish update; Suggest changes shows Send for approval; View only has no publication action."
+    },
+    {
+      "name": "File readers",
+      "result": "observed",
+      "detail": "Markdown is formatted; script is plain monospace; CSV is raw text; PDF offers an Open in editor fallback."
+    },
+    {
+      "name": "Native installation",
+      "result": "passed",
+      "detail": "Both installed skill copies match all four approved Version 3 file hashes, sizes, and executable bits. Installed and reviewed revisions are 3; state is current."
+    },
+    {
+      "name": "Preserved local edits",
+      "result": "passed",
+      "detail": "The private draft preserves the exact pre-install file bytes for both copies."
+    },
+    {
+      "name": "Session continuation",
+      "result": "passed",
+      "detail": "Seven native launch requests reused the same persisted fork and native session ID. Native history, resource, binding, and fork metadata exist."
+    },
+    {
+      "name": "Compact layout and focus",
+      "result": "passed",
+      "detail": "Reader, overlay, and scrolled diff checked at 900 × 640. Header and footer remain visible. Escape closes the overlay and restores focus to Review local edits."
+    },
+    {
+      "name": "Local queue",
+      "result": "observed",
+      "detail": "One session continuation upload remains queued locally. No skill publication is queued; background sync is disabled and the service points to loopback."
+    }
+  ],
+  "limitations": [
+    "Synthetic data in an isolated local profile. This is native app evidence, not live account or server verification.",
+    "The external Claude CLI is a harmless fixture that records launch arguments. No model call or real Claude client continuation was exercised.",
+    "Live API sync, teammate approval, Publish update, Send for approval, and external editor launch were not exercised.",
+    "Script reader is plain monospace and CSV reader is raw text. Syntax highlighting is demonstrated in the diff views, not the script reader.",
+    "The PDF capture verifies the fallback state, not PDF document rendering.",
+    "Still images support visual review. Focus and installation claims also rely on native accessibility, keyboard interactions, SQLite, and file-hash checks.",
+    "Debug, ad-hoc-signed test bundles were used. This is not a signed production release or exhaustive coverage of every application state."
+  ],
+  "screenshots": [
+    {
+      "filename": "02-native-toast.jpg",
+      "path": "screenshots/02-native-toast.jpg",
+      "originalFilename": "02-native-toast.png",
+      "caption": "Native session toast after requesting a Terminal launch.",
+      "sha256": "b069e3983acb5a1309226a28a2557bd6ad8ebff6fea9f72ca7fad312f19e4963",
+      "bytes": 232620,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 2320,
+        "height": 1600
+      },
+      "windowPoints": {
+        "width": 1160,
+        "height": 800
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "03-native-focus-returned.jpg",
+      "path": "screenshots/03-native-focus-returned.jpg",
+      "originalFilename": "03-native-focus-returned.png",
+      "caption": "Session reader after dismissing the toast; focus restoration was checked through native accessibility state and keyboard interaction.",
+      "sha256": "fe3055809b7b45c752ae9e903a37b267166c740617672a333c04cd343c785289",
+      "bytes": 219475,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 2320,
+        "height": 1600
+      },
+      "windowPoints": {
+        "width": 1160,
+        "height": 800
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "05-native-skill-reader.jpg",
+      "path": "screenshots/05-native-skill-reader.jpg",
+      "originalFilename": "05-native-skill-reader.png",
+      "caption": "Formatted Markdown with skill metadata, file list, and reader actions.",
+      "sha256": "c918dcd73d9eeaa5725d5e73db5e747fb1c87fd7bbf1ed29eb25f27801143c21",
+      "bytes": 265641,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 2320,
+        "height": 1600
+      },
+      "windowPoints": {
+        "width": 1160,
+        "height": 800
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "06-native-view-changes.jpg",
+      "path": "screenshots/06-native-view-changes.jpg",
+      "originalFilename": "06-native-view-changes.png",
+      "caption": "View changes with red deletions, green additions, inline emphasis, and changed-line headers.",
+      "sha256": "11897c0680026ed8c9b2432a79d6321c70890347ba77b2525bce58f884e1d935",
+      "bytes": 256723,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 2320,
+        "height": 1600
+      },
+      "windowPoints": {
+        "width": 1160,
+        "height": 800
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "07-native-can-edit.jpg",
+      "path": "screenshots/07-native-can-edit.jpg",
+      "originalFilename": "07-native-can-edit.png",
+      "caption": "Can edit overlay with multiple changed files and Publish update.",
+      "sha256": "3049a82a16902db63da7c89fd618df3a834c7048b8145c52c1de04e4c6decee4",
+      "bytes": 274539,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 2320,
+        "height": 1600
+      },
+      "windowPoints": {
+        "width": 1160,
+        "height": 800
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "09-native-script.jpg",
+      "path": "screenshots/09-native-script.jpg",
+      "originalFilename": "09-native-script.png",
+      "caption": "Shell script shown as plain monospace text.",
+      "sha256": "154eb25ac336706f4700e62501c1bbbe92cf285061e42448a83ef8419781cabf",
+      "bytes": 218744,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 2320,
+        "height": 1600
+      },
+      "windowPoints": {
+        "width": 1160,
+        "height": 800
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "10-native-csv.jpg",
+      "path": "screenshots/10-native-csv.jpg",
+      "originalFilename": "10-native-csv.png",
+      "caption": "CSV shown as raw comma-separated text.",
+      "sha256": "699e0260402d64982d008d3412909b4c39d704a751f6353bb5aee4d602467d60",
+      "bytes": 209182,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 2320,
+        "height": 1600
+      },
+      "windowPoints": {
+        "width": 1160,
+        "height": 800
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "11-native-pdf-fallback.jpg",
+      "path": "screenshots/11-native-pdf-fallback.jpg",
+      "originalFilename": "11-native-pdf-fallback.png",
+      "caption": "PDF fallback with Preview unavailable and Open in editor; View changes is disabled.",
+      "sha256": "8639414d282353dbf1e5e05d1f7345871f5d59d57c8916f224bc621c4aa6da13",
+      "bytes": 203152,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 2320,
+        "height": 1600
+      },
+      "windowPoints": {
+        "width": 1160,
+        "height": 800
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "12-native-suggest-changes.jpg",
+      "path": "screenshots/12-native-suggest-changes.jpg",
+      "originalFilename": "12-native-suggest-changes.png",
+      "caption": "Suggest changes overlay with multiple changed files and Send for approval.",
+      "sha256": "e8fb4d673e09f0bbe0de38332fd35f7d762858efabda1a75e5366d23f809ec77",
+      "bytes": 297728,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 2320,
+        "height": 1600
+      },
+      "windowPoints": {
+        "width": 1160,
+        "height": 800
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "13-native-view-only.jpg",
+      "path": "screenshots/13-native-view-only.jpg",
+      "originalFilename": "13-native-view-only.png",
+      "caption": "View only overlay with access pill and diff, without a publication action.",
+      "sha256": "1ce7417f8f23623324aac5e76aa33870da933c616955e1a5ad92ec11268263ef",
+      "bytes": 304171,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 2320,
+        "height": 1600
+      },
+      "windowPoints": {
+        "width": 1160,
+        "height": 800
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "15-native-update-installed.jpg",
+      "path": "screenshots/15-native-update-installed.jpg",
+      "originalFilename": "15-native-update-installed.png",
+      "caption": "Installed skill shows Version 3 after Keep edits and install.",
+      "sha256": "3cb5dc328f09be2709aa9162261748440fb40a874e416e636df7ea61f17cd327",
+      "bytes": 267943,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 2320,
+        "height": 1600
+      },
+      "windowPoints": {
+        "width": 1160,
+        "height": 800
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "16-native-compact-reader.jpg",
+      "path": "screenshots/16-native-compact-reader.jpg",
+      "originalFilename": "16-native-compact-reader.png",
+      "caption": "Compact 900 × 640 reader with collapsed file list and document scrolling.",
+      "sha256": "ade616f628f801a3448f20961f6cbe78e57359ad0a95ca9f7f1957366d63a30c",
+      "bytes": 183245,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 1800,
+        "height": 1280
+      },
+      "windowPoints": {
+        "width": 900,
+        "height": 640
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "17-native-compact-overlay.jpg",
+      "path": "screenshots/17-native-compact-overlay.jpg",
+      "originalFilename": "17-native-compact-overlay.png",
+      "caption": "Compact review overlay with change colors, bottom fade, and fixed Publish update action.",
+      "sha256": "e33be02dc6e2ce6f221f446d5bc1c77426b3d40e022ed1bf9543f3f63f84e01f",
+      "bytes": 177769,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 1800,
+        "height": 1280
+      },
+      "windowPoints": {
+        "width": 900,
+        "height": 640
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    },
+    {
+      "filename": "18-native-compact-scrolled.jpg",
+      "path": "screenshots/18-native-compact-scrolled.jpg",
+      "originalFilename": "18-native-compact-scrolled.png",
+      "caption": "Scrolled compact review overlay with shell syntax colors and persistent header and footer.",
+      "sha256": "b82e572fe6b34978605153af294d5702fb277932014d1a228498a471b36042b7",
+      "bytes": 172478,
+      "mediaType": "image/jpeg",
+      "imagePixels": {
+        "width": 1800,
+        "height": 1280
+      },
+      "windowPoints": {
+        "width": 900,
+        "height": 640
+      },
+      "scale": 2,
+      "publicAudit": "passed"
+    }
+  ]
+}
