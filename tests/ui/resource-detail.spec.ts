@@ -15,6 +15,8 @@ type Options = {
   exportError?: boolean;
   manualResume?: boolean;
   sessionTitle?: string;
+  sessionLinkError?: boolean;
+  sessionMessages?: [string, string];
   deepLink?: string;
   slowSnapshot?: boolean;
   skillContent?: string;
@@ -369,12 +371,22 @@ async function detailFixture(page: Page, options: Options = {}) {
           if (name === "session_messages")
             return {
               messages: [
-                { index: 0, role: "user", text: "Session conversation" },
-                { index: 1, role: "assistant", text: "Done." },
+                {
+                  index: 0,
+                  role: "user",
+                  text: options.sessionMessages?.[0] ?? "Session conversation",
+                },
+                {
+                  index: 1,
+                  role: "assistant",
+                  text: options.sessionMessages?.[1] ?? "Done.",
+                },
               ],
               total: 2,
               offset: 0,
             };
+          if (name === "open_web_link" && options.sessionLinkError)
+            throw new Error("Cannot open your browser");
           if (
             name === "inspect_resource" &&
             args?.file === "SKILL.md" &&
@@ -1455,6 +1467,50 @@ async function openSession(page: Page, title = "Polish navigation") {
   await page.getByRole("button", { name: /^Sessions/ }).click();
   await page.getByRole("button", { name: title, exact: true }).click();
 }
+
+test("session web links open through the native browser command", async ({
+  page,
+}) => {
+  const url = "https://example.test/guide?view=all#setup";
+  const markdownUrl = "http://example.test/docs";
+  await detailFixture(page, {
+    sessionMessages: [
+      url,
+      `[Documentation](${markdownUrl}) and [Local notes](./notes.md).`,
+    ],
+  });
+  await openSession(page);
+  const conversation = page.getByLabel("Conversation", { exact: true });
+  await conversation.getByRole("link", { name: url, exact: true }).click();
+  await expect.poll(() => calls(page, "open_web_link")).toEqual([{ url }]);
+
+  await page.setViewportSize({ width: 900, height: 640 });
+  await conversation
+    .getByRole("link", { name: "Documentation" })
+    .press("Enter");
+  await expect
+    .poll(() => calls(page, "open_web_link"))
+    .toEqual([{ url }, { url: markdownUrl }]);
+  await expect(conversation.getByText("Local notes")).toBeVisible();
+  await expect(
+    conversation.getByRole("link", { name: "Local notes" }),
+  ).toHaveCount(0);
+});
+
+test("a browser launch failure is visible in the session reader", async ({
+  page,
+}) => {
+  const url = "https://example.test";
+  await detailFixture(page, {
+    sessionMessages: [url, "Done."],
+    sessionLinkError: true,
+  });
+  await openSession(page);
+  await page.getByRole("link", { name: url, exact: true }).click();
+  await expect(
+    page.locator("[data-orka-toast]").getByRole("alert"),
+  ).toContainText("Couldn’t open the link in your browser.");
+});
 
 async function chooseTerminal(page: Page, name: string) {
   await page.getByRole("combobox", { name: "Terminal application" }).click();

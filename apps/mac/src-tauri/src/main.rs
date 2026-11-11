@@ -242,6 +242,7 @@ fn main() {
             settings_lifecycle::finish_settings_close,
             onboarding::onboarding_command,
             commands::open_legal_link,
+            commands::open_web_link,
             env::env_command,
             governance::governance_command,
             profiles::profile_list,
