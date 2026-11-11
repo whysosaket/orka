@@ -1,0 +1,69 @@
+{
+  "pr": "https://github.com/whysosaket/orka/pull/18",
+  "sourceCommit": "37908ede1e118ff3f59975297d10c8c625c0addc",
+  "capturedAt": "2026-11-11T09:51:27.821Z",
+  "environment": "Actual Orka frontend in Chromium at 1440x900; deterministic native-command fixtures; actual @pierre/diffs renderer.",
+  "limits": [
+    "Not evidence of live teammate approval or cross-Mac sync.",
+    "Native commands use fixture responses; these are not native macOS screenshots.",
+    "No blanket pixel-perfect claim."
+  ],
+  "screenshots": [
+    {
+      "node": "1474-10032",
+      "id": "01-skill-detail",
+      "title": "Skill detail",
+      "caption": "Formatted Markdown, metadata, and file navigation.",
+      "filename": "01-skill-detail.png",
+      "bytes": 178622
+    },
+    {
+      "node": "1474-10195",
+      "id": "02-view-changes",
+      "title": "View changes",
+      "caption": "Actual Pierre diff with syntax highlighting, green additions, and red deletions.",
+      "filename": "02-view-changes.png",
+      "bytes": 131308
+    },
+    {
+      "node": "1468-4822",
+      "id": "03-can-edit",
+      "title": "Local edits: Can edit",
+      "caption": "Multi-file review with Publish update.",
+      "filename": "03-can-edit.png",
+      "bytes": 177477
+    },
+    {
+      "node": "1468-5154",
+      "id": "04-suggest-changes",
+      "title": "Local edits: Suggest changes",
+      "caption": "The same review with Send for approval.",
+      "filename": "04-suggest-changes.png",
+      "bytes": 179193
+    },
+    {
+      "node": "1468-5482",
+      "id": "05-view-only",
+      "title": "Local edits: View only",
+      "caption": "Access pill and diff with no publishing action.",
+      "filename": "05-view-only.png",
+      "bytes": 183589
+    },
+    {
+      "node": "1471-4924",
+      "id": "06-install-review",
+      "title": "Incoming update",
+      "caption": "Multi-file review before Keep edits and install.",
+      "filename": "06-install-review.png",
+      "bytes": 180388
+    },
+    {
+      "node": "1453-5234",
+      "id": "07-pdf-fallback",
+      "title": "PDF selection",
+      "caption": "Explicit preview fallback with Open in editor.",
+      "filename": "07-pdf-fallback.png",
+      "bytes": 94722
+    }
+  ]
+}
