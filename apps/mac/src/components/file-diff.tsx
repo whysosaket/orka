@@ -120,8 +120,6 @@ export interface FileDiffCardProps {
   status?: FileChangeStatus;
   binary?: boolean;
   comparisonUnavailable?: boolean;
-  /** Rendered as the card heading; the overlay and reader both sit under an h2. */
-  headingId?: string;
 }
 
 /** One unified, read-only comparison with collapsible unchanged regions. */
@@ -132,7 +130,6 @@ export function FileDiffCard({
   status = "modified",
   binary = false,
   comparisonUnavailable = false,
-  headingId,
 }: FileDiffCardProps) {
   const kind = fileKind(path);
   const textPreview = !binary && kind.label !== "PDF";
@@ -143,15 +140,12 @@ export function FileDiffCard({
   return (
     <section
       className={`diff-card${removed ? " diff-card--removed" : ""}`}
-      aria-labelledby={headingId}
-      aria-label={headingId ? undefined : `${path} changes`}
+      aria-label={`${path} changes`}
     >
       <header className="diff-card-header">
         <div className="diff-card-file">
           <Icon icon={kind.icon} size="sm" variant="primary" />
-          <h3 id={headingId} className="diff-card-path">
-            {path}
-          </h3>
+          <h3 className="diff-card-path">{path}</h3>
           {!removed && textPreview && diff.ranges && (
             <span className="diff-card-ranges">{diff.ranges}</span>
           )}

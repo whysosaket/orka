@@ -61,9 +61,7 @@ interface Loaded {
 }
 
 type Phase =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | ({ status: "ready" } & Loaded);
+  { status: "loading" } | { status: "error" } | ({ status: "ready" } & Loaded);
 
 const sampleLoaded: Loaded = {
   changes: [
@@ -290,9 +288,8 @@ export function SkillReviewOverlay({
       }
       if (current === generation.current)
         setPhase({ status: "ready", ...loaded });
-    } catch (error) {
-      if (current === generation.current)
-        setPhase({ status: "error", message: String(error) });
+    } catch {
+      if (current === generation.current) setPhase({ status: "error" });
     }
     // The signature is read when a preview starts; later changes mark it stale.
     // eslint-disable-next-line react-hooks/exhaustive-deps

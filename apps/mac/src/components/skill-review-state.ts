@@ -12,8 +12,6 @@ export const actionableDraftStatuses = ["local", "stale", "rejected"];
 
 export interface SkillReviewState {
   binding?: Binding;
-  /** The actionable draft, or the pending one while approval is outstanding. */
-  draft?: LocalDraft;
   /** Review local edits: a draft or local modification waits on this Mac. */
   outgoing: boolean;
   /** A suggestion for this skill is awaiting a publisher's decision. */
@@ -22,9 +20,6 @@ export interface SkillReviewState {
   incoming: boolean;
   /** Local edits block the approved incoming install (blue dot). */
   incomingBlocked: boolean;
-  /** The approved change removes the skill from this Mac. */
-  removal: boolean;
-  availableRevision: number;
 }
 
 type ReviewSnapshot = Pick<Snapshot, "bindings" | "drafts" | "governance">;
@@ -70,8 +65,6 @@ export function skillReviewState(
     pending: false,
     incoming: false,
     incomingBlocked: false,
-    removal: false,
-    availableRevision: binding?.availableRevision ?? resource.revision,
   };
   if (resource.local || !project.governed || resource.kind !== "skill")
     return none;
@@ -91,13 +84,10 @@ export function skillReviewState(
       available !== installedRevision);
   return {
     binding,
-    draft,
     outgoing: !pending && (actionable || installation === "locally_modified"),
     pending,
     incoming,
     incomingBlocked: incoming && installation === "locally_modified",
-    removal: resource.deleted === true,
-    availableRevision: available ?? resource.revision,
   };
 }
 

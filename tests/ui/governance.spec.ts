@@ -25,20 +25,20 @@ async function fixture(
   await page.addInitScript(
     ({ rules, governed, removed, mode, envData }) => {
       const isMember = mode === "member" || mode === "restricted";
+      const instructions = mode === "instructions";
+      const file = instructions ? "CLAUDE.md" : "SKILL.md";
       const resource = {
-        resourceId: "skill",
+        resourceId: instructions ? "instructions" : "skill",
         projectId: "project",
-        kind: "skill",
+        kind: instructions ? "memory" : "skill",
         source: "shared",
-        logicalPath: "sample",
-        title: "Sample skill",
+        logicalPath: instructions ? "instructions/CLAUDE.md" : "sample",
+        title: instructions ? "Project instructions" : "Sample skill",
         revision: 2,
         owner: "owner",
         updatedBy: "owner",
         updatedAt: "2026-10-18T00:00:00Z",
-        files: [
-          { path: "SKILL.md", hash: "fixture", size: 16, executable: false },
-        ],
+        files: [{ path: file, hash: "fixture", size: 16, executable: false }],
         deleted: removed,
       };
       const project = {
@@ -147,6 +147,7 @@ async function fixture(
           catalog.policyRevision++;
         },
         isTauri: true,
+        __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
         __TAURI_INTERNALS__: {
           transformCallback: () => 1,
           unregisterCallback: () => {},
@@ -342,8 +343,14 @@ async function fixture(
                     token: "local-preview",
                     revision: 2,
                     dirty: true,
-                    before: { "SKILL.md": "Local edits\n" },
-                    after: removed ? {} : { "SKILL.md": "Approved skill\n" },
+                    before: { [file]: "Local edits\n" },
+                    after: removed
+                      ? {}
+                      : {
+                          [file]: instructions
+                            ? "Approved instructions\n"
+                            : "Approved skill\n",
+                        },
                   };
                 case "apply-install":
                   if (
@@ -576,6 +583,56 @@ test("shared skill removals stay reviewable and preserve private edits", async (
     preserveLocal: true,
   });
 });
+
+for (const removed of [false, true]) {
+  test(`Requests keeps instruction ${removed ? "removal" : "updates"} reviewable`, async ({
+    page,
+  }) => {
+    await fixture(page, true, removed, "instructions");
+    const dialog = await openUpdates(page);
+    await expect(dialog).toHaveClass(/governance-dialog/);
+    await expect(
+      dialog.getByRole("heading", {
+        name: "Project instructions",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(await calls(page, "preview-install")).toEqual([]);
+    await dialog
+      .getByRole("button", {
+        name: removed ? "Review local removal" : "Review local update",
+        exact: true,
+      })
+      .click();
+    await expect(dialog.getByLabel("File changes")).toContainText(
+      "Local edits",
+    );
+    await expect(
+      dialog.getByText(
+        "Your local edits will be saved privately on this Mac before installation.",
+      ),
+    ).toBeVisible();
+    expect(await calls(page, "preview-install")).toEqual([
+      { projectId: "project", resourceId: "instructions" },
+    ]);
+    await dialog
+      .getByRole("button", {
+        name: removed
+          ? "Preserve edits and remove reviewed version"
+          : "Preserve edits and install reviewed version",
+        exact: true,
+      })
+      .click();
+    expect(await calls(page, "apply-install")).toEqual([
+      {
+        projectId: "project",
+        resourceId: "instructions",
+        token: "local-preview",
+        preserveLocal: true,
+      },
+    ]);
+  });
+}
 
 test("local installation rejects changes made after reviewing the preview", async ({
   page,

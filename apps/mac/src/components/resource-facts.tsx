@@ -39,17 +39,15 @@ function FactChip({
   );
 }
 
-/** A fact that opens a menu: primary text, a chevron, and a selected fill while open or pressed. */
+/** A fact that opens a menu: primary text, a chevron, and a selected fill while open. */
 function FactMenu({
   icon,
   menuLabel,
-  pressed,
   menu,
   children,
 }: {
   icon: OcticonIcon;
   menuLabel: string;
-  pressed?: boolean;
   menu: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -59,11 +57,7 @@ function FactMenu({
       label={menuLabel}
       className="fact-menu"
       trigger={
-        <button
-          type="button"
-          className="fact-chip fact-chip--menu"
-          aria-pressed={pressed}
-        >
+        <button type="button" className="fact-chip fact-chip--menu">
           <Icon icon={icon} size="xs" variant="tertiary" />
           {children}
           <Icon icon={ChevronDownIcon} size="xs" variant="tertiary" />
