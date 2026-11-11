@@ -56,12 +56,13 @@ jobs:
           spctl --assess --type execute "$app"
           plist="$app/Contents/Info.plist"
           [[ $(plutil -extract CFBundleShortVersionString raw "$plist") == "$ORKA_VERSION" ]]
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/portable-workspace-mac"
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/orka-desktop"
           updater="$app/Contents/Helpers/Orka Updater.app"
           codesign --verify --deep --strict --all-architectures -R="anchor apple generic and identifier \"com.relay.portable-workspace.recovery\" and certificate leaf[subject.OU] = \"$APPLE_TEAM_ID\" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists" "$updater"
           [[ $(plutil -extract LSUIElement raw "$updater/Contents/Info.plist") == true ]]
-          lipo -verify_arch arm64 x86_64 "$updater/Contents/MacOS/orka-updater"
+          for binary in "$app/Contents/MacOS/portable-workspace-mac" "$app/Contents/MacOS/orka-desktop" "$updater/Contents/MacOS/orka-updater"; do
+            lipo "$binary" -verify_arch arm64
+            lipo "$binary" -verify_arch x86_64
+          done
           ORKA_EPOCH=$(plutil -extract OrkaUpdateDataEpoch raw "$plist")
           ORKA_MIN_MACOS=$(plutil -extract LSMinimumSystemVersion raw "$plist")
           export ORKA_EPOCH ORKA_MIN_MACOS
