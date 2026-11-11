@@ -3,6 +3,8 @@ export async function settingsFixture(
   page: Page,
   options: {
     noProjects?: boolean;
+    emailInvites?: boolean;
+    failEmailInvite?: boolean;
     update?: {
       installedVersion: string;
       update?: { version: string; notes: string; sha256: string };
@@ -398,6 +400,22 @@ export async function settingsFixture(
               return { ok: true };
             }
             return {};
+          }
+          if (
+            command === "cloud_action" &&
+            args.action === "invite-capabilities"
+          )
+            return { email: options.emailInvites ?? false };
+          if (
+            command === "cloud_action" &&
+            args.action === "invite" &&
+            args.input?.email
+          ) {
+            if (options.failEmailInvite)
+              throw new Error(
+                "Invitation email could not be sent. Try again or use a joining link.",
+              );
+            return { sent: true, email: args.input.email };
           }
           if (command === "cloud_action" && args.action === "invite")
             return {

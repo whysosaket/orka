@@ -128,3 +128,15 @@ Follow [CONTRIBUTING.md](../CONTRIBUTING.md) for desktop checks. The browser sui
 ### Project ENVs
 
 ENV sharing is currently disabled in the desktop UI. Native encryption and compatibility code remains in place, but the current app does not expose the ENV workflow. Native tests use synthetic data and isolated storage.
+
+### Email invitations
+
+In **Settings → Members → Add Member**, enter a teammate's email and select
+**Send invitation**. Onboarding's **Invite teammate** action opens the same form.
+The teammate must sign in with the verified email address that received the
+invitation. It works once and expires after 24 hours.
+
+**Use joining link** remains available alongside email. Servers without email
+delivery open directly on **Copy joining link**. Delivery errors preserve the
+entered email and allow switching to a link. Invites retain your service's signup
+policy; an instance with signup disabled still needs operator-provisioned accounts.

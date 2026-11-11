@@ -99,6 +99,7 @@ async function fixture(
     unconnectedProject?: boolean;
     pauseCheckpoints?: boolean;
     pauseInvites?: boolean;
+    emailInvites?: boolean;
   } = {},
 ) {
   await page.addInitScript(
@@ -362,11 +363,18 @@ async function fixture(
               background = args.enabled;
               return {};
             }
+            if (
+              command === "cloud_action" &&
+              args.action === "invite-capabilities"
+            )
+              return { email: options.emailInvites ?? false };
             if (command === "cloud_action" && args.action === "invite") {
               if (inviteControls.paused)
                 await new Promise<void>((resolve) =>
                   inviteControls.pending.push(resolve),
                 );
+              if (args.input.email)
+                return { sent: true, email: args.input.email };
               return {
                 token: `token-${++invite}`,
                 url: `https://cloud.example.test/join/token-${invite}`,
@@ -1091,12 +1099,14 @@ test("profile, projects, sync, background choice, and fresh one-use invites reac
     path: info.outputPath("invites.png"),
   });
   await page
-    .getByRole("button", { name: "Copy invite", exact: true })
+    .getByRole("button", { name: "Invite teammate", exact: true })
     .first()
     .click();
-  await expect(
-    page.getByRole("button", { name: "Copied", exact: true }),
-  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Copy joining link", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Joining link copied");
+  await page.getByRole("button", { name: "Done", exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => (window as any).onboardingClipboard.length))
     .toBe(1);
@@ -1472,54 +1482,37 @@ for (const width of [1440, 900]) {
   });
 }
 
-test("copying an invite keeps navigation stable and ignores duplicate pending clicks", async ({
-  page,
-}, info) => {
+test("email invites are primary during onboarding", async ({ page }) => {
   await fixture(page, {
     step: "invite",
-    pauseInvites: true,
-    projectNames: ["Orka", "Nimbus"],
+    emailInvites: true,
+    projectNames: ["Orka"],
   });
-  await watchButtonDisabling(page);
-  const copy = page
-    .getByRole("button", { name: "Copy invite", exact: true })
-    .first();
-  await copy.click();
-  await expect(copy).toHaveAttribute("aria-busy", "true");
-  await expect(
-    page.getByRole("button", { name: "Back", exact: true }),
-  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Invite teammate", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Invite member" });
+  await expect(dialog.getByLabel("Email address")).toBeVisible();
+  await dialog.getByLabel("Email address").fill("teammate@example.com");
+  await dialog
+    .getByRole("button", { name: "Send invitation", exact: true })
+    .click();
+  await expect(dialog.getByRole("status")).toContainText(
+    "Invitation sent to teammate@example.com",
+  );
+  expect(
+    (await calls(page)).filter((call) => call.args.action === "invite"),
+  ).toHaveLength(1);
+  expect(
+    await page.evaluate(() => (window as any).onboardingClipboard),
+  ).toEqual([]);
+  await dialog.getByRole("button", { name: "Done", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Go to Dashboard", exact: true }),
   ).toBeEnabled();
-  await copy.dispatchEvent("click");
-  await page
-    .getByRole("button", { name: "Copy invite", exact: true })
-    .last()
-    .dispatchEvent("click");
-  expect(
-    (await calls(page)).filter(
-      (call) =>
-        call.command === "cloud_action" && call.args.action === "invite",
-    ),
-  ).toHaveLength(1);
-  await page.evaluate(() => (window as any).inviteControls.release());
-  await expect(
-    page.getByRole("button", { name: "Copied", exact: true }),
-  ).toBeVisible();
-  expect(await page.evaluate(() => (window as any).disabledButtons)).toEqual(
-    [],
-  );
-  expect(
-    await page.evaluate(() => (window as any).onboardingClipboard),
-  ).toEqual(["https://cloud.example.test/join/token-1"]);
-  await page.screenshot({
-    path: info.outputPath("invite-copied-stable.png"),
-    animations: "disabled",
-  });
 });
 
-test("leaving invites during a pending copy does not change the clipboard later", async ({
+test("pending invitation blocks closing and duplicate submissions", async ({
   page,
 }) => {
   await fixture(page, {
@@ -1527,53 +1520,54 @@ test("leaving invites during a pending copy does not change the clipboard later"
     pauseInvites: true,
     projectNames: ["Orka"],
   });
-  await page.getByRole("button", { name: "Copy invite", exact: true }).click();
   await page
-    .getByRole("button", { name: "Go to Dashboard", exact: true })
+    .getByRole("button", { name: "Invite teammate", exact: true })
     .click();
+  const dialog = page.getByRole("dialog", { name: "Invite member" });
+  const copy = dialog.getByRole("button", {
+    name: "Copy joining link",
+    exact: true,
+  });
+  await copy.click();
+  await expect(dialog.locator("form")).toHaveAttribute("aria-busy", "true");
   await expect(
-    page.getByRole("button", { name: "Settings", exact: true }),
-  ).toBeVisible();
-  await page.evaluate(() => (window as any).inviteControls.release());
-  await expect
-    .poll(() =>
-      page.evaluate(() => (window as any).inviteControls.pending.length),
-    )
-    .toBe(0);
+    dialog.getByRole("button", { name: "Done", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await dialog.locator('button[type="submit"]').dispatchEvent("click");
   expect(
-    await page.evaluate(() => (window as any).onboardingClipboard),
-  ).toEqual([]);
+    (await calls(page)).filter((call) => call.args.action === "invite"),
+  ).toHaveLength(1);
+  await page.evaluate(() => (window as any).inviteControls.release());
+  await expect(dialog.getByRole("status")).toContainText("Joining link copied");
 });
 
-test("clipboard failure retries the same invite instead of silently creating another", async ({
+test("clipboard failure retries the same invite instead of creating another", async ({
   page,
 }) => {
-  await fixture(page, { step: "select", clipboardFailure: true });
-  await page.getByRole("button", { name: "Proceed", exact: true }).click();
+  await fixture(page, {
+    step: "invite",
+    clipboardFailure: true,
+    projectNames: ["Orka"],
+  });
   await page
-    .getByRole("button", { name: "Start Syncing", exact: true })
+    .getByRole("button", { name: "Invite teammate", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toContainText("Sync Complete");
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("button", { name: "Not now", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Copy invite", exact: true })
-    .first()
+  const dialog = page.getByRole("dialog", { name: "Invite member" });
+  await dialog
+    .getByRole("button", { name: "Copy joining link", exact: true })
     .click();
-  await expect(page.getByRole("alert")).toContainText("Couldn’t copy");
-  await page
-    .getByRole("button", { name: "Copy invite", exact: true })
-    .first()
+  await expect(dialog.getByRole("alert")).toContainText("Couldn’t copy");
+  await expect(dialog.getByLabel("Joining link")).toHaveValue(
+    "https://cloud.example.test/join/token-1",
+  );
+  await dialog
+    .getByRole("button", { name: "Copy joining link", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "Copied", exact: true }),
-  ).toBeVisible();
+  await expect(dialog.getByRole("status")).toContainText("Joining link copied");
   expect(
-    (await calls(page)).filter(
-      (call) =>
-        call.command === "cloud_action" && call.args.action === "invite",
-    ),
+    (await calls(page)).filter((call) => call.args.action === "invite"),
   ).toHaveLength(1);
 });
 
@@ -1692,7 +1686,7 @@ for (const width of [1440, 900])
     await page.setViewportSize({ width, height: width === 1440 ? 900 : 640 });
     await fixture(page, { step: "invite", projectNames: ["Zephyr", "Quasar"] });
     await expect(
-      page.getByRole("button", { name: "Copy invite", exact: true }),
+      page.getByRole("button", { name: "Invite teammate", exact: true }),
     ).toHaveCount(2);
     await expect(
       page.getByRole("button", { name: "Go to Dashboard", exact: true }),

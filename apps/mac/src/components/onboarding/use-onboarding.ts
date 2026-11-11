@@ -46,24 +46,16 @@ export function useOnboarding(
   const [profileReady, setProfileReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState("");
-  const [copyingInvite, setCopyingInvite] = useState("");
   const current = useRef(draft);
   current.current = draft;
   const active = useRef(true);
   const locked = useRef(false);
   const choiceWrites = useRef(Promise.resolve());
   const choicesDirty = useRef(false);
-  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-  const pendingInvites = useRef(new Map<string, string>());
-  const inviteInFlight = useRef(false);
   useEffect(() => {
     active.current = true;
     return () => {
       active.current = false;
-      clearTimeout(copyTimer.current);
     };
   }, []);
   const checkpoint = async (patch: Partial<OnboardingDraft>) => {
@@ -329,43 +321,6 @@ export function useOnboarding(
         onComplete(projectId ?? connected!.projectId!);
       await refresh();
     });
-  const invite = async (projectId: string) => {
-    if (
-      inviteInFlight.current ||
-      locked.current ||
-      !active.current ||
-      current.current.step !== "invite"
-    )
-      return;
-    inviteInFlight.current = true;
-    setCopyingInvite(projectId);
-    setError("");
-    try {
-      let url = pendingInvites.current.get(projectId);
-      if (!url) {
-        const result = await invoke<{ token: string; url?: string }>(
-          "cloud_action",
-          { action: "invite", input: { projectId } },
-        );
-        url = result.url ?? `orka://join/${result.token}`;
-        pendingInvites.current.set(projectId, url);
-      }
-      if (!active.current || current.current.step !== "invite") return;
-      await navigator.clipboard.writeText(url);
-      pendingInvites.current.delete(projectId);
-      if (active.current && current.current.step === "invite") {
-        setCopied(projectId);
-        clearTimeout(copyTimer.current);
-        copyTimer.current = setTimeout(() => setCopied(""), 2000);
-      }
-    } catch (e) {
-      if (active.current && current.current.step === "invite")
-        setError(String(e).replace(/^Error:\s*/, ""));
-    } finally {
-      inviteInFlight.current = false;
-      if (active.current) setCopyingInvite("");
-    }
-  };
   const background = (enabled: boolean) =>
     void run(async () => {
       try {
@@ -389,8 +344,6 @@ export function useOnboarding(
     profileReady,
     busy,
     error,
-    copied,
-    copyingInvite,
     go,
     setProjectChoice: (path: string, id: string) =>
       updateChoices((value) => ({
@@ -444,7 +397,6 @@ export function useOnboarding(
     complete: () => complete(),
     defer: () => complete(undefined, true),
     completeProject: (id: string) => complete(id),
-    invite,
     background,
     saveProfile: (input: AccountProfile) =>
       void run(async () => {

@@ -1,5 +1,11 @@
 # Release compatibility
 
+Email invitation candidates add migration 003 and optional `invites.email` /
+invite-creation `email` fields. Existing protocol packages and joining-link
+requests are unchanged. Email delivery and verified-recipient enforcement are
+shared by OSS and managed Go servers. See [project email invitations](authentication.md#project-email-invitations)
+for configuration, signup policy and coordinated rollout.
+
 ## Go runtime contract checks
 
 The Go runtime retains the TypeScript protocol package as its contract source.

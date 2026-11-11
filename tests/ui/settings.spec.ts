@@ -579,9 +579,12 @@ test("members create a join link, promote explicitly, and confirm removal", asyn
   await expect(members.getByText("You", { exact: true })).toBeVisible();
   await button(settings, "Add Member").click();
   const invite = page.getByRole("dialog", { name: "Add Member", exact: true });
-  await expect(invite.getByRole("textbox", { name: "Join link" })).toHaveValue(
-    "https://test.orka/join/join-once",
-  );
+  await invite
+    .getByRole("button", { name: "Copy joining link", exact: true })
+    .click();
+  await expect(
+    invite.getByRole("textbox", { name: "Joining link" }),
+  ).toHaveValue("https://test.orka/join/join-once");
   await invite.getByRole("button", { name: "Done", exact: true }).click();
   await choose(settings, "Role for Jamie Rivera", "Admin");
   await expect(settings.getByText("Role updated.")).toBeVisible();
@@ -1178,4 +1181,56 @@ test("sign-out clears an uncertain policy operation before the same account retu
       (call) => call.args.action === "save-role-policy",
     ),
   ).toHaveLength(1);
+});
+
+for (const width of [1160, 900])
+  test(`email invitation is primary in member settings at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: width === 900 ? 640 : 800 });
+    const settings = await settingsFixture(page, { emailInvites: true });
+    await button(settings, "Members").click();
+    await button(settings, "Add Member").click();
+    const dialog = page.getByRole("dialog", {
+      name: "Add Member",
+      exact: true,
+    });
+    await expect(dialog.getByLabel("Email address")).toBeFocused();
+    await expect(button(dialog, "Send invitation")).toBeDisabled();
+    await dialog.getByLabel("Email address").fill("Person@Example.com");
+    expect(
+      (await new AxeBuilder({ page }).include('[role="dialog"]').analyze())
+        .violations,
+    ).toEqual([]);
+    await button(dialog, "Send invitation").click();
+    await expect(dialog.getByRole("status")).toContainText(
+      "Invitation sent to person@example.com",
+    );
+    const invitations = (await settingsCalls(page)).filter(
+      (c) => c.command === "cloud_action" && c.args.action === "invite",
+    );
+    expect(invitations).toHaveLength(1);
+    expect(invitations[0].args.input.email).toBe("person@example.com");
+  });
+test("failed email invitation preserves the address and offers a joining link", async ({
+  page,
+}) => {
+  const settings = await settingsFixture(page, {
+    emailInvites: true,
+    failEmailInvite: true,
+  });
+  await button(settings, "Members").click();
+  await button(settings, "Add Member").click();
+  const dialog = page.getByRole("dialog", { name: "Add Member", exact: true });
+  await dialog.getByLabel("Email address").fill("teammate@example.com");
+  await button(dialog, "Send invitation").click();
+  await expect(dialog.getByRole("alert")).toContainText("could not be sent");
+  await expect(dialog.getByLabel("Email address")).toHaveValue(
+    "teammate@example.com",
+  );
+  await button(dialog, "Use joining link").click();
+  await button(dialog, "Copy joining link").click();
+  await expect(dialog.getByLabel("Joining link")).toHaveValue(
+    "https://test.orka/join/join-once",
+  );
 });
