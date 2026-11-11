@@ -302,7 +302,17 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 				return nil, false, err
 			}
 		}
-		return tx(func(q *Queries) any { return a.createInvite(q, user, text(input["projectId"]), email) })
+		result, err := s.transaction(r.Context(), func(q *Queries) any { return a.createInvite(q, user, text(input["projectId"]), email) })
+		if err != nil || email == "" {
+			return result, false, err
+		}
+		// Provider acceptance must never precede the invitation's database commit.
+		invitation := object(result)
+		token := text(invitation["token"])
+		if err = a.sendInvitation(r.Context(), email, text(invitation["projectName"]), a.Settings.PublicURL+"/join/"+token, bytesHash([]byte(token))); err != nil {
+			return nil, false, err
+		}
+		return Object{"sent": true, "email": email}, false, nil
 	case path == "/v2/join" && method == http.MethodPost:
 		input, err := parse(map[string]Field{"token": strField(48, 48)})
 		if err != nil || !regexp.MustCompile(`^[a-f0-9]{48}$`).MatchString(text(input["token"])) {
@@ -468,14 +478,11 @@ func (a *API) createInvite(q *Queries, user, project, email string) any {
 	hash := bytesHash([]byte(token))
 	q.Exec("insert into orka.invites(token_hash,project_id,expires_at,email) values($1,$2,now()+interval '1 day',$3)", hash, project, choose(email == "", nil, email))
 	if email != "" {
-		if q.Err() != nil || !q.Check(a.sendInvitation(q.ctx, email, text(p["name"]), origin+"/join/"+token, hash)) {
-			return nil
-		}
 		q.Exec("insert into orka.invitation_deliveries(token_hash,project_id,email_hash) values($1,$2,$3)", hash, project, bytesHash([]byte(email)))
 	}
 	s.appendLog(q, project, Object{"action": "invite.created", "actor": user}, true, nil)
 	if email != "" {
-		return Object{"sent": true, "email": email}
+		return Object{"token": token, "projectName": p["name"]}
 	}
 	result := Object{"token": token}
 	if origin != "" {

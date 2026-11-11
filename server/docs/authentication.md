@@ -81,9 +81,12 @@ Migration `003_email_invitations.sql` adds a nullable recipient and delivery
 cooldown records. Existing links keep a null recipient. Email invitations require
 the matching confirmed account email from GoTrue, expire after 24 hours, and are
 consumed only by authenticated joining after sharing review. Previewing an email
-link does not accept it. Send limits are one per recipient/project per minute and
-30 per project per hour; consumption does not reset them. Failed sends roll back
-the token. Provider acceptance does not prove mailbox delivery.
+link does not accept it. Send attempts are limited to one per recipient/project per
+minute and 30 per project per hour; consumption does not reset them. Invitations
+and cooldowns commit before contacting the provider. Failed or ambiguous sends
+retain the recipient-bound token until expiry so an accepted email cannot become
+invalid when the requester disconnects. Retry after the cooldown or use a joining
+link. Provider acceptance does not prove mailbox delivery.
 
 Invitations retain the configured signup policy and do not provision or merge
 accounts. With signup disabled, operators still create accounts. Deploy the Go

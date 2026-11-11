@@ -2,7 +2,7 @@
   "repository": "https://github.com/whysosaket/orka-api",
   "commit": "5ca5d3276d5ce56e202b3764a07fef8294dcc993",
   "candidate": true,
-  "sourceTreeSha256": "f47b44deabb4f3e1fe959627a2bce8e994bb5b3967920bc6e290c77349d40600",
+  "sourceTreeSha256": "cf96f848c58fbbc885576eae55d2f6d1ac926ae2a00945cdbfcf782a219461d2",
   "files": [
     {
       "path": ".dockerignore",
@@ -146,7 +146,7 @@
     },
     {
       "path": "docs/authentication.md",
-      "sha256": "8b6122f94cb40ddd4f0f7b477739236c8cdd6b37783ea2d5390f44a1e866afc8",
+      "sha256": "89c751e179abc783cd272bcfabd7cea1f0ae8c09bbe1018f649404d3a92f2e0a",
       "mode": 420
     },
     {
@@ -216,7 +216,7 @@
     },
     {
       "path": "internal/server/api.go",
-      "sha256": "37c8fb2a863df6e3e27b7940cdb47694079709dad092645a28c6a7ea7485eaa6",
+      "sha256": "1bd5b0c72ecc81e88f42308753d027db4a7fb4bd667f3c2a22685ed1e3aba0f2",
       "mode": 420
     },
     {
@@ -281,7 +281,7 @@
     },
     {
       "path": "internal/server/invitations.go",
-      "sha256": "d50c4d9d65443c932cdd44d1e41cde4d0b3c5294e151b2591e34c18c7cc3349f",
+      "sha256": "1c01c3a2380812cb2c2ec4bfc9cd4cca55874191f1e0b8382decabaa4d4eb5ba",
       "mode": 420
     },
     {
@@ -796,7 +796,7 @@
     },
     {
       "path": "tests/project-invite.integration.ts",
-      "sha256": "2b67f36bba7baba379102b8a384fc544294546a8753d7a448ed4c2b5339a8ddf",
+      "sha256": "3d8b3d858abe22725dd07664b83e1435e3c62f423b3b26e79c709990071aa49b",
       "mode": 420
     },
     {

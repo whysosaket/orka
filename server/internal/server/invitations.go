@@ -74,7 +74,7 @@ func invitationMessage(from, to, project, link string) ([]byte, string, error) {
 }
 
 func (a *API) sendInvitation(ctx context.Context, email, project, link, hash string) error {
-	fail := &HTTPError{Status: 503, Message: "Invitation email could not be sent. Try again or use a joining link."}
+	fail := &HTTPError{Status: 503, Message: "Invitation email delivery could not be confirmed. Try again in a minute or use a joining link."}
 	if a.Settings.EmailProvider == "resend" {
 		base := a.Environment["RESEND_API_URL"]
 		if base == "" {

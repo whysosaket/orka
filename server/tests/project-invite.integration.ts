@@ -15,8 +15,16 @@ for (const mode of ["cloud", "self-hosted"]) {
     const owner = randomUUID(),
       recipient = randomUUID(),
       stranger = randomUUID();
-    const deliveries: { email: string; url: string; tokenHash?: string }[] = [];
+    const deliveries: {
+      email: string;
+      url: string;
+      tokenHash?: string;
+      committed: boolean;
+    }[] = [];
     let failDelivery = false;
+    let deliveryAccepted: (() => void) | undefined;
+    let deliveryResponse: Promise<void> | undefined;
+    let releaseDelivery = () => {};
     let verified = true;
     let recipientEmail = "PERSON@example.com";
     const provider = createServer((req, res) => {
@@ -43,13 +51,25 @@ for (const mode of ["cloud", "self-hosted"]) {
         const url = String(message.text).match(
           /https:\/\/team.example\/join\/[a-f0-9]{48}/,
         )![0];
+        const hash = createHash("sha256")
+          .update(url.split("/").at(-1)!)
+          .digest("hex");
         deliveries.push({
           email: message.to,
           url,
           tokenHash: req.headers["idempotency-key"]
             ?.toString()
             .replace("orka-invite-", ""),
+          committed:
+            (
+              await pool.query(
+                "select 1 from orka.invites where token_hash=$1",
+                [hash],
+              )
+            ).rowCount === 1,
         });
+        deliveryAccepted?.();
+        await deliveryResponse;
         res.end(JSON.stringify({ id: "captured" }));
       })().catch(() => res.destroy());
     });
@@ -133,6 +153,7 @@ for (const mode of ["cloud", "self-hosted"]) {
       const tokenHash = createHash("sha256").update(token).digest("hex");
       assert.equal(deliveries[0].email, "person@example.com");
       assert.equal(deliveries[0].tokenHash, tokenHash);
+      assert.equal(deliveries[0].committed, true);
       for (const method of ["GET", "HEAD", "GET"])
         assert.equal(
           (await fetch(base + `/join/${token}`, { method })).status,
@@ -168,6 +189,50 @@ for (const mode of ["cloud", "self-hosted"]) {
         post("/v2/invites", { projectId, email: "NEXT@example.com" }),
       ]);
       assert.deepEqual(concurrent.map((r) => r.status).sort(), [200, 429]);
+      const accepted = new Promise<void>((resolve) => {
+        deliveryAccepted = resolve;
+      });
+      deliveryResponse = new Promise<void>((resolve) => {
+        releaseDelivery = resolve;
+      });
+      const controller = new AbortController();
+      // Use the Go origin directly so disconnects reach the request context.
+      const disconnected = assert.rejects(
+        fetch((await store.ready) + "/v2/invites", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${owner}`,
+            "Content-Type": "application/json",
+            "X-Orka-Governance": "1",
+          },
+          body: JSON.stringify({ projectId, email: "cancelled@example.com" }),
+          signal: controller.signal,
+        }),
+      );
+      await accepted;
+      controller.abort();
+      await disconnected;
+      releaseDelivery();
+      deliveryAccepted = undefined;
+      deliveryResponse = undefined;
+      const interrupted = deliveries.at(-1)!;
+      assert.equal(interrupted.committed, true);
+      assert.equal(
+        (await fetch(interrupted.url.replace("https://team.example", base)))
+          .status,
+        200,
+      );
+      recipientEmail = "cancelled@example.com";
+      assert.equal(
+        (
+          await post(
+            "/v2/join",
+            { token: interrupted.url.split("/").at(-1)! },
+            recipient,
+          )
+        ).status,
+        200,
+      );
       failDelivery = true;
       assert.equal(
         (await post("/v2/invites", { projectId, email: "failed@example.com" }))
@@ -181,9 +246,21 @@ for (const mode of ["cloud", "self-hosted"]) {
             [projectId],
           )
         ).rowCount,
-        0,
+        1,
       );
       failDelivery = false;
+      assert.equal(
+        (await post("/v2/invites", { projectId, email: "failed@example.com" }))
+          .status,
+        429,
+      );
+      await pool.query(
+        "update orka.invitation_deliveries set created_at=now()-interval '61 seconds' where project_id=$1 and email_hash=$2",
+        [
+          projectId,
+          createHash("sha256").update("failed@example.com").digest("hex"),
+        ],
+      );
       assert.equal(
         (await post("/v2/invites", { projectId, email: "failed@example.com" }))
           .status,
@@ -215,6 +292,7 @@ for (const mode of ["cloud", "self-hosted"]) {
       );
       assert.equal((await post("/v2/invites", { projectId })).status, 200);
     } finally {
+      releaseDelivery();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await new Promise<void>((resolve) => provider.close(() => resolve()));
       for (const key of ["RESEND_API_KEY", "RESEND_FROM", "RESEND_API_URL"]) {
