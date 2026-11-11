@@ -1261,6 +1261,104 @@ for (const failure of ["error", "null content"] as const) {
   });
 }
 
+for (const dimension of ["profile", "user", "service"] as const) {
+  test(`skill summaries share pending reads without leaking across ${dimension} changes`, async ({
+    page,
+  }) => {
+    await page.clock.install();
+    await detailFixture(page, {
+      skillContent: "---\nname: Original scope\n---\nOriginal instructions\n",
+    });
+    await page.getByRole("button", { name: /^Skills/ }).click();
+    await expect(page.locator(".skill-card")).toContainText("Original scope");
+    await page.evaluate((dimension) => {
+      const w = window as any;
+      const original = w.__TAURI_INTERNALS__.invoke;
+      w.summaryStage = 0;
+      w.pendingSummaryReads = 0;
+      w.nextScopeSummaryReads = 0;
+      w.__TAURI_INTERNALS__.invoke = async (name: string, args: any) => {
+        const value = await original(name, args);
+        if (name === "snapshot" && w.summaryStage > 0) {
+          const next = {
+            ...value,
+            resources: value.resources.map((resource: any) =>
+              resource.resourceId === "skill-e"
+                ? {
+                    ...resource,
+                    revision: resource.revision + 1,
+                    files: resource.files.map((file: any) =>
+                      file.path === "SKILL.md"
+                        ? { ...file, hash: "updated-skill-metadata" }
+                        : file,
+                    ),
+                  }
+                : resource,
+            ),
+          };
+          if (w.summaryStage === 2) {
+            if (dimension === "profile") next.profile = "another-profile";
+            else if (dimension === "user") next.user = "another-user";
+            else
+              next.config = {
+                ...next.config,
+                apiUrl: "https://another-service.local",
+              };
+          }
+          return next;
+        }
+        if (name === "inspect_resource" && args.id === "skill-e") {
+          if (w.summaryStage === 1) {
+            w.pendingSummaryReads++;
+            return new Promise((resolve) => {
+              w.finishOldSummary = () =>
+                resolve({
+                  ...value,
+                  content:
+                    "---\nname: Late previous scope\n---\nOld instructions\n",
+                });
+            });
+          }
+          if (w.summaryStage === 2) {
+            w.nextScopeSummaryReads++;
+            return {
+              ...value,
+              content: "---\nname: New scope\n---\nNew instructions\n",
+            };
+          }
+        }
+        return value;
+      };
+      w.summaryStage = 1;
+    }, dimension);
+    await page.clock.runFor(3100);
+    await expect
+      .poll(() => page.evaluate(() => (window as any).pendingSummaryReads))
+      .toBe(1);
+    // Home and Skills reuse the same request even while the read is unresolved.
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+    await page.getByRole("button", { name: /^Skills/ }).click();
+    expect(await page.evaluate(() => (window as any).pendingSummaryReads)).toBe(
+      1,
+    );
+
+    await page.evaluate(() => {
+      (window as any).summaryStage = 2;
+    });
+    await page.clock.runFor(3100);
+    await expect(page.locator(".skill-card")).toContainText("New scope");
+    expect(
+      await page.evaluate(() => (window as any).nextScopeSummaryReads),
+    ).toBe(1);
+    await page.evaluate(() => (window as any).finishOldSummary());
+    await page.clock.runFor(100);
+    await expect(page.locator(".skill-card")).toContainText("New scope");
+    await expect(page.locator(".skill-card")).not.toContainText(
+      "Late previous scope",
+    );
+  });
+}
+
 test("failed session pages wait for an explicit retry", async ({ page }) => {
   await detailFixture(page);
   await page.evaluate(() => {

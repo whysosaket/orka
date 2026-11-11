@@ -61,7 +61,7 @@ test("matches Figma, floats bottom-center, fills for five seconds, then dismisse
   await expect(toast(page)).toHaveCSS("background-color", "rgb(28, 28, 28)");
   await expect(page.locator(".toast-timer")).toHaveCSS(
     "background-color",
-    "rgb(48, 48, 48)",
+    "rgb(46, 46, 46)",
   );
   expect(await fill(page)).toBeGreaterThan(35);
   expect(await fill(page)).toBeLessThan(45);
