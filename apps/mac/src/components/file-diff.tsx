@@ -7,7 +7,7 @@ import {
   type Icon as OcticonIcon,
 } from "@primer/octicons-react";
 import { Icon } from "./icon.js";
-import { buildUnifiedDiff, type FileChangeStatus } from "./diff-model.js";
+import { summarizeDiff, type FileChangeStatus } from "./diff-model.js";
 import { tokenizeMarkdown, type Token } from "./markdown-tokens.js";
 import { supportsPierreDiffs } from "./pierre-diffs-compat.js";
 
@@ -138,10 +138,7 @@ export function FileDiffCard({
   const textPreview = !binary && kind.label !== "PDF";
   const context = kind.language === "markdown" ? 2 : 5;
   const supported = useMemo(() => supportsPierreDiffs(), []);
-  const diff = useMemo(
-    () => buildUnifiedDiff(before, after, context),
-    [before, after, context],
-  );
+  const diff = useMemo(() => summarizeDiff(before, after), [before, after]);
   const removed = status === "removed";
   return (
     <section

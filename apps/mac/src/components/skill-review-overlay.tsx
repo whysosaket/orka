@@ -74,9 +74,6 @@ const sampleLoaded: Loaded = {
         "# Review checklist\n\nRead the issue report.\nInspect related pull requests.\n",
       after:
         "# Review checklist\n\nRead the issue report and confirm the root cause.\nInspect related pull requests.\n",
-      additions: 1,
-      deletions: 1,
-      ranges: "Line 3",
     },
   ],
   revision: 1,
@@ -417,10 +414,8 @@ export function SkillReviewOverlay({
   const preservationDescriptionId = useId();
   const footer = (() => {
     if (!ready) return null;
-    if (
-      mode === "outgoing" &&
-      (!ready.draft || access === "read" || access === "hidden")
-    )
+    const outgoing = mode === "outgoing";
+    if (outgoing && (!ready.draft || access === "read" || access === "hidden"))
       return null;
     if (stale)
       return (
@@ -428,13 +423,13 @@ export function SkillReviewOverlay({
           size="sm"
           variant="primary"
           disabled={busy}
-          onClick={() => void (mode === "outgoing" ? refreshDraft() : load())}
+          onClick={() => void (outgoing ? refreshDraft() : load())}
         >
           Review latest
         </Button>
       );
     if (ready.changes.length === 0) return null;
-    if (mode === "outgoing") {
+    if (outgoing) {
       if (draftNeedsRefresh)
         return (
           <Button size="sm" disabled={busy} onClick={() => void refreshDraft()}>
@@ -442,59 +437,31 @@ export function SkillReviewOverlay({
           </Button>
         );
       if (!draftActionable) return null;
-      return (
-        <>
-          {failure && <p className="review-footer-note">{failure}</p>}
-          <Button
-            size="sm"
-            variant="primary"
-            className="review-action"
-            disabled={busy}
-            aria-busy={busy || undefined}
-            aria-label={
-              busy
-                ? access === "publish"
-                  ? "Publishing update"
-                  : "Sending suggestion"
-                : undefined
-            }
-            onClick={() => void submit()}
-          >
-            {busy ? (
-              <>
-                <span className="review-action-label" aria-hidden="true">
-                  {access === "publish"
-                    ? "Publish update"
-                    : "Send for approval"}
-                </span>
-                <span
-                  className="activity-indicator review-action-spinner"
-                  aria-hidden="true"
-                />
-              </>
-            ) : failure ? (
-              "Try again"
-            ) : access === "publish" ? (
-              "Publish update"
-            ) : (
-              "Send for approval"
-            )}
-          </Button>
-        </>
-      );
     }
-    const label = removal
-      ? ready.dirty
-        ? "Keep edits and remove"
-        : "Remove from this Mac"
-      : ready.dirty
-        ? "Keep edits and install"
-        : "Install update";
+    const label = outgoing
+      ? access === "publish"
+        ? "Publish update"
+        : "Send for approval"
+      : removal
+        ? ready.dirty
+          ? "Keep edits and remove"
+          : "Remove from this Mac"
+        : ready.dirty
+          ? "Keep edits and install"
+          : "Install update";
+    const busyLabel = outgoing
+      ? access === "publish"
+        ? "Publishing update"
+        : "Sending suggestion"
+      : removal
+        ? "Removing"
+        : "Installing";
+    const preserveEdits = !outgoing && ready.dirty;
     return (
       <>
-        {busy ? (
+        {busy && !outgoing ? (
           <p className="review-footer-status" role="status">
-            {removal ? "Removing…" : "Installing…"}
+            {busyLabel}…
           </p>
         ) : (
           failure && <p className="review-footer-note">{failure}</p>
@@ -505,14 +472,16 @@ export function SkillReviewOverlay({
           className="review-action"
           disabled={busy}
           aria-busy={busy || undefined}
-          aria-label={busy ? (removal ? "Removing" : "Installing") : undefined}
-          aria-describedby={ready.dirty ? preservationDescriptionId : undefined}
-          onClick={() => void install()}
+          aria-label={busy ? busyLabel : undefined}
+          aria-describedby={
+            preserveEdits ? preservationDescriptionId : undefined
+          }
+          onClick={() => void (outgoing ? submit() : install())}
         >
           {busy ? (
             <>
               <span className="review-action-label" aria-hidden="true">
-                {removal ? "Removing…" : "Installing…"}
+                {outgoing ? label : `${busyLabel}…`}
               </span>
               <span
                 className="activity-indicator review-action-spinner"
@@ -525,7 +494,7 @@ export function SkillReviewOverlay({
             label
           )}
         </Button>
-        {ready.dirty && (
+        {preserveEdits && (
           <span className="sr-only" id={preservationDescriptionId}>
             Your local edits will be saved privately on this Mac before
             {removal ? " removal." : " installation."}

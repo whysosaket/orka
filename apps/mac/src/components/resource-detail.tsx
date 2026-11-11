@@ -41,7 +41,7 @@ export interface ResourceDetailProps {
   onError: (message: string) => void;
 }
 
-/** Option D: one full-width reading shell for memories, skills, and sessions. */
+/** Routes Skills to their reader and shares the other resource reading shells. */
 export function ResourceDetail(props: ResourceDetailProps) {
   const {
     resource,
@@ -125,7 +125,6 @@ export function ResourceDetail(props: ResourceDetailProps) {
             onRetry={view.retryInspection}
             changes={false}
             markdown={false}
-            conversation={false}
           />
         }
       />
@@ -141,7 +140,6 @@ export function ResourceDetail(props: ResourceDetailProps) {
         onRetry={view.retryInspection}
         changes={view.changes}
         markdown={view.canRenderMarkdown && !view.rawMarkdown}
-        conversation={false}
       />
     </div>
   );

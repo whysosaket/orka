@@ -28,7 +28,7 @@ const collectionNames: Record<Resource["kind"], string> = {
 export interface DetailHeaderProps {
   scope: string;
   resource: Resource;
-  /** The display title, with SKILL.md frontmatter already applied. */
+  /** The cleaned resource title. Skills use their own detail header. */
   title: string;
   project: Project;
   user: string | null;
@@ -128,9 +128,8 @@ export function DetailHeader({
             {!resource.local &&
               project.governed &&
               onGovernance &&
-              (resource.kind === "skill" ||
-                (resource.kind === "memory" &&
-                  resource.logicalPath.startsWith("instructions/"))) && (
+              resource.kind === "memory" &&
+              resource.logicalPath.startsWith("instructions/") && (
                 <Button
                   size="sm"
                   variant="tertiary"

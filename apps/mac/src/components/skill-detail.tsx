@@ -130,17 +130,17 @@ function SkillDocument({
       </div>
     );
   }
-  if (inspection.content === null)
-    return <SourceCard path={file} content={null} />;
-  if (kind.language !== "markdown")
+  if (inspection.content === null || kind.language !== "markdown")
     return <SourceCard path={file} content={inspection.content} />;
   const document = skillFile ? readSkillMarkdown(inspection.content) : null;
-  if (document?.invalid)
+  if (document?.invalid || rawMarkdown)
     return (
-      <SourceCard path={file} content={inspection.content} variant="plain" />
+      <SourceCard
+        path={file}
+        content={inspection.content}
+        variant={document?.invalid ? "plain" : "file"}
+      />
     );
-  if (rawMarkdown)
-    return <SourceCard path={file} content={inspection.content} />;
   const body = document ? document.body : inspection.content;
   if (!body.trim())
     return (

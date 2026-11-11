@@ -73,7 +73,6 @@ type ResourceContentProps = {
   inspection: Inspection | null;
   changes: boolean;
   markdown: boolean;
-  conversation: boolean;
   error?: string;
   onRetry?: () => void;
 };
@@ -109,7 +108,6 @@ function LoadedResourceContent({
   inspection,
   changes,
   markdown,
-  conversation,
 }: ResourceContentProps & { inspection: Inspection }) {
   if (inspection.content === null)
     return (
@@ -149,9 +147,7 @@ function LoadedResourceContent({
       </pre>
     );
   }
-  const content = conversation
-    ? (inspection.conversation ?? inspection.content)
-    : inspection.content;
+  const content = inspection.content;
   if (!markdown) return <pre className="content">{content}</pre>;
   return (
     <article className="markdown-content" aria-label="Rendered Markdown">

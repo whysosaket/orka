@@ -13,7 +13,6 @@ import { Icon } from "./icon.js";
 import { SourceLabel } from "./source-label.js";
 import { ActionPopover } from "./resource-actions.js";
 import { useMemberLabel } from "./member-names.js";
-import { skillSharing } from "./skill-sharing.js";
 
 const plural = (count: number, noun: string) =>
   `${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -79,7 +78,7 @@ function FactMenu({
 export interface ResourceFactsProps {
   resource: Resource;
   user: string | null;
-  /** The inspected file for memories and skills; omit for sessions. */
+  /** The inspected file for memories and plans; omit for sessions. */
   file?: { selected: string; onSelect: (path: string) => void };
 }
 
@@ -96,13 +95,8 @@ export function ResourceFacts({ resource, user, file }: ResourceFactsProps) {
           <FactChip label="Repository">{resource.repositoryName}</FactChip>
         )}
         <FactChip label="Source">
-          {resource.local ? (
-            skillSharing(resource).label
-          ) : (
-            <SourceLabel source={resource.source} />
-          )}
+          <SourceLabel source={resource.source} />
         </FactChip>
-        {resource.global && <span className="skill-origin-badge">Global</span>}
         <FactChip
           icon={ClockIcon}
           label="Updated"

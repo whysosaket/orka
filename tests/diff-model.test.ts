@@ -1,9 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  buildUnifiedDiff,
+  summarizeDiff,
   changedFiles,
-  diffRows,
   formatRanges,
   splitLines,
 } from "../apps/mac/src/components/diff-model.js";
@@ -26,136 +25,87 @@ await test("split lines ignore a trailing newline and treat empty text as no lin
   assert.deepEqual(splitLines(""), []);
 });
 
-await test("unified diffs count changes, number both sides, and collapse unchanged lines", () => {
+await test("diff headers count changes and summarize new-file line numbers", () => {
   const before = lines(60);
   const after = before
     .replace("line 18\n", "line 18 changed\n")
     .replace("line 47\n", "line 47 changed\nline 47b\n");
-  const diff = buildUnifiedDiff(before, after);
-  assert.equal(diff.equal, false);
-  assert.equal(diff.additions, 3);
-  assert.equal(diff.deletions, 2);
-  assert.equal(diff.ranges, "Lines 18, 47–48");
-  // Leading, middle, and trailing unchanged regions collapse into gaps.
-  const collapsed = diffRows(diff, before, new Set());
-  const gaps = collapsed.filter((row) => row.type === "gap");
-  assert.deepEqual(
-    gaps.map((row) => (row.type === "gap" ? row.count : 0)),
-    [14, 22, 10],
-  );
-  const removed = collapsed.find(
-    (row) => row.type === "line" && row.line.kind === "removed",
-  );
-  assert.ok(removed?.type === "line" && removed.line.number === 18);
-  const added = collapsed.filter(
-    (row) => row.type === "line" && row.line.kind === "added",
-  );
-  assert.deepEqual(
-    added.map((row) => (row.type === "line" ? row.line.number : 0)),
-    [18, 47, 48],
-  );
-  // Expanding the middle gap reveals its lines with new-file numbers.
-  const expanded = diffRows(diff, before, new Set([1]));
-  const revealed = expanded.filter(
-    (row) =>
-      row.type === "line" &&
-      row.key.startsWith("context-") &&
-      row.key.includes("gap-1"),
-  );
-  assert.equal(revealed.length, 22);
-  assert.ok(
-    revealed[0].type === "line" &&
-      revealed[0].line.number === 22 &&
-      revealed[0].line.text === "line 22",
-  );
+  assert.deepEqual(summarizeDiff(before, after), {
+    additions: 3,
+    deletions: 2,
+    ranges: "Lines 18, 47–48",
+  });
 });
 
-await test("paired removed and added lines carry word-level emphasis", () => {
-  const diff = buildUnifiedDiff(
-    "- Review the issue report.\n",
-    "- Read the issue report and confirm the root cause.\n",
-  );
-  const [hunk] = diff.blocks;
-  assert.ok(hunk.type === "hunk");
-  const removed = hunk.lines.find((line) => line.kind === "removed");
-  const added = hunk.lines.find((line) => line.kind === "added");
-  assert.ok(removed?.segments && added?.segments);
-  assert.deepEqual(
-    removed.segments.filter((s) => s.changed).map((s) => s.text),
-    ["Review"],
-  );
-  assert.deepEqual(
-    added.segments.filter((s) => s.changed).map((s) => s.text.trim()),
-    ["Read", "and confirm the root cause"],
-  );
-  // Rewritten lines keep plain text instead of a wall of emphasis.
-  const rewritten = buildUnifiedDiff(
-    "alpha beta\n",
-    "completely different words\n",
-  );
-  const block = rewritten.blocks[0];
-  assert.ok(
-    block.type === "hunk" && block.lines.every((line) => !line.segments),
-  );
+await test("deletion summaries point to surviving new-file lines", () => {
+  assert.deepEqual(summarizeDiff("a\nb\nc\n", "b\nc\n"), {
+    additions: 0,
+    deletions: 1,
+    ranges: "Line 1",
+  });
+  assert.deepEqual(summarizeDiff("a\nb\nc\n", "a\nc\n"), {
+    additions: 0,
+    deletions: 1,
+    ranges: "Line 2",
+  });
+  assert.deepEqual(summarizeDiff("a\nb\nc\n", "a\nb\n"), {
+    additions: 0,
+    deletions: 1,
+    ranges: "Line 2",
+  });
+  // An independent later insertion must not hide an earlier deletion's position.
+  assert.deepEqual(summarizeDiff("a\nb\nc\nd\n", "a\nc\nd\ne\n"), {
+    additions: 1,
+    deletions: 1,
+    ranges: "Lines 2, 4",
+  });
 });
 
-await test("review chunks use configured context and expand only interior gaps", () => {
-  const before = lines(60);
-  const after = before
-    .replace("line 18\n", "line 18 changed\n")
-    .replace("line 47\n", "line 47 changed\nline 47b\n");
-  const diff = buildUnifiedDiff(before, after, 2);
-  const collapsed = diffRows(diff, before, new Set(), true);
-  assert.deepEqual(
-    collapsed.filter((row) => row.type === "gap").map((row) => row.count),
-    [24],
-  );
-  const first = collapsed[0];
-  assert.ok(first.type === "line" && first.line.number === 16);
-  const last = collapsed.at(-1);
-  assert.ok(last?.type === "line" && last.line.number === 50);
-  const expanded = diffRows(diff, before, new Set([1]), true);
-  assert.equal(expanded.filter((row) => row.type === "gap").length, 0);
-  assert.equal(expanded.length, collapsed.length + 23);
-  assert.ok(
-    expanded.some((row) => row.type === "line" && row.line.text === "line 21"),
-  );
-  assert.ok(
-    !expanded.some((row) => row.type === "line" && row.line.text === "line 15"),
-  );
-  const script = buildUnifiedDiff(
-    before,
-    before.replace("line 13\n", "updated\n"),
-    5,
-  );
-  const scriptRows = diffRows(script, before, new Set(), true);
-  assert.ok(scriptRows[0].type === "line" && scriptRows[0].line.number === 8);
+await test("empty, whole-file, and newline-only changes retain honest counts", () => {
+  assert.deepEqual(summarizeDiff("same\n", "same\n"), {
+    additions: 0,
+    deletions: 0,
+    ranges: "",
+  });
+  assert.deepEqual(summarizeDiff("", "one\ntwo\n"), {
+    additions: 2,
+    deletions: 0,
+    ranges: "Lines 1–2",
+  });
+  assert.deepEqual(summarizeDiff("one\ntwo\n", ""), {
+    additions: 0,
+    deletions: 2,
+    ranges: "Line 1",
+  });
+  assert.deepEqual(summarizeDiff("same", "same\n"), {
+    additions: 1,
+    deletions: 1,
+    ranges: "Line 1",
+  });
 });
 
-await test("equal content and whole-file changes are summarized per file", () => {
-  assert.equal(buildUnifiedDiff("same\n", "same\n").equal, true);
-  const changes = changedFiles(
-    { "SKILL.md": "a\n", "scripts/run.sh": "x\n", "docs/old.md": "gone\n" },
-    { "SKILL.md": "a\n", "scripts/run.sh": "y\n", "docs/new.md": "one\ntwo\n" },
-  );
+await test("changed files omit equal content and preserve whole-file changes", () => {
   assert.deepEqual(
-    changes.map((change) => [
-      change.path,
-      change.status,
-      change.additions,
-      change.deletions,
-      change.ranges,
-    ]),
+    changedFiles(
+      { "SKILL.md": "a\n", "scripts/run.sh": "x\n", "docs/old.md": "gone\n" },
+      {
+        "SKILL.md": "a\n",
+        "scripts/run.sh": "y\n",
+        "docs/new.md": "one\ntwo\n",
+      },
+    ),
     [
-      ["scripts/run.sh", "modified", 1, 1, "Line 1"],
-      ["docs/old.md", "removed", 0, 1, ""],
-      ["docs/new.md", "added", 2, 0, "Lines 1–2"],
+      {
+        path: "scripts/run.sh",
+        status: "modified",
+        before: "x\n",
+        after: "y\n",
+      },
+      { path: "docs/old.md", status: "removed", before: "gone\n", after: "" },
+      { path: "docs/new.md", status: "added", before: "", after: "one\ntwo\n" },
     ],
   );
-  assert.equal(
-    changedFiles({ "SKILL.md": "a" }, { "SKILL.md": "a" }).length,
-    0,
-  );
+  assert.deepEqual(changedFiles({ "SKILL.md": "a" }, { "SKILL.md": "a" }), []);
 });
 
 await test("review files follow manifest order with SKILL.md pinned first", () => {
@@ -258,9 +208,7 @@ await test("binary changes use file identities and have no invented line counts"
   );
   for (const change of changes) {
     assert.equal(change.binary, true);
-    assert.equal(change.additions, 0);
-    assert.equal(change.deletions, 0);
-    assert.equal(change.ranges, "");
+    assert.ok(!("additions" in change) && !("deletions" in change));
     assert.equal(change.before + change.after, "");
   }
 });
@@ -287,8 +235,11 @@ await test("explicit text metadata distinguishes literal Binary asset text", () 
     },
   );
   assert.equal(changes[0].binary, undefined);
-  assert.equal(changes[0].additions, 1);
-  assert.equal(changes[0].deletions, 1);
+  assert.deepEqual(summarizeDiff(changes[0].before, changes[0].after), {
+    additions: 1,
+    deletions: 1,
+    ranges: "Line 1",
+  });
 });
 
 await test("legacy binary placeholders remain reviewable instead of claiming up to date", () => {

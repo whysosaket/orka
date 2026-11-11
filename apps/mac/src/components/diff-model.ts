@@ -1,47 +1,10 @@
-import { diffWordsWithSpace, structuredPatch } from "diff";
+import { diffLines } from "diff";
 
-export type DiffLineKind = "context" | "removed" | "added";
-
-export interface DiffSegment {
-  text: string;
-  /** Part of a word-level change inside a modified line pair. */
-  changed: boolean;
-}
-
-export interface DiffLine {
-  kind: DiffLineKind;
-  /** The old-file number for removed lines, the new-file number otherwise. */
-  number: number;
-  text: string;
-  segments?: DiffSegment[];
-}
-
-export type DiffRow =
-  | { type: "line"; key: string; line: DiffLine }
-  | { type: "gap"; key: string; index: number; count: number };
-
-interface GapBlock {
-  type: "gap";
-  index: number;
-  /** First unchanged old-file line (1-based) and its new-file number. */
-  start: number;
-  newStart: number;
-  count: number;
-}
-interface HunkBlock {
-  type: "hunk";
-  lines: DiffLine[];
-}
-
-export interface UnifiedDiff {
+export interface DiffSummary {
   additions: number;
   deletions: number;
   /** "Lines 18, 47–48" style summary in new-file numbering; empty when equal. */
   ranges: string;
-  /** Collapsed unchanged regions; expand them by index with diffRows. */
-  gaps: number;
-  equal: boolean;
-  blocks: (GapBlock | HunkBlock)[];
 }
 
 /** Lines without a phantom entry after a trailing newline; empty text has none. */
@@ -70,183 +33,31 @@ export function formatRanges(numbers: number[]): string {
   return `${single ? "Line" : "Lines"} ${parts.join(", ")}`;
 }
 
-/** Word-level emphasis for consecutive removed/added runs with shared words. */
-function pairWords(lines: DiffLine[]) {
-  let i = 0;
-  while (i < lines.length) {
-    if (lines[i].kind !== "removed") {
-      i++;
-      continue;
-    }
-    let j = i;
-    while (j < lines.length && lines[j].kind === "removed") j++;
-    let k = j;
-    while (k < lines.length && lines[k].kind === "added") k++;
-    const pairs = Math.min(j - i, k - j);
-    for (let n = 0; n < pairs; n++) {
-      const removed = lines[i + n];
-      const added = lines[j + n];
-      const parts = diffWordsWithSpace(removed.text, added.text);
-      const shared = parts
-        .filter((part) => !part.added && !part.removed)
-        .reduce((sum, part) => sum + part.value.trim().length, 0);
-      const longest = Math.max(removed.text.length, added.text.length, 1);
-      if (shared / longest < 0.3) continue;
-      removed.segments = parts
-        .filter((part) => !part.added)
-        .map((part) => ({ text: part.value, changed: Boolean(part.removed) }));
-      added.segments = parts
-        .filter((part) => !part.removed)
-        .map((part) => ({ text: part.value, changed: Boolean(part.added) }));
-    }
-    i = k;
-  }
-}
-
-/** A unified line diff with configurable context and collapsible gaps. */
-export function buildUnifiedDiff(
-  oldText: string,
-  newText: string,
-  context = 3,
-): UnifiedDiff {
-  if (oldText === newText)
-    return {
-      additions: 0,
-      deletions: 0,
-      ranges: "",
-      gaps: 0,
-      equal: true,
-      blocks: [],
-    };
-  const patch = structuredPatch("a", "b", oldText, newText, "", "", {
-    context,
-  });
-  const oldLines = splitLines(oldText);
-  const blocks: (GapBlock | HunkBlock)[] = [];
+/** Header metadata only. Pierre owns diff rows, word emphasis, and expansion. */
+export function summarizeDiff(oldText: string, newText: string): DiffSummary {
+  const parts = diffLines(oldText, newText);
   const changed: number[] = [];
+  const lastLine = Math.max(1, splitLines(newText).length);
+  let line = 1;
   let additions = 0;
   let deletions = 0;
-  let cursor = 1;
-  let offset = 0;
-  let gaps = 0;
-  for (const hunk of patch.hunks) {
-    if (hunk.oldStart > cursor && hunk.oldLines > 0)
-      blocks.push({
-        type: "gap",
-        index: gaps++,
-        start: cursor,
-        newStart: cursor + offset,
-        count: hunk.oldStart - cursor,
-      });
-    const lines: DiffLine[] = [];
-    let oldLine = hunk.oldStart;
-    let newLine = hunk.newStart;
-    for (const raw of hunk.lines) {
-      const marker = raw[0];
-      const text = raw.slice(1);
-      if (marker === " ") {
-        lines.push({ kind: "context", number: newLine, text });
-        oldLine++;
-        newLine++;
-      } else if (marker === "-") {
-        lines.push({ kind: "removed", number: oldLine, text });
-        oldLine++;
-        deletions++;
-      } else if (marker === "+") {
-        lines.push({ kind: "added", number: newLine, text });
-        changed.push(newLine);
-        newLine++;
-        additions++;
+  for (const [index, part] of parts.entries()) {
+    const count = part.count ?? 0;
+    if (part.removed) {
+      deletions += count;
+      // A replacement is located by its added lines. A deletion alone points
+      // to the next surviving line, or the last line when it removes the tail.
+      if (!parts[index + 1]?.added) changed.push(Math.min(line, lastLine));
+    } else {
+      if (part.added) {
+        additions += count;
+        for (let offset = 0; offset < count; offset++)
+          changed.push(line + offset);
       }
+      line += count;
     }
-    pairWords(lines);
-    // Removed lines without an added counterpart mark the new-file position.
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line.kind !== "removed" || line.segments) continue;
-      const paired = lines
-        .slice(i + 1)
-        .find((next) => next.kind === "added" && !next.segments);
-      if (!paired) {
-        const position = lines
-          .slice(i + 1)
-          .find((next) => next.kind !== "removed");
-        changed.push(
-          position
-            ? position.number
-            : Math.max(1, hunk.newStart + hunk.newLines - 1),
-        );
-      }
-    }
-    blocks.push({ type: "hunk", lines });
-    cursor = hunk.oldStart + Math.max(hunk.oldLines, 0);
-    offset += hunk.newLines - hunk.oldLines;
   }
-  if (cursor <= oldLines.length)
-    blocks.push({
-      type: "gap",
-      index: gaps++,
-      start: cursor,
-      newStart: cursor + offset,
-      count: oldLines.length - cursor + 1,
-    });
-  return {
-    additions,
-    deletions,
-    ranges: formatRanges(changed),
-    gaps,
-    equal: false,
-    blocks,
-  };
-}
-
-/** Rows for rendering; expanded gaps reveal their unchanged lines as context. */
-export function diffRows(
-  diff: UnifiedDiff,
-  oldText: string,
-  expanded: ReadonlySet<number>,
-  /** Review cards show chunks; the source reader exposes the whole file. */
-  omitEdgeGaps = false,
-): DiffRow[] {
-  const oldLines = splitLines(oldText);
-  const rows: DiffRow[] = [];
-  for (const [blockIndex, block] of diff.blocks.entries()) {
-    if (block.type === "hunk") {
-      block.lines.forEach((line, i) =>
-        rows.push({
-          type: "line",
-          key: `${line.kind}-${line.number}-${rows.length}-${i}`,
-          line,
-        }),
-      );
-      continue;
-    }
-    if (
-      omitEdgeGaps &&
-      (blockIndex === 0 || blockIndex === diff.blocks.length - 1)
-    )
-      continue;
-    if (!expanded.has(block.index)) {
-      rows.push({
-        type: "gap",
-        key: `gap-${block.index}`,
-        index: block.index,
-        count: block.count,
-      });
-      continue;
-    }
-    for (let i = 0; i < block.count; i++)
-      rows.push({
-        type: "line",
-        key: `context-${block.newStart + i}-gap-${block.index}`,
-        line: {
-          kind: "context",
-          number: block.newStart + i,
-          text: oldLines[block.start - 1 + i] ?? "",
-        },
-      });
-  }
-  return rows;
+  return { additions, deletions, ranges: formatRanges(changed) };
 }
 
 export type FileChangeStatus = "modified" | "added" | "removed";
@@ -256,9 +67,6 @@ export interface FileChange {
   status: FileChangeStatus;
   before: string;
   after: string;
-  additions: number;
-  deletions: number;
-  ranges: string;
   /** Binary changes use manifest hashes when the native preview provides them. */
   binary?: boolean;
   /** Older native previews do not include enough data to compare binary bytes. */
@@ -324,51 +132,17 @@ export function changedFiles(
         status: !hadFile ? "added" : !hasFile ? "removed" : "modified",
         before: "",
         after: "",
-        additions: 0,
-        deletions: 0,
-        ranges: "",
         binary: true,
         comparisonUnavailable: !hasIdentities && hadFile && hasFile,
       });
       continue;
     }
     if (previous === next) continue;
-    if (previous === undefined) {
-      const lines = splitLines(next ?? "").length;
-      changes.push({
-        path,
-        status: "added",
-        before: "",
-        after: next ?? "",
-        additions: lines,
-        deletions: 0,
-        ranges: lines
-          ? formatRanges(Array.from({ length: lines }, (_, i) => i + 1))
-          : "",
-      });
-      continue;
-    }
-    if (next === undefined) {
-      changes.push({
-        path,
-        status: "removed",
-        before: previous,
-        after: "",
-        additions: 0,
-        deletions: splitLines(previous).length,
-        ranges: "",
-      });
-      continue;
-    }
-    const diff = buildUnifiedDiff(previous, next);
     changes.push({
       path,
-      status: "modified",
-      before: previous,
-      after: next,
-      additions: diff.additions,
-      deletions: diff.deletions,
-      ranges: diff.ranges,
+      status: !hadFile ? "added" : !hasFile ? "removed" : "modified",
+      before: previous ?? "",
+      after: next ?? "",
     });
   }
   return changes;
