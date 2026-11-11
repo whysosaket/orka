@@ -306,9 +306,9 @@ test("incoming review with a stale preview", async ({ page }) => {
   await dialog
     .getByRole("button", { name: "Install update", exact: true })
     .click();
-  await expect(dialog.getByRole("status")).toHaveText(
-    "Files changed since this preview.",
-  );
+  await expect(
+    dialog.getByRole("status").filter({ hasText: "Files changed" }),
+  ).toHaveText("Files changed since this preview.");
   await shot(page, "26-incoming-stale");
 });
 
