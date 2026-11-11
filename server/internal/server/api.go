@@ -85,7 +85,7 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 		return nil, true, nil
 	}
 	if path == "/v2/instance" && method == http.MethodGet {
-		return Object{"version": 1, "onboarding": 1, "profile": Object{"version": 2, "jobRole": true, "avatarUpload": true, "conditionalSave": 1}, "mode": a.Settings.Mode, "repositories": Object{"github": choose(a.Repositories.Settings.Enabled, 1, 0)}, "auth": Object{"password": a.Settings.Password, "github": a.Settings.GitHub, "magicLink": a.Settings.MagicLink, "profileRedirect": true}}, false, nil
+		return Object{"version": 1, "onboarding": 1, "profile": Object{"version": 2, "jobRole": true, "avatarUpload": true, "conditionalSave": 1}, "mode": a.Settings.Mode, "repositories": Object{"github": choose(a.Repositories.Settings.Enabled, 1, 0)}, "auth": Object{"password": a.Settings.Password, "github": a.Settings.GitHub, "magicLink": a.Settings.MagicLink, "profileRedirect": true, "emailCode": a.Settings.MagicLink}}, false, nil
 	}
 	if path == "/integrations/github/webhook" && method == http.MethodPost {
 		raw, err := readBytes(w, r, 1_000_000)
@@ -104,7 +104,7 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 	}
 	if path == "/email-template" && method == http.MethodGet {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		desktop := `<p>Open this link on the Mac where you requested it:</p><p><a href="{{ .ConfirmationURL }}">Sign in to Orka</a></p><p>This link expires in 10 minutes and can be used once. If you did not request it, ignore this email.</p>`
+		desktop := desktopEmailHTML("{{ .ConfirmationURL }}", "{{ .Token }}")
 		body := desktop
 		if a.Settings.MCPEnabled && a.Settings.PublicURL != "" {
 			body = `{{ if eq .RedirectTo "` + a.Settings.PublicURL + `/mcp/connect" }}<p>Enter this code on the Orka connection page:</p><h1>{{ .Token }}</h1><p>This code expires in 10 minutes and can be used once. If you did not request it, ignore this email.</p>{{ else }}` + desktop + `{{ end }}`

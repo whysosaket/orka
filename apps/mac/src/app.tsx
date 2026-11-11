@@ -52,6 +52,7 @@ import {
 import type { SettingsSection } from "./components/settings/settings-navigation.js";
 import { SidebarQuickAccess } from "./components/sidebar-quick-access.js";
 import { Onboarding } from "./components/onboarding/onboarding.js";
+import { onboardingCommand } from "./components/onboarding/use-onboarding.js";
 import { SignInForm } from "./components/sign-in-form.js";
 import { SyncMenu } from "./components/sync-menu.js";
 import {
@@ -156,7 +157,7 @@ function WorkspaceApp({
   } = workspace;
   const { notify } = useToasts();
   const updates = useDesktopUpdates();
-  const account = useAccount(state.config);
+  const account = useAccount(state.config, !state.user);
   const workspaceScope = JSON.stringify([
     state.profile,
     state.user,
@@ -627,6 +628,17 @@ function WorkspaceApp({
                   kind: "queued",
                   errorTitle: "Couldn’t retry uploads",
                 })
+              }
+              onResumeSetup={() =>
+                void act(
+                  () =>
+                    onboardingCommand(
+                      "resume-setup",
+                      {},
+                      { user: state.user, service: state.config?.apiUrl },
+                    ),
+                  { errorTitle: "Couldn’t reopen project setup" },
+                )
               }
               onSettings={() => openSettings("sync")}
               onConnect={() => void act(() => connectProject(project))}

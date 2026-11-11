@@ -49,6 +49,19 @@ fn read_draft() -> Result<Value> {
         Ok(Value::Null)
     }
 }
+fn ensure_scope(db: &rusqlite::Connection, (owner, service): (&str, &str)) -> Result<()> {
+    if db::get(db, "user")? != owner || db::get(db, "config")?["apiUrl"] != service {
+        return Err("Account or service changed. Reopen onboarding.".into());
+    }
+    Ok(())
+}
+fn scoped_draft(scope: (&str, &str)) -> Result<Value> {
+    let saved = read_draft()?;
+    if saved["owner"] != scope.0 || saved["service"] != scope.1 {
+        return Err("Account or service changed. Reopen onboarding.".into());
+    }
+    Ok(saved)
+}
 fn state_lock() -> Result<fs::File> {
     let root = db::root()?;
     fs::create_dir_all(&root).map_err(|e| e.to_string())?;
@@ -102,8 +115,19 @@ pub fn snapshot(db: &rusqlite::Connection) -> Result<Value> {
     } else {
         first
     };
+    let draft = &saved["draft"];
+    let setup = if matches
+        && completed
+        && (draft["deferred"] == true
+            || ["syncing", "retrying", "offline", "sync-error"]
+                .contains(&draft["step"].as_str().unwrap_or("")))
+    {
+        draft.clone()
+    } else {
+        Value::Null
+    };
     Ok(
-        json!({"active":active,"draft":if active && matches {saved["draft"].clone()} else {Value::Null},"firstLaunchAt":first,"location":install::location()?,"auth":Value::Null}),
+        json!({"active":active,"draft":if active && matches {draft.clone()} else {Value::Null},"setup":setup,"firstLaunchAt":first,"location":install::location()?,"auth":Value::Null}),
     )
 }
 fn checkpoint(mut input: Value) -> Result<Value> {
@@ -195,13 +219,44 @@ fn matching_source(project: &Value, path: &str) -> Option<String> {
 async fn review(input: Value) -> Result<Value> {
     let paths = input["paths"].as_array().ok_or("Select projects first")?;
     let db = db::open()?;
+    let user = db::get(&db, "user")?;
     let config = db::get(&db, "config")?;
-    let supported =
-        crate::auth::capabilities(config["apiUrl"].as_str().ok_or("Sign in first")?.into()).await?
-            ["onboarding"]
-            == 1;
-    let catalog = sync::api("GET", "/v2/projects", None).await?;
+    let owner = user.as_str().ok_or("Sign in first")?;
+    let service = config["apiUrl"]
+        .as_str()
+        .ok_or("Configure a service first")?;
+    let supported = crate::auth::capabilities(service.into()).await?["onboarding"] == 1;
+    let catalog = sync::api_at(owner, service, "GET", "/v2/projects", None).await?;
+    let _lock = crate::projects::wait_for_lock(std::time::Duration::from_secs(5))?;
+    ensure_scope(&db, (owner, service))?;
     crate::projects::merge_catalog(&db, &catalog)?;
+    let local = db::rows(
+        &db,
+        &format!(
+            "SELECT value FROM projects WHERE {}",
+            crate::projects::ACTIVE
+        ),
+        &[],
+    )?;
+    project_review(
+        paths,
+        catalog.as_array().map(Vec::as_slice).unwrap_or_default(),
+        &local,
+        supported,
+    )
+}
+
+fn project_review(
+    paths: &[Value],
+    candidates: &[Value],
+    local: &[Value],
+    supported: bool,
+) -> Result<Value> {
+    let mut catalog: Vec<_> = candidates
+        .iter()
+        .map(|p| json!({"id":p["id"],"name":p["name"],"role":p["role"],"sources":p["sources"]}))
+        .collect();
+    catalog.sort_by_key(|p| p["name"].as_str().unwrap_or("").to_lowercase());
     let mut matches = serde_json::Map::new();
     for path in paths.iter().filter_map(Value::as_str) {
         let key = if supported {
@@ -209,42 +264,61 @@ async fn review(input: Value) -> Result<Value> {
         } else {
             None
         };
-        let mut projects: Vec<_> = catalog
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|p| key.is_some() && p["remoteKey"].as_str() == key.as_deref())
-            .cloned()
-            .collect();
-        let requires_choice = projects.is_empty();
-        if requires_choice {
-            projects = catalog.as_array().into_iter().flatten().cloned().collect();
-        }
-        for project in &mut projects {
-            project["sourceId"] = json!(matching_source(project, path));
-        }
-        projects
-            .sort_by_key(|p| std::cmp::Reverse(p["lastSyncAt"].as_str().unwrap_or("").to_string()));
-        matches.insert(
-            path.into(),
-            json!({"remoteKey":key,"projects":projects,"requiresChoice":requires_choice}),
-        );
+        let mut suggested = candidates
+            .iter()
+            .filter(|p| key.is_some() && p["remoteKey"].as_str() == key.as_deref());
+        let suggested_id = suggested
+            .next()
+            .filter(|_| suggested.next().is_none())
+            .map(|p| &p["id"]);
+        let connected = local.iter().find(|p| {
+            crate::sources::views(p)
+                .iter()
+                .any(|view| view["path"].as_str() == Some(path))
+        });
+        matches.insert(path.into(), json!({
+            "remoteKey":key,"suggestedId":suggested_id,"requiresChoice":true,
+            "connectedId":connected.map(|p| &p["id"]),"connectedName":connected.map(|p| &p["name"])
+        }));
     }
-    Ok(json!({"matches":matches,"supported":supported}))
+    Ok(json!({"matches":matches,"catalog":catalog,"supported":supported}))
 }
 
-async fn connect(input: Value) -> Result<Value> {
+const DESTINATION_CHANGED: &str =
+    "This folder’s connection changed. Review the destination before syncing.";
+
+fn reviewed_destination<'a>(
+    db: &rusqlite::Connection,
+    path: &std::path::Path,
+    reviewed_id: Option<&'a str>,
+    create_receipt: Option<&'a str>,
+) -> Result<Option<&'a str>> {
+    let destination = reviewed_id.or(create_receipt);
+    for project in db::rows(db, "SELECT value FROM projects", &[])? {
+        if crate::sources::views(&project)
+            .iter()
+            .any(|view| view["path"].as_str() == path.to_str())
+            && project["id"].as_str() != destination
+        {
+            return Err(DESTINATION_CHANGED.into());
+        }
+    }
+    Ok(destination)
+}
+
+async fn connect(input: Value, expected: Option<(&str, &str)>) -> Result<Value> {
     let db = db::open()?;
     let user = db::get(&db, "user")?;
-    if !user.is_string() {
-        return Err("Sign in before connecting projects".into());
-    }
+    let config = db::get(&db, "config")?;
+    let owner = user.as_str().ok_or("Sign in before connecting projects")?;
+    let service = config["apiUrl"]
+        .as_str()
+        .ok_or("Configure a service first")?;
+    let scope = expected.unwrap_or((owner, service));
+    ensure_scope(&db, scope)?;
     let path = fs::canonicalize(input["path"].as_str().ok_or("Choose a project folder")?)
         .map_err(|_| "Project folder is unavailable")?;
-    let mut saved = read_draft()?;
-    if saved["owner"] != user || saved["service"] != db::get(&db, "config")?["apiUrl"] {
-        return Err("Onboarding belongs to another account or service".into());
-    }
+    let mut saved = scoped_draft(scope)?;
     if !saved["draft"]["selected"]
         .as_array()
         .is_some_and(|s| s.iter().any(|p| p.as_str() == path.to_str()))
@@ -258,23 +332,15 @@ async fn connect(input: Value) -> Result<Value> {
     }
     let mut sharing = input["sharing"].clone();
     sharing["env"] = json!(false);
-    serde_json::from_value::<crate::projects::Sharing>(sharing.clone())
+    let consent = serde_json::from_value::<crate::projects::Sharing>(sharing.clone())
         .map_err(|_| "Review what to share first")?;
     let key = db::digest(path.to_string_lossy().as_bytes());
-    let local: Vec<_> = db::rows(&db, "SELECT value FROM projects", &[])?
-        .into_iter()
-        .filter(|project| {
-            crate::sources::views(project)
-                .iter()
-                .any(|view| view["path"].as_str() == path.to_str())
-        })
-        .collect();
-    let id = if let Some(id) = local.first().and_then(|p| p["id"].as_str()) {
-        id.to_string()
-    } else if let Some(id) = saved["connected"][&key]
-        .as_str()
-        .or(input["existingId"].as_str())
-    {
+    let id = if let Some(id) = reviewed_destination(
+        &db,
+        &path,
+        input["existingId"].as_str(),
+        saved["connected"][&key].as_str(),
+    )? {
         id.to_string()
     } else {
         let mut request = json!({"name":name,"sharing":sharing});
@@ -282,14 +348,10 @@ async fn connect(input: Value) -> Result<Value> {
             request["remoteKey"] = json!(key);
         }
         // A lost HTTP response must not create the project twice after relaunch.
-        let config = db::get(&db, "config")?;
-        let supports_receipts =
-            crate::auth::capabilities(config["apiUrl"].as_str().ok_or("Sign in first")?.into())
-                .await?["onboarding"]
-                == 1;
+        let supports_receipts = crate::auth::capabilities(service.into()).await?["onboarding"] == 1;
         if supports_receipts {
             let _state_lock = state_lock()?;
-            saved = read_draft()?;
+            saved = scoped_draft(scope)?;
             let request_id = saved["creating"][&key]
                 .as_str()
                 .map(str::to_string)
@@ -301,13 +363,13 @@ async fn connect(input: Value) -> Result<Value> {
             write_draft(&saved)?;
             request["requestId"] = json!(request_id);
         }
-        let result = commands::cloud_action("create".into(), request).await?;
+        let result = commands::cloud_action_scoped("create".into(), request, Some(scope)).await?;
         let id = result["id"]
             .as_str()
             .ok_or("The service did not return a project")?
             .to_string();
         let _state_lock = state_lock()?;
-        saved = read_draft()?;
+        saved = scoped_draft(scope)?;
         if !saved["connected"].is_object() {
             saved["connected"] = json!({});
         }
@@ -315,9 +377,11 @@ async fn connect(input: Value) -> Result<Value> {
         write_draft(&saved)?;
         id
     };
-    // The catalog supplies membership and role. Save consent before connect can scan.
+    // Refresh membership before connecting to an existing project.
     if input["existingId"].is_string() {
-        let catalog = sync::api("GET", "/v2/projects", None).await?;
+        let catalog = sync::api_at(owner, service, "GET", "/v2/projects", None).await?;
+        let _lock = crate::projects::lock()?;
+        ensure_scope(&db, scope)?;
         crate::projects::merge_catalog(&db, &catalog)?;
     }
     let project = crate::governance::project(&db, &id)?;
@@ -332,19 +396,23 @@ async fn connect(input: Value) -> Result<Value> {
     {
         return Err("Choose which repository this folder should connect to before syncing".into());
     }
-    crate::projects::project_command("sharing".into(), json!({"projectId":id,"sharing":sharing}))
-        .await?;
-    crate::sources::connect_project_sources(
+    crate::sources::connect_sources(
         id.clone(),
         vec![path.to_string_lossy().into()],
         source_id,
+        Some(scope),
+        Some(consent),
     )
     .await?;
     if project["role"] == "owner"
         && project["remoteKey"].is_null()
         && input["remoteKey"].is_string()
     {
-        let result = sync::api(
+        let _lock = crate::projects::lock()?;
+        ensure_scope(&db, scope)?;
+        let result = sync::api_at(
+            owner,
+            service,
             "POST",
             "/v2/projects/action",
             Some(&json!({"action":"set-remote","projectId":id,"remoteKey":input["remoteKey"]})),
@@ -364,24 +432,27 @@ fn project_sync_status(
     id: &str,
     sync_error: Option<&str>,
 ) -> Result<Value> {
-    let issues=db::rows(db,"SELECT json_object('error',error) FROM errors WHERE source=? OR substr(source,1,length(?)+1)=?||':' OR source IN (SELECT id FROM resources WHERE project=?)",&[&id,&id,&id,&id])?;
+    let mut issues = db::rows(
+        db,
+        "SELECT json_object('error', errors.error, 'item', coalesce(json_extract(resources.value,'$.title'), errors.source))
+         FROM errors LEFT JOIN resources ON resources.id=errors.source
+         WHERE errors.source=? OR substr(errors.source,1,length(?)+1)=?||':' OR resources.project=?
+         ORDER BY errors.source",
+        &[&id, &id, &id, &id],
+    )?;
     let pending = db::rows(
         db,
-        "SELECT json_object('error',error) FROM outbox WHERE project=?",
+        "SELECT json_object('error',error,'item',coalesce(json_extract(value,'$.resource.title'),json_extract(value,'$.resource.logicalPath'))) FROM outbox WHERE project=?",
         &[&id],
     )?;
     let scanned = db::get(db, &format!("firstScan:{id}"))?.is_string();
-    let issue = issues
-        .first()
-        .and_then(|p| p["error"].as_str())
-        .map(String::from)
-        .or_else(|| {
-            pending
-                .first()
-                .and_then(|p| p["error"].as_str())
-                .filter(|s| !s.is_empty())
-                .map(String::from)
-        });
+    issues.extend(
+        pending
+            .iter()
+            .filter(|row| row["error"].as_str().is_some_and(|error| !error.is_empty()))
+            .cloned(),
+    );
+    let issue = issues.first().and_then(|row| row["error"].as_str());
     let status = if issue.is_some() {
         "error"
     } else if scanned && pending.is_empty() && sync_error.is_none() {
@@ -394,7 +465,7 @@ fn project_sync_status(
     let items = db::rows(db, "SELECT value FROM resources WHERE project=? AND coalesce(json_extract(value,'$.deleted'),0)=0", &[&id])?.len()
         + review_pending;
     Ok(
-        json!({"id":id,"status":status,"error":issue,"conflicts":conflicts,"pending":pending.len(),"items":items,"reviewPending":review_pending}),
+        json!({"id":id,"status":status,"error":issue,"issues":issues,"conflicts":conflicts,"pending":pending.len(),"items":items,"reviewPending":review_pending}),
     )
 }
 fn offline_error(error: &str) -> bool {
@@ -421,14 +492,14 @@ fn failed_sync_step(draft: &Value) -> &'static str {
         "sync-error"
     }
 }
-async fn synchronize(input: Value) -> Result<Value> {
+async fn synchronize(input: Value, scope: Option<(&str, &str)>) -> Result<Value> {
     let ids = input["projectIds"]
         .as_array()
         .ok_or("Select projects to sync")?;
     if ids.is_empty() {
         return Err("No projects are connected yet".into());
     }
-    let error = sync::onboarding_once().await.err();
+    let error = sync::onboarding_once(scope).await.err();
     if error
         .as_deref()
         .is_some_and(|e| e.contains("operation is in progress"))
@@ -436,6 +507,9 @@ async fn synchronize(input: Value) -> Result<Value> {
         return Err(error.unwrap());
     }
     let db = db::open()?;
+    if let Some(scope) = scope {
+        ensure_scope(&db, scope)?;
+    }
     let projects = ids
         .iter()
         .filter_map(Value::as_str)
@@ -445,9 +519,9 @@ async fn synchronize(input: Value) -> Result<Value> {
         json!({"projects":projects,"error":error,"offline":error.as_deref().is_some_and(offline_error)}),
     )
 }
-fn patch_job(change: &Value) -> Result<Value> {
+fn patch_job(scope: (&str, &str), change: &Value) -> Result<Value> {
     let _state_lock = state_lock()?;
-    let mut saved = read_draft()?;
+    let mut saved = scoped_draft(scope)?;
     if let Some(fields) = change.as_object() {
         for (key, value) in fields {
             saved["draft"][key] = value.clone();
@@ -456,9 +530,9 @@ fn patch_job(change: &Value) -> Result<Value> {
     write_draft(&saved)?;
     Ok(saved["draft"].clone())
 }
-fn patch_project(path: &str, change: Value) -> Result<()> {
+fn patch_project(scope: (&str, &str), path: &str, change: Value) -> Result<()> {
     let _state_lock = state_lock()?;
-    let mut saved = read_draft()?;
+    let mut saved = scoped_draft(scope)?;
     if let Some(projects) = saved["draft"]["projects"].as_array_mut() {
         if let Some(project) = projects.iter_mut().find(|p| p["path"] == path) {
             for (key, value) in change.as_object().ok_or("Invalid progress")? {
@@ -500,16 +574,37 @@ pub fn sync_running() -> Result<bool> {
         Err(error) => Err(error.to_string()),
     }
 }
-async fn batch_sync(retry: bool, connections_only: bool) -> Result<Value> {
+fn folder_bound(db: &rusqlite::Connection, id: &str, path: &Value) -> Result<bool> {
+    let projects = db::rows(
+        db,
+        &format!(
+            "SELECT value FROM projects WHERE id=? AND ({})",
+            crate::projects::ACTIVE
+        ),
+        &[&id],
+    )?;
+    Ok(projects.first().is_some_and(|project| {
+        crate::sources::views(project)
+            .iter()
+            .any(|view| &view["path"] == path)
+    }))
+}
+async fn batch_sync(
+    retry: bool,
+    connections_only: bool,
+    expected: Option<(&str, &str)>,
+) -> Result<Value> {
     let lock = sync_lock()?;
     lock.try_lock_exclusive()
         .map_err(|_| "A sync or project operation is in progress")?;
     let owner = db::get(&db::open()?, "user")?;
     let service = db::get(&db::open()?, "config")?["apiUrl"].clone();
-    let saved = read_draft()?;
-    if saved["owner"] != owner || saved["service"] != service {
-        return Err("Account or service changed".into());
-    }
+    let scope = expected.unwrap_or((
+        owner.as_str().ok_or("Sign in first")?,
+        service.as_str().ok_or("Configure a service first")?,
+    ));
+    ensure_scope(&db::open()?, scope)?;
+    let saved = scoped_draft(scope)?;
     if saved["draft"]["reviewed"] != true {
         return Err("Review what will sync before connecting projects".into());
     }
@@ -529,16 +624,14 @@ async fn batch_sync(retry: bool, connections_only: bool) -> Result<Value> {
     for project in projects.iter().filter(|p| selected.contains(&p["path"])) {
         let path = project["path"].as_str().ok_or("Missing project folder")?;
         let matches = &saved["draft"]["matches"][path];
-        if (matches["requiresChoice"] == true
-            || matches["projects"]
-                .as_array()
-                .is_some_and(|matches| matches.len() > 1))
-            && matches["projects"]
-                .as_array()
-                .is_some_and(|matches| !matches.is_empty())
-            && !saved["draft"]["choices"][path]
-                .as_str()
-                .is_some_and(|choice| !choice.is_empty())
+        let candidates = matches["projects"]
+            .as_array()
+            .or_else(|| saved["draft"]["catalog"].as_array());
+        if candidates.is_some_and(|projects| {
+            !projects.is_empty() && (matches["requiresChoice"] == true || projects.len() > 1)
+        }) && !saved["draft"]["choices"][path]
+            .as_str()
+            .is_some_and(|choice| !choice.is_empty())
         {
             return Err("Choose which existing Orka project this folder should connect to".into());
         }
@@ -546,21 +639,28 @@ async fn batch_sync(retry: bool, connections_only: bool) -> Result<Value> {
     if !db::daemon_running()? {
         db::set(&db::open()?, "syncProgress", &Value::Null)?;
     }
-    patch_job(&json!({"step":if retry{"retrying"}else{"syncing"}}))?;
+    patch_job(scope, &json!({"step":if retry{"retrying"}else{"syncing"}}))?;
     for project in projects.iter().filter(|p| {
         selected.contains(&p["path"])
-            && (!connections_only || !p["projectId"].is_string())
-            && (!retry || !["synced", "skipped"].contains(&p["status"].as_str().unwrap_or("")))
+            && (!connections_only
+                || (!p["projectId"].is_string() && p["error"] != DESTINATION_CHANGED))
+            && !["synced", "skipped"].contains(&p["status"].as_str().unwrap_or(""))
     }) {
-        if db::get(&db::open()?, "user")? != owner
-            || db::get(&db::open()?, "config")?["apiUrl"] != service
-        {
-            return Err("Account or service changed".into());
-        }
+        ensure_scope(&db::open()?, scope)?;
         let path = project["path"].as_str().ok_or("Missing project folder")?;
+        if let Some(id) = project["projectId"].as_str().filter(|_| retry) {
+            let change = if folder_bound(&db::open()?, id, &project["path"])? {
+                json!({"status":"scanning","error":null,"issues":[],"syncStartedAt":chrono::Utc::now().timestamp_millis()})
+            } else {
+                json!({"projectId":null,"status":"error","error":DESTINATION_CHANGED,"issues":[]})
+            };
+            patch_project(scope, path, change)?;
+            continue;
+        }
         patch_project(
+            scope,
             path,
-            json!({"status":if project["projectId"].is_string(){"connecting"}else{"creating"},"error":null,"syncStartedAt":chrono::Utc::now().timestamp_millis()}),
+            json!({"status":if project["projectId"].is_string(){"connecting"}else{"creating"},"error":null,"issues":[] ,"syncStartedAt":chrono::Utc::now().timestamp_millis()}),
         )?;
         let d = &saved["draft"];
         let sharing = if d["overrides"][path].is_object() {
@@ -586,63 +686,77 @@ async fn batch_sync(retry: bool, connections_only: bool) -> Result<Value> {
         {
             input["sourceId"] = json!(source);
         }
-        match busy_retry(|| connect(input.clone())).await {
-            Ok(result) => {
-                patch_project(path, json!({"projectId":result["id"],"status":"scanning"}))?
-            }
-            Err(e) => patch_project(path, json!({"status":"error","error":e}))?,
+        match busy_retry(|| connect(input.clone(), Some(scope))).await {
+            Ok(result) => patch_project(
+                scope,
+                path,
+                json!({"projectId":result["id"],"status":"scanning"}),
+            )?,
+            Err(e) => patch_project(scope, path, json!({"status":"error","error":e}))?,
         }
     }
     if connections_only {
-        let draft = read_draft()?["draft"].clone();
-        if let Some(project) = draft["projects"]
+        let draft = scoped_draft(scope)?["draft"].clone();
+        if draft["projects"]
             .as_array()
             .into_iter()
             .flatten()
-            .find(|project| {
+            .any(|project| {
                 selected.contains(&project["path"])
                     && !project["projectId"].is_string()
                     && project["status"] != "skipped"
             })
         {
-            patch_job(&json!({"step":failed_sync_step(&draft)}))?;
-            return Err(project["error"]
-                .as_str()
-                .unwrap_or("Could not connect the selected project")
-                .into());
+            patch_job(scope, &json!({"step":failed_sync_step(&draft)}))?;
+            // A local folder or project failure is recoverable independently of workspace sync.
+            if let Some(error) = draft["projects"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|row| selected.contains(&row["path"]) && row["status"] == "error")
+                .filter_map(|row| row["error"].as_str())
+                .find(|error| sync::service_error(error))
+            {
+                return Err(error.into());
+            }
+            return Ok(scoped_draft(scope)?["draft"].clone());
         }
         return Ok(draft);
     }
     loop {
-        if db::get(&db::open()?, "user")? != owner
-            || db::get(&db::open()?, "config")?["apiUrl"] != service
-        {
-            return Err("Account or service changed".into());
-        }
-        let d = read_draft()?["draft"].clone();
+        ensure_scope(&db::open()?, scope)?;
+        let d = scoped_draft(scope)?["draft"].clone();
         let mut ids = vec![];
         for p in d["projects"].as_array().into_iter().flatten().filter(|p| {
             d["selected"]
                 .as_array()
                 .is_some_and(|s| s.contains(&p["path"]))
                 && p["projectId"].is_string()
-                && !["error", "skipped"].contains(&p["status"].as_str().unwrap_or(""))
+                && !["error", "skipped", "synced"].contains(&p["status"].as_str().unwrap_or(""))
         }) {
             if !ids.contains(&p["projectId"]) {
                 ids.push(p["projectId"].clone());
             }
         }
         if ids.is_empty() {
-            return patch_job(&json!({"step":failed_sync_step(&d)}));
+            let failed = d["projects"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|p| selected.contains(&p["path"]) && p["status"] == "error");
+            return patch_job(
+                scope,
+                &json!({"step":if failed { failed_sync_step(&d) } else { "ready" }}),
+            );
         }
-        let result = busy_retry(|| synchronize(json!({"projectIds":ids}))).await?;
+        let result = busy_retry(|| synchronize(json!({"projectIds":ids}), Some(scope))).await?;
         for row in result["projects"].as_array().into_iter().flatten() {
             for p in d["projects"].as_array().into_iter().flatten().filter(|p| {
                 p["projectId"] == row["id"]
                     && d["selected"]
                         .as_array()
                         .is_some_and(|selected| selected.contains(&p["path"]))
-                    && !["error", "skipped"].contains(&p["status"].as_str().unwrap_or(""))
+                    && !["error", "skipped", "synced"].contains(&p["status"].as_str().unwrap_or(""))
             }) {
                 let mut row = row.clone();
                 row["durationMs"] = json!(
@@ -651,14 +765,14 @@ async fn batch_sync(retry: bool, connections_only: bool) -> Result<Value> {
                             .as_i64()
                             .unwrap_or(chrono::Utc::now().timestamp_millis())
                 );
-                patch_project(p["path"].as_str().unwrap_or(""), row)?;
+                patch_project(scope, p["path"].as_str().unwrap_or(""), row)?;
             }
         }
         if result["offline"] == true {
-            return patch_job(&json!({"step":"offline"}));
+            return patch_job(scope, &json!({"step":"offline"}));
         }
         if result["error"].is_string() {
-            return patch_job(&json!({"step":"sync-error","error":result["error"]}));
+            return patch_job(scope, &json!({"step":"sync-error","error":result["error"]}));
         }
         if result["projects"]
             .as_array()
@@ -669,14 +783,17 @@ async fn batch_sync(retry: bool, connections_only: bool) -> Result<Value> {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             continue;
         }
-        let d = read_draft()?["draft"].clone();
+        let d = scoped_draft(scope)?["draft"].clone();
         let failed = d["projects"].as_array().into_iter().flatten().any(|p| {
             d["selected"]
                 .as_array()
                 .is_some_and(|s| s.contains(&p["path"]))
                 && p["status"] == "error"
         });
-        return patch_job(&json!({"step":if failed{failed_sync_step(&d)}else{"ready"}}));
+        return patch_job(
+            scope,
+            &json!({"step":if failed{failed_sync_step(&d)}else{"ready"}}),
+        );
     }
 }
 fn pending_connections(saved: &Value) -> bool {
@@ -692,32 +809,121 @@ fn pending_connections(saved: &Value) -> bool {
                     .is_some_and(|selected| selected.contains(&project["path"]))
                     && !project["projectId"].is_string()
                     && project["status"] != "skipped"
+                    && project["error"] != DESTINATION_CHANGED
             })
 }
 pub async fn resume_pending_connections() -> Result<()> {
-    if !pending_connections(&read_draft()?) {
+    let saved = read_draft()?;
+    if !pending_connections(&saved) {
         return Ok(());
     }
-    batch_sync(true, true).await.map(|_| ())
+    let owner = saved["owner"].as_str().ok_or("Sign in first")?;
+    let service = saved["service"]
+        .as_str()
+        .ok_or("Configure a service first")?;
+    batch_sync(true, true, Some((owner, service)))
+        .await
+        .map(|_| ())
 }
+pub(crate) fn reconcile_workspace_sync(
+    db: &rusqlite::Connection,
+    sync_error: Option<&str>,
+) -> Result<()> {
+    let lock = sync_lock()?;
+    match lock.try_lock_exclusive() {
+        Ok(()) => {}
+        // An explicit onboarding batch records its own outcomes.
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    }
+    let _state_lock = state_lock()?;
+    let mut saved = read_draft()?;
+    if saved["owner"] != db::get(db, "user")?
+        || saved["service"] != db::get(db, "config")?["apiUrl"]
+    {
+        return Ok(());
+    }
+    let draft = &mut saved["draft"];
+    if !draft["completedAt"].is_string() || draft["reviewed"] != true {
+        return Ok(());
+    }
+    let selected = draft["selected"].as_array().cloned().unwrap_or_default();
+    let Some(projects) = draft["projects"].as_array_mut() else {
+        return Ok(());
+    };
+    let mut unfinished = false;
+    let mut failed = false;
+    for project in projects.iter_mut().filter(|p| {
+        selected.contains(&p["path"]) && !matches!(p["status"].as_str(), Some("synced" | "skipped"))
+    }) {
+        unfinished = true;
+        if let Some(id) = project["projectId"].as_str() {
+            if !folder_bound(db, id, &project["path"])? {
+                project["projectId"] = Value::Null;
+                project["status"] = json!("error");
+                project["error"] = json!(DESTINATION_CHANGED);
+                project["issues"] = json!([]);
+                failed = true;
+                continue;
+            }
+            let status = project_sync_status(db, id, sync_error)?;
+            for field in [
+                "status",
+                "error",
+                "issues",
+                "conflicts",
+                "pending",
+                "items",
+                "reviewPending",
+            ] {
+                project[field] = status[field].clone();
+            }
+        } else if project["status"] != "error" {
+            project["status"] = json!("error");
+            project["error"] = json!("Project folder still needs to be connected. Retry setup.");
+        }
+        failed |= project["status"] == "error";
+    }
+    if !unfinished {
+        return Ok(());
+    }
+    let pending = projects
+        .iter()
+        .any(|p| selected.contains(&p["path"]) && p["status"] == "syncing");
+    draft["step"] = json!(match sync_error {
+        Some(error) if offline_error(error) => "offline",
+        Some(_) => "sync-error",
+        None if pending => "syncing",
+        None if failed => failed_sync_step(draft),
+        None => "ready",
+    });
+    draft["error"] = json!(sync_error);
+    write_draft_in(db, &saved)
+}
+
 pub fn resume_sync() {
     static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     let Ok(saved) = read_draft() else {
         return;
     };
-    if saved["draft"]["completedAt"].is_string()
-        || !["syncing", "retrying", "offline"]
-            .contains(&saved["draft"]["step"].as_str().unwrap_or(""))
+    let draft = &saved["draft"];
+    let step = draft["step"].as_str().unwrap_or("");
+    if draft["reviewed"] != true
+        || (draft["completedAt"].is_string() && step == "offline")
+        || !["syncing", "retrying", "offline"].contains(&step)
         || RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst)
     {
         return;
     }
-    std::thread::spawn(|| {
-        if let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            let _ = runtime.block_on(batch_sync(true, false));
+    std::thread::spawn(move || {
+        if let (Some(owner), Some(service), Ok(runtime)) = (
+            saved["owner"].as_str(),
+            saved["service"].as_str(),
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build(),
+        ) {
+            let _ = runtime.block_on(batch_sync(true, false, Some((owner, service))));
         }
         RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
     });
@@ -756,6 +962,9 @@ pub async fn onboarding_command(
             Ok(())
         };
         ensure_context()?;
+        let scope = context
+            .as_ref()
+            .and_then(|context| Some((context["user"].as_str()?, context["service"].as_str()?)));
         match action.as_str() {
             "checkpoint" => {
                 let _lock = crate::projects::wait_for_lock(std::time::Duration::from_secs(5))?;
@@ -784,9 +993,9 @@ pub async fn onboarding_command(
                 Ok(json!({"ok":true}))
             }
             "review" => runtime.block_on(review(input)),
-            "connect" => runtime.block_on(connect(input)),
-            "sync" => runtime.block_on(synchronize(input)),
-            "batch-sync" => runtime.block_on(batch_sync(input["retry"] == true, false)),
+            "connect" => runtime.block_on(connect(input, scope)),
+            "sync" => runtime.block_on(synchronize(input, scope)),
+            "batch-sync" => runtime.block_on(batch_sync(input["retry"] == true, false, scope)),
             "progress" => Ok(read_draft()?["draft"].clone()),
             "save-profile" => {
                 let _lock = crate::projects::lock()?;
@@ -811,6 +1020,30 @@ pub async fn onboarding_command(
             }
             "open-settings" => install::open_settings(input["kind"].as_str().unwrap_or("privacy")),
             "app-location" => install::location(),
+            "resume-setup" => {
+                let lock = sync_lock()?;
+                lock.try_lock_exclusive()
+                    .map_err(|_| "Wait for the current sync before reopening setup")?;
+                let _state_lock = state_lock()?;
+                ensure_context()?;
+                let db = db::open()?;
+                let mut saved = read_draft()?;
+                if saved["owner"] != db::get(&db, "user")?
+                    || saved["service"] != db::get(&db, "config")?["apiUrl"]
+                    || !saved["draft"]["completedAt"].is_string()
+                    || !(saved["draft"]["deferred"] == true
+                        || ["offline", "sync-error"]
+                            .contains(&saved["draft"]["step"].as_str().unwrap_or("")))
+                {
+                    return Err("There is no paused setup to resume".into());
+                }
+                saved["draft"]["completedAt"] = Value::Null;
+                saved["draft"]["deferred"] = json!(false);
+                saved["active"] = json!(true);
+                db::set(&db, "onboardingComplete", &json!(false))?;
+                write_draft_in(&db, &saved)?;
+                Ok(json!({"ok":true}))
+            }
             "complete" => {
                 // Completion only changes scoped setup metadata. A running sync
                 // keeps its workspace lock and retains the completion receipt.
@@ -832,6 +1065,23 @@ pub async fn onboarding_command(
                 if !owner.is_string() || saved["owner"] != owner || saved["service"] != service {
                     return Err("Account or service changed. Reopen onboarding.".into());
                 }
+                let defer = input["defer"] == true;
+                if defer
+                    && (saved["draft"]["reviewed"] == true
+                        || ![
+                            "discover",
+                            "select",
+                            "review",
+                            "folder",
+                            "empty",
+                            "access-error",
+                            "partial-access",
+                        ]
+                        .contains(&saved["draft"]["step"].as_str().unwrap_or("")))
+                {
+                    return Err("Only setup that has not started syncing can be deferred".into());
+                }
+                saved["draft"]["deferred"] = json!(defer);
                 saved["draft"]["completedAt"] = json!(db::now());
                 saved["active"] = json!(false);
                 write_draft_in(&db, &saved)?;
@@ -839,7 +1089,9 @@ pub async fn onboarding_command(
                 if db::get(&db, "background")?.is_null() {
                     db::set(&db, "background", &json!(false))?;
                 }
-                db::set(&db, "syncRequest", &json!(uuid::Uuid::new_v4().to_string()))?;
+                if !defer {
+                    db::set(&db, "syncRequest", &json!(uuid::Uuid::new_v4().to_string()))?;
+                }
                 Ok(json!({"ok":true}))
             }
             _ => Err("Unknown onboarding action".into()),
@@ -868,6 +1120,39 @@ mod tests {
         saved["draft"]["completedAt"] = Value::Null;
         assert!(!pending_connections(&saved));
     }
+    #[test]
+    fn large_project_review_saves_the_catalog_once() {
+        let folder = tempfile::tempdir().unwrap();
+        let mut paths = Vec::new();
+        let mut projects = Vec::new();
+        for index in 0..70 {
+            let path = folder.path().join(format!("project-{index}"));
+            fs::create_dir_all(path.join(".git")).unwrap();
+            fs::write(
+                path.join(".git/config"),
+                format!(
+                    "[remote \"origin\"]\nurl = https://github.com/example/project-{index}.git\n"
+                ),
+            )
+            .unwrap();
+            projects.push(json!({
+                "id":uuid::Uuid::new_v4().to_string(), "name":format!("Project {index}"), "role":"owner",
+                "remoteKey":discovery::remote_key(path.to_str().unwrap()).unwrap(),
+                "sources":[{"id":uuid::Uuid::new_v4().to_string(),"name":format!("project-{index}")}]
+            }));
+            paths.push(json!(path));
+        }
+        let review = project_review(&paths, &projects, &[], true).unwrap();
+        assert_eq!(review["catalog"].as_array().unwrap().len(), paths.len());
+        assert_eq!(review["matches"].as_object().unwrap().len(), paths.len());
+        assert_eq!(
+            review["matches"][paths[69].as_str().unwrap()]["suggestedId"],
+            projects[69]["id"]
+        );
+        assert!(review["matches"][paths[69].as_str().unwrap()]["projects"].is_null());
+        assert!(review.to_string().len() < 100_000);
+    }
+
     #[test]
     fn existing_source_identity_survives_renamed_clones_and_ambiguous_names_need_a_choice() {
         let project = json!({"sources":[{"id":"original","name":"old-name"}]});
@@ -921,7 +1206,7 @@ mod tests {
     #[test]
     fn first_sync_requires_a_scan_and_no_queue_or_resource_errors_but_allows_conflicts() {
         let db = rusqlite::Connection::open_in_memory().unwrap();
-        db.execute_batch("CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT);CREATE TABLE errors(source TEXT,error TEXT);CREATE TABLE outbox(project TEXT,error TEXT);CREATE TABLE resources(id TEXT,project TEXT,value TEXT);CREATE TABLE conflicts(project TEXT,value TEXT);CREATE TABLE drafts(project TEXT,value TEXT);").unwrap();
+        db.execute_batch("CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT);CREATE TABLE errors(source TEXT,error TEXT);CREATE TABLE outbox(project TEXT,error TEXT,value TEXT);CREATE TABLE resources(id TEXT,project TEXT,value TEXT);CREATE TABLE conflicts(project TEXT,value TEXT);CREATE TABLE drafts(project TEXT,value TEXT);").unwrap();
         assert_eq!(
             project_sync_status(&db, "p", None).unwrap()["status"],
             "syncing"
@@ -931,7 +1216,7 @@ mod tests {
             project_sync_status(&db, "p", None).unwrap()["status"],
             "synced"
         );
-        db.execute("INSERT INTO outbox VALUES('p',NULL)", [])
+        db.execute("INSERT INTO outbox(project,error) VALUES('p',NULL)", [])
             .unwrap();
         assert_eq!(
             project_sync_status(&db, "p", None).unwrap()["status"],

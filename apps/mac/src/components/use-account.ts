@@ -4,12 +4,20 @@ import type { ServiceMode, Snapshot } from "../types.js";
 import { normalizeServiceUrl, sameServiceUrl } from "./project-invite.js";
 
 export interface AuthCapabilities {
-  auth: { password: boolean; github: boolean; magicLink: boolean };
+  auth: {
+    password: boolean;
+    github: boolean;
+    magicLink: boolean;
+    emailCode?: boolean;
+  };
 }
 const buildCloudUrl =
   import.meta.env.VITE_ORKA_CLOUD_URL?.trim() || "https://api.tryorka.ai";
 
-export function useAccount(config: Snapshot["config"]) {
+export function useAccount(
+  config: Snapshot["config"],
+  restoreEmailSignIn = false,
+) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<ServiceMode>("cloud");
@@ -22,6 +30,7 @@ export function useAccount(config: Snapshot["config"]) {
   );
   const [connectionError, setConnectionError] = useState("");
   const [connectionAttempt, setConnectionAttempt] = useState(0);
+  const authRevision = useRef(0);
   const lastAuthAction = useRef<(() => Promise<void>) | null>(null);
   const apiUrl = config?.apiUrl;
   const syncMinutes = config?.syncMinutes;
@@ -43,6 +52,25 @@ export function useAccount(config: Snapshot["config"]) {
     }
     if (syncMinutes !== undefined) setMinutes(syncMinutes);
   }, [apiUrl, syncMinutes, savedMode, savedCloud, savedSelfHosted]);
+
+  useEffect(() => {
+    if (!restoreEmailSignIn || !apiUrl) return;
+    let active = true;
+    const revision = authRevision.current;
+    void invoke<{ email: string } | null>("pending_email_sign_in")
+      .then((request) => {
+        if (active && revision === authRevision.current && request?.email) {
+          setEmail(request.email);
+          setPending("magic-link");
+        }
+      })
+      .catch(() => {
+        // Starting a new sign-in still surfaces any Keychain error.
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiUrl, restoreEmailSignIn]);
 
   useEffect(() => {
     let active = true;
@@ -114,6 +142,7 @@ export function useAccount(config: Snapshot["config"]) {
     setConnectionError("");
   };
   const signIn = async () => {
+    authRevision.current++;
     lastAuthAction.current = signIn;
     await configure();
     await invoke("sign_in", { email: email.trim(), password });
@@ -122,6 +151,7 @@ export function useAccount(config: Snapshot["config"]) {
     lastAuthAction.current = null;
   };
   const begin = async (method: "github" | "magic-link") => {
+    authRevision.current++;
     lastAuthAction.current = () => begin(method);
     await configure();
     await invoke("begin_sign_in", {
@@ -131,16 +161,21 @@ export function useAccount(config: Snapshot["config"]) {
     setPending(method);
   };
   const cancel = async () => {
+    authRevision.current++;
     await invoke("cancel_sign_in");
     setPending(null);
     setPassword("");
     lastAuthAction.current = null;
   };
-  const complete = async (callback: string) => {
-    lastAuthAction.current = () => complete(callback);
+  const complete = async (
+    callback: string | null,
+    code: string | null = null,
+  ) => {
+    authRevision.current++;
+    lastAuthAction.current = () => complete(callback, code);
     await invoke("complete_sign_in", {
       callback,
-      code: null,
+      code,
     });
     setPending(null);
     setPassword("");
@@ -158,6 +193,7 @@ export function useAccount(config: Snapshot["config"]) {
     lastAuthAction.current = null;
   };
   const switchService = async (inviteService?: string) => {
+    authRevision.current++;
     const next = connection();
     if (inviteService) {
       next.apiUrl = normalizeServiceUrl(inviteService);

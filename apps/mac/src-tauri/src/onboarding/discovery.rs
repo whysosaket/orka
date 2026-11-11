@@ -69,6 +69,37 @@ fn modified(path: &Path) -> u64 {
         .map(|v| v.as_millis() as u64)
         .unwrap_or(0)
 }
+#[derive(Default)]
+struct ImportedHistory {
+    claude: BTreeSet<String>,
+    codex: BTreeSet<String>,
+}
+impl ImportedHistory {
+    fn load(db: &rusqlite::Connection) -> Result<Self> {
+        let mut imported = Self::default();
+        for receipt in db::rows(
+            db,
+            "SELECT value FROM meta WHERE key GLOB 'claudeImport:*'",
+            &[],
+        )? {
+            if let Some(id) = receipt["id"].as_str() {
+                imported.claude.insert(id.into());
+            }
+        }
+        for receipt in crate::codex_import::attempts(db)? {
+            imported.codex.extend(
+                receipt["ids"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .chain(std::iter::once(&receipt["child"]["id"]))
+                    .filter_map(|id| id.as_str().map(str::to_owned)),
+            );
+        }
+        Ok(imported)
+    }
+}
+
 fn project_root(path: &Path, home: &Path) -> Option<PathBuf> {
     let path = match fs::canonicalize(path) {
         Ok(path) => path,
@@ -153,6 +184,7 @@ fn cwd_record(path: &Path, codex: bool, budget: &mut Budget) -> Option<Value> {
 fn claude(
     home: &Path,
     root: &Path,
+    imported: &BTreeSet<String>,
     found: &mut BTreeMap<PathBuf, Candidate>,
     budget: &mut Budget,
 ) -> Result<()> {
@@ -170,8 +202,11 @@ fn claude(
             .entries(&folder.path())
             .into_iter()
             .filter(|f| {
-                f.path().extension().is_some_and(|e| e == "jsonl")
+                let path = f.path();
+                path.extension().is_some_and(|e| e == "jsonl")
                     && f.file_type().is_ok_and(|k| k.is_file())
+                    // Sync imports use their own native IDs and carry historical timestamps.
+                    && !path.file_stem().and_then(|name| name.to_str()).is_some_and(|id| imported.contains(id))
             })
             .collect();
         files.sort_by_key(|f| std::cmp::Reverse(modified(&f.path())));
@@ -300,10 +335,11 @@ fn history(
     home: &Path,
     claude_root: &Path,
     codex_root: &Path,
+    imported: &ImportedHistory,
     found: &mut BTreeMap<PathBuf, Candidate>,
     budget: &mut Budget,
 ) -> Result<()> {
-    claude(home, claude_root, found, budget)?;
+    claude(home, claude_root, &imported.claude, found, budget)?;
     let mut files = vec![];
     codex_files(&codex_root.join("sessions"), 5, budget, &mut files);
     files.sort_by_key(|p| std::cmp::Reverse(modified(p)));
@@ -312,6 +348,12 @@ fn history(
             break;
         }
         if let Some(record) = cwd_record(&file, true, budget) {
+            if record["payload"]["id"]
+                .as_str()
+                .is_some_and(|id| imported.codex.contains(id))
+            {
+                continue;
+            }
             add(
                 found,
                 Path::new(record["payload"]["cwd"].as_str().unwrap()),
@@ -326,6 +368,7 @@ fn history(
 }
 pub fn discover(path: Option<&str>) -> Result<Value> {
     let home = db::home()?;
+    let db = db::open()?;
     let mut found = BTreeMap::new();
     let mut budget = Budget::new();
     if let Some(path) = path {
@@ -339,10 +382,12 @@ pub fn discover(path: Option<&str>) -> Result<Value> {
             add(&mut found, &root, &home, None, 0, 0);
         }
     } else {
+        let imported = ImportedHistory::load(&db)?;
         history(
             &home,
             &native::claude_home()?,
             &native::codex_home()?,
+            &imported,
             &mut found,
             &mut budget,
         )?;
@@ -350,20 +395,27 @@ pub fn discover(path: Option<&str>) -> Result<Value> {
     if found.is_empty() && budget.denied {
         return Err("Orka couldn’t read your coding history. Check Privacy & Security in System Settings, or choose a folder instead.".into());
     }
-    let db = db::open()?;
     let connected = db::rows(
         &db,
         &format!(
-            "SELECT value FROM projects WHERE {}",
+            "SELECT json_set(value,'$.pendingChanges',(SELECT count(*) FROM outbox WHERE project=projects.id)) FROM projects WHERE {}",
             crate::projects::ACTIVE
         ),
         &[],
     )?;
-    let mut projects: Vec<Value> = found.into_iter().map(|(path, c)| {
+    let connected_folders: BTreeMap<_, _> = connected
+        .iter()
+        .flat_map(|project| {
+            let pending = project["pendingChanges"].as_u64().unwrap_or(0);
+            crate::sources::views(project)
+                .into_iter()
+                .filter_map(move |view| Some((PathBuf::from(view["path"].as_str()?), pending)))
+        })
+        .collect();
+    let projects: Vec<Value> = found.into_iter().map(|(path, c)| {
         let display = path.strip_prefix(&home).map(|p| format!("~/{}", p.display())).unwrap_or_else(|_| path.display().to_string());
-        json!({"name":path.file_name().unwrap_or_default().to_string_lossy(),"path":path,"displayPath":display,"sources":c.tools,"lastActiveAt":c.last,"sessions":c.sessions,"readable":fs::read_dir(&path).is_ok(),"alreadyConnected":connected.iter().any(|p| crate::sources::views(p).iter().any(|v| v["path"].as_str() == path.to_str()))})
+        json!({"name":path.file_name().unwrap_or_default().to_string_lossy(),"path":path,"displayPath":display,"sources":c.tools,"lastActiveAt":c.last,"sessions":c.sessions,"readable":fs::read_dir(&path).is_ok(),"alreadyConnected":connected_folders.contains_key(&path),"pendingChanges":connected_folders.get(&path).copied().unwrap_or(0)})
     }).collect();
-    projects.sort_by_key(|p| std::cmp::Reverse(p["lastActiveAt"].as_u64().unwrap_or(0)));
     if budget.truncated {
         eprintln!("Some history was skipped (onboarding discovery budget)");
     }
@@ -540,6 +592,40 @@ mod tests {
         );
     }
     #[test]
+    fn imported_claude_history_does_not_count_as_local_activity() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(temp.path()).unwrap();
+        let project = home.join("project");
+        fs::create_dir_all(project.join(".git")).unwrap();
+        let claude_home = home.join(".claude");
+        let transcripts = claude_home.join("projects/project");
+        fs::create_dir_all(&transcripts).unwrap();
+        for (id, date) in [
+            ("local", "2026-01-01T00:00:00Z"),
+            ("imported", "2026-02-01T00:00:00Z"),
+        ] {
+            fs::write(
+                transcripts.join(format!("{id}.jsonl")),
+                format!("{}\n", json!({"cwd":project, "timestamp":date})),
+            )
+            .unwrap();
+        }
+        let mut found = BTreeMap::new();
+        claude(
+            &home,
+            &claude_home,
+            &BTreeSet::from(["imported".into()]),
+            &mut found,
+            &mut Budget::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            found[&project].last,
+            modified(&transcripts.join("local.jsonl"))
+        );
+        assert_eq!(found[&project].sessions, 1);
+    }
+    #[test]
     fn compressed_codex_history_is_discovered_without_changing_the_source() {
         let temp = tempfile::tempdir().unwrap();
         let home = fs::canonicalize(temp.path()).unwrap();
@@ -565,6 +651,7 @@ mod tests {
             &home,
             &home.join(".claude"),
             &codex,
+            &ImportedHistory::default(),
             &mut found,
             &mut Budget::new(),
         )
@@ -611,7 +698,15 @@ mod tests {
         }
         let mut found = BTreeMap::new();
         let mut budget = Budget::new();
-        history(&home, &claude, &codex, &mut found, &mut budget).unwrap();
+        history(
+            &home,
+            &claude,
+            &codex,
+            &ImportedHistory::default(),
+            &mut found,
+            &mut budget,
+        )
+        .unwrap();
         assert_eq!(found.len(), 5);
         assert!(found
             .values()

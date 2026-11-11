@@ -18,6 +18,8 @@ import { IconButton } from "./icon-button.js";
 import { Icon } from "./icon.js";
 import { useMemberLabel } from "./member-names.js";
 
+import { syncIssueRecovery } from "./sync-issues.js";
+
 export function SyncMenu({
   state,
   issues,
@@ -40,10 +42,12 @@ export function SyncMenu({
   placement = "sidebar",
   actionError = "",
   onDismissError,
+  onResumeSetup,
 }: {
   placement?: "sidebar" | "header";
   actionError?: string;
   onDismissError?: () => void;
+  onResumeSetup?: () => void;
   state: Snapshot;
   issues: Map<string, string[]>;
   issueCount: number;
@@ -70,6 +74,10 @@ export function SyncMenu({
   const running = Boolean(state.daemon?.running);
   const connected = running && state.sync?.online && !state.sync?.error;
   const pending = state.outbox.filter((item) => item.error);
+  const setup = state.onboarding?.setup;
+  const setupProjects =
+    setup?.projects.filter((p) => setup.selected.includes(p.path)) ?? [];
+  const setupRunning = setup?.step === "syncing" || setup?.step === "retrying";
   const needsReconnect = [...issues.keys()].some((message) =>
     /folder (changed|unavailable)|mount is missing/i.test(message),
   );
@@ -80,7 +88,8 @@ export function SyncMenu({
     reviewRequests.length +
     localUpdates +
     privateDrafts +
-    Number(Boolean(actionError));
+    Number(Boolean(actionError)) +
+    Number(Boolean(setup));
   const status = !running
     ? "Sync stopped"
     : connected
@@ -216,6 +225,51 @@ export function SyncMenu({
             </div>
           </div>
           <div className="sync-menu-feed">
+            {setup && (
+              <section className="sync-menu-notification">
+                <h3>
+                  {setup.deferred
+                    ? "Project setup saved"
+                    : setupRunning
+                      ? "Initial project sync"
+                      : "Project setup needs attention"}
+                </h3>
+                {setup.deferred ? (
+                  <p>Resume where you left off when you’re ready.</p>
+                ) : (
+                  <>
+                    <p>
+                      {
+                        setupProjects.filter((p) => p.status === "synced")
+                          .length
+                      }{" "}
+                      of {setupProjects.length} projects synced
+                    </p>
+                    <ul>
+                      {setupProjects.map((p) => (
+                        <li key={p.path}>
+                          {p.name} ·{" "}
+                          {p.status === "synced"
+                            ? "Synced"
+                            : p.error ||
+                              (setupRunning ? "In progress" : "Pending")}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {!setupRunning && onResumeSetup && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => leave(onResumeSetup)}
+                  >
+                    {setup.deferred ? "Resume setup" : "Open setup recovery"}
+                  </Button>
+                )}
+              </section>
+            )}
             {actionError && (
               <section
                 className="sync-menu-notification"
@@ -302,6 +356,9 @@ export function SyncMenu({
                     ))}
                   </ul>
                 </details>
+                {syncIssueRecovery(message) && (
+                  <small>{syncIssueRecovery(message)}</small>
+                )}
                 {/unsupported.*version|unsupported.*format/i.test(message) && (
                   <small>
                     Requires compatible tool or transcript support in Orka.

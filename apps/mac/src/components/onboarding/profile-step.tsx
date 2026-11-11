@@ -234,6 +234,11 @@ export function ProfileStep({
           </p>
         )}
         <OnboardingError>{photoError || error}</OnboardingError>
+        {(preparing || busy) && (
+          <span className="sr-only" role="status">
+            {preparing ? "Preparing your profile photo" : "Saving your profile"}
+          </span>
+        )}
         <Button
           size="lg"
           type="submit"

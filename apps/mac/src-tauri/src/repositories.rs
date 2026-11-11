@@ -329,6 +329,7 @@ async fn attach(context: &Context, job: &Value) -> Result<()> {
         vec![path.into()],
         Some(source_id.into()),
         Some((&context.user, &context.service)),
+        None,
     )
     .await
 }

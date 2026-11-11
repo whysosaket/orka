@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { Snapshot } from "../../types.js";
 import {
+  destinationCandidates,
   initialDraft,
   type AccountProfile,
   type DiscoveredProject,
@@ -191,16 +192,28 @@ export function useOnboarding(
           ].map((p) => [p.path, p]),
         ).values(),
       ];
+      projects.sort(
+        (a, b) =>
+          (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0) ||
+          (b.pendingChanges ?? 0) - (a.pendingChanges ?? 0) ||
+          a.name.localeCompare(b.name) ||
+          a.path.localeCompare(b.path),
+      );
+      const picked = new Set(
+        results.flatMap((result) =>
+          result.projects.length === 1 ? [result.projects[0].path] : [],
+        ),
+      );
       const selected = projects
         .filter(
           (p) =>
             p.readable !== false &&
-            (!append ||
-              !before.projects.some((old) => old.path === p.path) ||
-              before.projects.some(
-                (old) => old.path === p.path && old.readable === false,
-              ) ||
-              before.selected.includes(p.path)),
+            (before.selected.includes(p.path) ||
+              (paths &&
+                picked.has(p.path) &&
+                !before.projects.some(
+                  (old) => old.path === p.path && old.readable !== false,
+                ))),
         )
         .map((p) => p.path);
       await checkpoint({
@@ -243,9 +256,9 @@ export function useOnboarding(
     void run(async () => {
       const selected = current.current.selected;
       if (!selected.length) throw new Error("Choose at least one project.");
-      const review = await command<{
-        matches: OnboardingDraft["matches"];
-      }>("review", { paths: selected });
+      const review = await command<
+        Pick<OnboardingDraft, "catalog" | "matches">
+      >("review", { paths: selected });
       const choices = Object.fromEntries(
         Object.entries(review.matches ?? {}).flatMap(([path, match]) => {
           const previous = current.current.choices?.[path];
@@ -253,24 +266,25 @@ export function useOnboarding(
             current.current.matches?.[path]?.remoteKey === match.remoteKey;
           const stillAvailable =
             previous === "new" ||
-            match.projects.some((project) => project.id === previous);
+            destinationCandidates(review, path).some(
+              (project) => project.id === previous,
+            );
           const choice =
-            sameRemote && stillAvailable
-              ? previous
-              : match.projects.length === 1 && !match.requiresChoice
-                ? match.projects[0].id
-                : undefined;
+            match.connectedId ??
+            (sameRemote && stillAvailable ? previous : undefined);
           return choice ? [[path, choice]] : [];
         }),
       );
       await checkpoint({
         step: "review",
         matches: review.matches,
+        catalog: review.catalog,
         choices,
         sourceChoices: Object.fromEntries(
           Object.entries(current.current.sourceChoices ?? {}).filter(
             ([path, source]) => {
-              const project = review.matches?.[path]?.projects.find(
+              if (review.matches?.[path]?.connectedId) return false;
+              const project = destinationCandidates(review, path).find(
                 (project) => project.id === choices[path],
               );
               return project?.sources?.some(
@@ -303,9 +317,9 @@ export function useOnboarding(
           if (active.current) setError(String(e));
         });
     });
-  const complete = (projectId?: string) =>
+  const complete = (projectId?: string, defer = false) =>
     void run(async () => {
-      await command("complete");
+      await command("complete", { defer });
       if (!active.current) return;
       const connected = current.current.projects.find(
         (project) =>
@@ -428,6 +442,7 @@ export function useOnboarding(
     proceed,
     sync,
     complete: () => complete(),
+    defer: () => complete(undefined, true),
     completeProject: (id: string) => complete(id),
     invite,
     background,
@@ -446,16 +461,16 @@ export function useOnboarding(
           ? value.selected.filter((p) => p !== path)
           : [...value.selected, path],
       })),
-    toggleAll: () =>
-      updateChoices((value) => ({
-        selected: value.projects
-          .filter((p) => p.readable !== false)
-          .every((p) => value.selected.includes(p.path))
-          ? []
-          : value.projects
-              .filter((p) => p.readable !== false)
-              .map((p) => p.path),
-      })),
+    toggleVisible: (paths: string[]) =>
+      updateChoices((value) => {
+        const selected = new Set(value.selected);
+        if (paths.every((path) => selected.has(path))) {
+          for (const path of paths) selected.delete(path);
+        } else {
+          for (const path of paths) selected.add(path);
+        }
+        return { selected: [...selected] };
+      }),
     openSettings: () =>
       void run(() =>
         command("open-settings", {

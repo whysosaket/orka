@@ -43,6 +43,8 @@ export interface DiscoveredProject {
   sources: ("claude" | "codex")[];
   readable?: boolean;
   alreadyConnected?: boolean;
+  lastActiveAt?: number;
+  pendingChanges?: number;
   projectId?: string;
   status?:
     | "creating"
@@ -53,6 +55,7 @@ export interface DiscoveredProject {
     | "error"
     | "skipped";
   error?: string;
+  issues?: { error: string; item?: string }[];
   conflicts?: number;
   reviewPending?: number;
 }
@@ -72,16 +75,44 @@ export interface OnboardingDraft {
   sharing: ProjectSharing;
   choices?: Record<string, string>;
   sourceChoices?: Record<string, string>;
+  catalog?: ProjectMatch[];
   matches?: Record<
     string,
-    { remoteKey?: string; projects: ProjectMatch[]; requiresChoice?: boolean }
+    {
+      remoteKey?: string;
+      projects?: ProjectMatch[];
+      requiresChoice?: boolean;
+      suggestedId?: string | null;
+      connectedId?: string | null;
+      connectedName?: string | null;
+    }
   >;
   reviewed?: boolean;
   completedAt?: string;
+  deferred?: boolean;
 }
+export function destinationCandidates(
+  draft: Pick<OnboardingDraft, "catalog" | "matches">,
+  path: string,
+): ProjectMatch[] {
+  return draft.matches?.[path]?.projects ?? draft.catalog ?? [];
+}
+
+export function suggestedSource(
+  project: ProjectMatch | undefined,
+  folderName: string,
+) {
+  if (project?.sourceId) return project.sourceId;
+  const sources = project?.sources ?? [];
+  if (sources.length === 1) return sources[0].id;
+  const matches = sources.filter((source) => source.name === folderName);
+  return matches.length === 1 ? matches[0].id : undefined;
+}
+
 export interface OnboardingInfo {
   active: boolean;
   draft?: OnboardingDraft | null;
+  setup?: OnboardingDraft | null;
   location?: { ok: boolean; path: string; reason?: string };
 }
 export const initialDraft: OnboardingDraft = {

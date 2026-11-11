@@ -261,7 +261,8 @@ try {
     200,
   );
   const html = await email();
-  assert.doesNotMatch(html, /<h1>\d+<\/h1>|enter this code/i);
+  const emailCode = html.match(/<h1>(\d{6,10})<\/h1>/)?.[1];
+  assert.ok(emailCode);
   const link = html.match(/href="([^"]+)"/)?.[1]?.replaceAll("&amp;", "&");
   assert.ok(link);
   assert.equal(new URL(link).pathname, "/auth/confirm");
@@ -276,8 +277,10 @@ try {
       redirect: "manual",
     });
   const verification = await confirm();
-  assert.equal(verification.status, 303, await verification.clone().text());
-  const callback = new URL(verification.headers.get("location")!);
+  assert.equal(verification.status, 200, await verification.clone().text());
+  const handoff = (await verification.text()).match(/href="(orka:[^"]+)"/)?.[1];
+  assert.ok(handoff);
+  const callback = new URL(handoff.replaceAll("&amp;", "&"));
   assert.equal(callback.searchParams.get("profile"), "qa-login");
   assert.ok(callback.searchParams.get("code"));
   const authCode = callback.searchParams.get("code");
@@ -307,7 +310,17 @@ try {
   );
   assert.equal(githubStatus.status, 200);
   assert.equal((await githubStatus.json()).connected, false);
-  assert.match((await confirm()).headers.get("location") ?? "", /error/);
+  assert.equal((await confirm()).status, 410);
+  assert.equal(
+    (
+      await post("/auth/verify", {
+        email: "owner@example.test",
+        token: emailCode,
+        type: "email",
+      })
+    ).status,
+    403,
+  );
   assert.equal(
     (
       await post("/auth/token?grant_type=pkce", {
@@ -331,7 +344,8 @@ try {
   );
   assert.equal(second.status, 200);
   const otherHtml = await email();
-  assert.doesNotMatch(otherHtml, /<h1>\d+<\/h1>|enter this code/i);
+  const otherEmailCode = otherHtml.match(/<h1>(\d{6,10})<\/h1>/)?.[1];
+  assert.ok(otherEmailCode);
   const otherLink = otherHtml
     .match(/href="([^"]+)"/)?.[1]
     ?.replaceAll("&amp;", "&");
@@ -340,27 +354,28 @@ try {
     (
       await post("/auth/verify", {
         email: "other@example.test",
-        token: "000000",
+        token: otherEmailCode === "000000" ? "999999" : "000000",
         type: "email",
       })
     ).status,
     403,
   );
-  const otherConfirmation = await fetch(base + "/auth/confirm", {
-    method: "POST",
-    headers: { Origin: base },
-    body: new URL(otherLink).searchParams,
-    redirect: "manual",
+  const otherLogin = await post("/auth/verify", {
+    email: "other@example.test",
+    token: otherEmailCode,
+    type: "email",
   });
-  assert.equal(otherConfirmation.status, 303);
-  const otherCode = new URL(
-    otherConfirmation.headers.get("location")!,
-  ).searchParams.get("code");
-  assert.ok(otherCode);
-  const otherLogin = await post("/auth/token?grant_type=pkce", {
-    auth_code: otherCode,
-    code_verifier: otherVerifier,
-  });
+  assert.equal(
+    (
+      await fetch(base + "/auth/confirm", {
+        method: "POST",
+        headers: { Origin: base },
+        body: new URL(otherLink).searchParams,
+        redirect: "manual",
+      })
+    ).status,
+    410,
+  );
   assert.equal(otherLogin.status, 200, await otherLogin.clone().text());
   const other = (await otherLogin.json()) as { access_token: string };
   const projectResponse = await post(
@@ -531,7 +546,7 @@ try {
       },
       body: JSON.stringify({
         email: "other@example.test",
-        token: "000000",
+        token: otherEmailCode === "000000" ? "999999" : "000000",
         type: "email",
       }),
     });
@@ -573,7 +588,7 @@ try {
     data,
   );
   console.log(
-    `Passed ${edition} image: actual GoTrue, ${managed ? "signed Resend hook/SDK" : "SMTP"}, link-only desktop email, scanner-safe PKCE and browser invites, replay/interception rejection, GitHub redirect, session refresh, membership/blob isolation, MCP email-code consent and all seven tools, handoff, token refresh/revocation, coordinated backup/restore.`,
+    `Passed ${edition} image: actual GoTrue, ${managed ? "signed Resend hook/SDK" : "SMTP"}, desktop email link and code, scanner-safe PKCE and browser invites, replay/interception rejection, GitHub redirect, session refresh, membership/blob isolation, MCP email-code consent and all seven tools, handoff, token refresh/revocation, coordinated backup/restore.`,
   );
 } finally {
   try {

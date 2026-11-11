@@ -187,13 +187,14 @@ pub async fn connect_project_sources(
     paths: Vec<String>,
     source_id: Option<String>,
 ) -> Result<()> {
-    connect_sources(id, paths, source_id, None).await
+    connect_sources(id, paths, source_id, None, None).await
 }
 pub(crate) async fn connect_sources(
     id: String,
     paths: Vec<String>,
     source_id: Option<String>,
     context: Option<(&str, &str)>,
+    sharing: Option<projects::Sharing>,
 ) -> Result<()> {
     if paths.is_empty() || paths.len() > 100 || (source_id.is_some() && paths.len() != 1) {
         return Err("Choose between 1 and 100 source folders".into());
@@ -324,6 +325,10 @@ pub(crate) async fn connect_sources(
         }
     }
     project["sources"] = json!(sources);
+    if let Some(sharing) = sharing {
+        project["sharing"] = json!(sharing);
+        crate::env::clear();
+    }
     project
         .as_object_mut()
         .ok_or("Invalid project")?
