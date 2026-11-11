@@ -44,7 +44,7 @@ const manifest = {
   server: {
     language: "Go",
     module: "github.com/whysosaket/orka-api",
-    toolchain: "1.27.3",
+    toolchain: "1.27.4",
   },
   repository: "https://github.com/whysosaket/orka-api",
   commit: execFileSync("git", ["rev-parse", "HEAD"], {
