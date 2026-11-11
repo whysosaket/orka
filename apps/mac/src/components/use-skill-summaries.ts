@@ -3,12 +3,16 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Resource } from "@portable/protocol";
 import type { Inspection } from "../types.js";
 
-type SkillSummary = { name: string; description: string };
+export type SkillSummary = { name: string; description: string };
 export type SkillSummaries = Record<string, SkillSummary | null>;
 export const skillSummaryKey = (skill: Resource) =>
-  `${skill.resourceId}:${skill.revision}:${skill.files.find((file) => file.path === "SKILL.md")?.hash ?? ""}`;
+  `${skill.projectId}:${skill.resourceId}:${skill.revision}:${skill.files.find((file) => file.path === "SKILL.md")?.hash ?? ""}`;
+// Home and Skills can read the same revision. Share completed and pending reads,
+// but include the account/service/profile scope in every key. The 500-entry
+// bound below applies across scopes, not separately to each mounted reader.
 const cache = new Map<string, SkillSummary | null>();
 const pending = new Map<string, Promise<SkillSummary | null>>();
+const cacheKey = (scope: string, key: string) => JSON.stringify([scope, key]);
 
 function loadSummary(id: string, key: string): Promise<SkillSummary | null> {
   if (cache.has(key)) return Promise.resolve(cache.get(key)!);
@@ -37,7 +41,10 @@ function loadSummary(id: string, key: string): Promise<SkillSummary | null> {
 }
 
 /** Resolve the entire collection before search and sorting, with bounded reads. */
-export function useSkillSummaries(resources: Resource[]): SkillSummaries {
+export function useSkillSummaries(
+  resources: Resource[],
+  scope: string,
+): SkillSummaries {
   const manifest = JSON.stringify(
     resources
       .filter((resource) => resource.kind === "skill")
@@ -46,30 +53,40 @@ export function useSkillSummaries(resources: Resource[]): SkillSummaries {
         key: skillSummaryKey(skill),
       })),
   );
-  const [summaries, setSummaries] = useState<SkillSummaries>({});
+  const [result, setResult] = useState<{
+    scope: string;
+    summaries: SkillSummaries;
+  }>(() => ({ scope, summaries: {} }));
   useEffect(() => {
     const items: { id: string; key: string }[] = JSON.parse(manifest);
     let cancelled = false;
     let index = 0;
-    setSummaries(
-      Object.fromEntries(
+    setResult({
+      scope,
+      summaries: Object.fromEntries(
         items
-          .filter(({ key }) => cache.has(key))
-          .map(({ key }) => [key, cache.get(key)!]),
+          .filter(({ key }) => cache.has(cacheKey(scope, key)))
+          .map(({ key }) => [key, cache.get(cacheKey(scope, key))!]),
       ),
-    );
+    });
     async function worker() {
       while (!cancelled && index < items.length) {
         const item = items[index++];
-        const summary = await loadSummary(item.id, item.key);
+        const summary = await loadSummary(item.id, cacheKey(scope, item.key));
         if (!cancelled)
-          setSummaries((current) => ({ ...current, [item.key]: summary }));
+          setResult((current) => ({
+            scope,
+            summaries: {
+              ...(current.scope === scope ? current.summaries : {}),
+              [item.key]: summary,
+            },
+          }));
       }
     }
     void Promise.all(Array.from({ length: 4 }, () => worker()));
     return () => {
       cancelled = true;
     };
-  }, [manifest]);
-  return summaries;
+  }, [manifest, scope]);
+  return result.scope === scope ? result.summaries : {};
 }

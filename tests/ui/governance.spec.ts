@@ -25,20 +25,20 @@ async function fixture(
   await page.addInitScript(
     ({ rules, governed, removed, mode, envData }) => {
       const isMember = mode === "member" || mode === "restricted";
+      const instructions = mode === "instructions";
+      const file = instructions ? "CLAUDE.md" : "SKILL.md";
       const resource = {
-        resourceId: "skill",
+        resourceId: instructions ? "instructions" : "skill",
         projectId: "project",
-        kind: "skill",
+        kind: instructions ? "memory" : "skill",
         source: "shared",
-        logicalPath: "sample",
-        title: "Sample skill",
+        logicalPath: instructions ? "instructions/CLAUDE.md" : "sample",
+        title: instructions ? "Project instructions" : "Sample skill",
         revision: 2,
         owner: "owner",
         updatedBy: "owner",
         updatedAt: "2026-10-18T00:00:00Z",
-        files: [
-          { path: "SKILL.md", hash: "fixture", size: 16, executable: false },
-        ],
+        files: [{ path: file, hash: "fixture", size: 16, executable: false }],
         deleted: removed,
       };
       const project = {
@@ -147,6 +147,7 @@ async function fixture(
           catalog.policyRevision++;
         },
         isTauri: true,
+        __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
         __TAURI_INTERNALS__: {
           transformCallback: () => 1,
           unregisterCallback: () => {},
@@ -342,8 +343,14 @@ async function fixture(
                     token: "local-preview",
                     revision: 2,
                     dirty: true,
-                    before: { "SKILL.md": "Local edits\n" },
-                    after: removed ? {} : { "SKILL.md": "Approved skill\n" },
+                    before: { [file]: "Local edits\n" },
+                    after: removed
+                      ? {}
+                      : {
+                          [file]: instructions
+                            ? "Approved instructions\n"
+                            : "Approved skill\n",
+                        },
                   };
                 case "apply-install":
                   if (
@@ -491,11 +498,11 @@ async function calls(page: Page, action: string) {
     action,
   );
 }
-async function openUpdates(page: Page) {
+async function openUpdates(page: Page, name = "Review local update") {
   await management(page)
     .getByRole("button", { name: "Review update", exact: true })
     .click();
-  return page.getByRole("dialog", { name: "Review local update", exact: true });
+  return page.getByRole("dialog", { name, exact: true });
 }
 test("request approval sends the exact reviewed hash and reports stale proposals", async ({
   page,
@@ -564,11 +571,11 @@ test("shared skill removals stay reviewable and preserve private edits", async (
   page,
 }) => {
   await fixture(page, true, true);
-  const dialog = await openUpdates(page);
-  await dialog.getByRole("button", { name: "Review local removal" }).click();
-  await expect(dialog.getByLabel("File changes")).toContainText("Local edits");
+  const dialog = await openUpdates(page, "Review skill removal");
+  await expect(dialog.getByRole("heading", { name: "SKILL.md" })).toBeVisible();
+  await expect(dialog.locator(".diff-card-removed")).toHaveText("Removed");
   await dialog
-    .getByRole("button", { name: "Preserve edits and remove reviewed version" })
+    .getByRole("button", { name: "Keep edits and remove", exact: true })
     .click();
   expect((await calls(page, "apply-install"))[0]).toMatchObject({
     resourceId: "skill",
@@ -577,26 +584,74 @@ test("shared skill removals stay reviewable and preserve private edits", async (
   });
 });
 
+for (const removed of [false, true]) {
+  test(`Requests keeps instruction ${removed ? "removal" : "updates"} reviewable`, async ({
+    page,
+  }) => {
+    await fixture(page, true, removed, "instructions");
+    const dialog = await openUpdates(page);
+    await expect(dialog).toHaveClass(/governance-dialog/);
+    await expect(
+      dialog.getByRole("heading", {
+        name: "Project instructions",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(await calls(page, "preview-install")).toEqual([]);
+    await dialog
+      .getByRole("button", {
+        name: removed ? "Review local removal" : "Review local update",
+        exact: true,
+      })
+      .click();
+    await expect(dialog.getByLabel("File changes")).toContainText(
+      "Local edits",
+    );
+    await expect(
+      dialog.getByText(
+        "Your local edits will be saved privately on this Mac before installation.",
+      ),
+    ).toBeVisible();
+    expect(await calls(page, "preview-install")).toEqual([
+      { projectId: "project", resourceId: "instructions" },
+    ]);
+    await dialog
+      .getByRole("button", {
+        name: removed
+          ? "Preserve edits and remove reviewed version"
+          : "Preserve edits and install reviewed version",
+        exact: true,
+      })
+      .click();
+    expect(await calls(page, "apply-install")).toEqual([
+      {
+        projectId: "project",
+        resourceId: "instructions",
+        token: "local-preview",
+        preserveLocal: true,
+      },
+    ]);
+  });
+}
+
 test("local installation rejects changes made after reviewing the preview", async ({
   page,
 }) => {
   await fixture(page);
   const dialog = await openUpdates(page);
-  await dialog
-    .getByRole("button", { name: "Review local update", exact: true })
-    .click();
   await expect(dialog.getByLabel("File changes")).toContainText("Local edits");
   await page.evaluate(() => {
     (window as unknown as { governanceStale: boolean }).governanceStale = true;
   });
   await dialog
-    .getByRole("button", {
-      name: "Preserve edits and install reviewed version",
-    })
+    .getByRole("button", { name: "Keep edits and install", exact: true })
     .click();
-  await expect(dialog.getByRole("alert")).toContainText(
-    "review the update again",
+  await expect(dialog.getByRole("status")).toHaveText(
+    "Files changed since this preview.",
   );
+  await expect(
+    dialog.getByRole("button", { name: "Review latest", exact: true }),
+  ).toBeVisible();
 });
 
 test("a member with no shared access can request a collection from its empty page", async ({

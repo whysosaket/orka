@@ -61,7 +61,7 @@ test("matches Figma, floats bottom-center, fills for five seconds, then dismisse
   await expect(toast(page)).toHaveCSS("background-color", "rgb(28, 28, 28)");
   await expect(page.locator(".toast-timer")).toHaveCSS(
     "background-color",
-    "rgb(48, 48, 48)",
+    "rgb(46, 46, 46)",
   );
   expect(await fill(page)).toBeGreaterThan(35);
   expect(await fill(page)).toBeLessThan(45);
@@ -109,6 +109,54 @@ test("queue is deduplicated and only the front toast uses its five-second window
   expect(await fill(page)).toBeLessThan(10);
   await page.clock.runFor(5400);
   await expect(toast(page)).toHaveCount(0);
+});
+
+test("pointer dismissal returns focus to the control that showed the toast", async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.getByRole("button", { name: "Queue next", exact: true }).focus();
+  const origin = page.getByRole("button", { name: "Show info", exact: true });
+  await origin.click();
+  await toast(page).getByRole("button", { name: "Dismiss" }).click();
+  await page.clock.runFor(400);
+  await expect(toast(page)).toHaveCount(0);
+  await expect(origin).toBeFocused();
+});
+
+for (const dismissal of ["timeout", "Escape"] as const) {
+  test(`${dismissal} outside the toast preserves focus on another control`, async ({
+    page,
+  }) => {
+    await fixture(page);
+    await page.getByRole("button", { name: "Show info", exact: true }).click();
+    const next = page.getByRole("button", { name: "Queue next", exact: true });
+    await next.focus();
+    await page.mouse.move(2, 2);
+    if (dismissal === "Escape") await page.keyboard.press("Escape");
+    await page.clock.runFor(dismissal === "timeout" ? 5500 : 400);
+    await expect(toast(page)).toHaveCount(0);
+    await expect(next).toBeFocused();
+  });
+}
+
+test("a deferred toast returns to the control chosen before it appeared", async ({
+  page,
+}) => {
+  await fixture(page);
+  await page
+    .getByRole("button", { name: "Deferred toast", exact: true })
+    .click();
+  const next = page.getByRole("button", { name: "Queue next", exact: true });
+  await next.focus();
+  await page.clock.runFor(1200);
+  await expect(toast(page)).toBeVisible();
+  await page.keyboard.press("Alt+t");
+  await expect(toast(page).getByRole("button")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await page.clock.runFor(400);
+  await expect(toast(page)).toHaveCount(0);
+  await expect(next).toBeFocused();
 });
 
 test("timeouts never run actions; a click runs exactly once", async ({
@@ -164,6 +212,9 @@ test("modal toast remains at the workspace bottom and supports focus and dismiss
   await page.clock.runFor(400);
   await expect(toast(page)).toHaveCount(0);
   await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Save test preference" }),
+  ).toBeFocused();
 });
 
 test("inactive app pauses the timer; compact reduced-motion feedback remains accessible", async ({

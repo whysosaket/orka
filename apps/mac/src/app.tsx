@@ -23,6 +23,9 @@ import {
 } from "./components/members-page.js";
 import { RequestAccess } from "./components/request-access.js";
 import { GovernanceDialog } from "./components/governance-dialog.js";
+import { SkillReviewOverlay } from "./components/skill-review-overlay.js";
+import { Icon } from "./components/icon.js";
+import { ArrowLeftIcon } from "@primer/octicons-react";
 import { Button } from "./components/button.js";
 import { ProjectHome } from "./components/project-home.js";
 import {
@@ -292,7 +295,7 @@ function WorkspaceApp({
     [catalogResources, project, tab],
   );
   const sessionTitles = useSessionTitles(resources, tab === "session");
-  const skillSummaries = useSkillSummaries(resources);
+  const skillSummaries = useSkillSummaries(resources, workspaceScope);
   const skillUsage = useProjectSkillUsage(
     project,
     JSON.stringify([workspaceScope, projectPath]),
@@ -470,6 +473,15 @@ function WorkspaceApp({
     setResource("");
     view.setPreview("");
   };
+  const governanceSkill =
+    governance && !governance.env
+      ? state.resources.find(
+          (item) =>
+            item.resourceId === governance.resource &&
+            item.projectId === project &&
+            item.kind === "skill",
+        )
+      : undefined;
   const resourceLabel = pageLabels[tab];
   const collectionLabel =
     resourceLabel.charAt(0).toUpperCase() + resourceLabel.slice(1);
@@ -489,7 +501,10 @@ function WorkspaceApp({
       />
     ) : undefined;
   return (
-    <div className="app">
+    <div
+      className="app"
+      data-detail-kind={!settings ? selected?.kind : undefined}
+    >
       <motion.aside
         initial={false}
         animate={{ width: sidebarCollapsed ? 64 : 240 }}
@@ -548,6 +563,13 @@ function WorkspaceApp({
       </motion.aside>
       <main>
         <WorkspaceHeader
+          leading={
+            !settings && selected?.kind === "skill" ? (
+              <Button size="sm" variant="tertiary" onClick={closeDetail}>
+                <Icon icon={ArrowLeftIcon} /> Back to Skills
+              </Button>
+            ) : undefined
+          }
           title={
             settings
               ? "Settings"
@@ -698,20 +720,21 @@ function WorkspaceApp({
           />
         ) : (
           <>
-            {!hasConnectedSource(selectedProject) && (
-              <FolderConnectionPrompt
-                projectName={projectLabel(selectedProject)}
-                busy={busy}
-                repositories={selectedProject.sources?.some(
-                  (source) => source.repository,
-                )}
-                onConnect={() =>
-                  selectedProject.sources?.some((source) => source.repository)
-                    ? openSettings("general")
-                    : void act(() => connectProject(project))
-                }
-              />
-            )}
+            {!hasConnectedSource(selectedProject) &&
+              selected?.kind !== "skill" && (
+                <FolderConnectionPrompt
+                  projectName={projectLabel(selectedProject)}
+                  busy={busy}
+                  repositories={selectedProject.sources?.some(
+                    (source) => source.repository,
+                  )}
+                  onConnect={() =>
+                    selectedProject.sources?.some((source) => source.repository)
+                      ? openSettings("general")
+                      : void act(() => connectProject(project))
+                  }
+                />
+              )}
             <Suspense
               fallback={
                 <p className="content-message" role="status">
@@ -743,6 +766,7 @@ function WorkspaceApp({
                 />
               ) : tab === "home" ? (
                 <ProjectHome
+                  scope={workspaceScope}
                   project={selectedProject}
                   user={state.user}
                   resources={catalogResources}
@@ -764,6 +788,7 @@ function WorkspaceApp({
                   accessRequest={accessRequest}
                   resource={selected}
                   displayTitle={displayTitle(selected)}
+                  skillSummary={skillSummaries[skillSummaryKey(selected)]}
                   project={selectedProject}
                   user={state.user}
                   deviceId={state.deviceId}
@@ -771,6 +796,9 @@ function WorkspaceApp({
                   conflicts={conflicts}
                   view={view}
                   act={act}
+                  state={state}
+                  offline={state.sync ? !state.sync.online : false}
+                  onRefresh={refresh}
                   onBack={closeDetail}
                   onGovernance={() =>
                     selected.local
@@ -877,7 +905,19 @@ function WorkspaceApp({
           }
         />
       )}
-      {governance !== null && selectedProject && (
+      {governance !== null && selectedProject && governanceSkill && (
+        <SkillReviewOverlay
+          key={`${project}:${governanceSkill.resourceId}`}
+          mode="incoming"
+          project={selectedProject}
+          resource={governanceSkill}
+          state={state}
+          onClose={() => setGovernance(null)}
+          onRefresh={refresh}
+          onNotice={setNotice}
+        />
+      )}
+      {governance !== null && selectedProject && !governanceSkill && (
         <GovernanceDialog
           key={project}
           project={selectedProject}

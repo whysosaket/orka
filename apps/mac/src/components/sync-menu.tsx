@@ -125,6 +125,15 @@ export function SyncMenu({
         <button
           type="button"
           className={`sync-status sync-status--${placement}`}
+          data-offline={(running && state.sync?.online === false) || undefined}
+          data-only-offline-notice={
+            (state.sync?.online === false &&
+              !!state.sync.error &&
+              count === 1 &&
+              issues.size === 0 &&
+              pending.length === 0) ||
+            undefined
+          }
           aria-label={label}
           title={label}
         >

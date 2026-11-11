@@ -44,7 +44,7 @@ const ToastContext = createContext<{
   notify: (input: ToastInput) => void;
   queue: Toast[];
   closing: number | null;
-  dismiss: (id: number) => void;
+  dismiss: (id: number, restoreFocus?: boolean) => void;
   finishDismiss: () => void;
   progress: ReturnType<typeof useMotionValue<number>>;
   pause: (reason: "hover" | "focus", value: boolean) => void;
@@ -81,6 +81,7 @@ export function ToastProvider({
     );
   }, []);
   const scopeRef = useRef(scope);
+  const interactionTarget = useRef<HTMLElement | null>(null);
   const nextId = useRef(0);
   const navigation = useRef<((destination: ToastDestination) => void) | null>(
     null,
@@ -94,6 +95,28 @@ export function ToastProvider({
     // Drop old entries so returning to a project cannot resurrect its notices.
     setItems((previous) => previous.filter((item) => item.scope === scope));
   }, [scope]);
+  useEffect(() => {
+    interactionTarget.current = null;
+    const rememberTarget = (event: Event) => {
+      if (!(event.target instanceof Element)) return;
+      if (event.target.closest("[data-orka-toast]")) return;
+      const target = event.target.closest<HTMLElement>(
+        "button, a[href], input, select, textarea, [tabindex]",
+      );
+      interactionTarget.current =
+        target && target.tabIndex >= 0 && !target.matches(":disabled")
+          ? target
+          : null;
+    };
+    // WebKit does not focus pointer-clicked buttons. Capture the click after
+    // any dialog focus trap reacts to mouse-down, but before the action runs.
+    document.addEventListener("click", rememberTarget, true);
+    document.addEventListener("focusin", rememberTarget, true);
+    return () => {
+      document.removeEventListener("click", rememberTarget, true);
+      document.removeEventListener("focusin", rememberTarget, true);
+    };
+  }, [scope]);
   const queue = items.filter((item) => item.scope === scope);
   const active = queue[0];
   const progress = useMotionValue(0);
@@ -105,12 +128,16 @@ export function ToastProvider({
       // the newly selected workspace. Nothing is persisted in app settings.
       if (!input.title || scopeRef.current !== scope) return;
       if (!ENV_ENABLED && /\bENVs?\b/.test(input.title)) return;
+      const target = interactionTarget.current;
       const item: Toast = {
         ...input,
         id: ++nextId.current,
         scope,
-        returnFocus:
-          document.activeElement instanceof HTMLElement
+        returnFocus: target?.isConnected
+          ? target
+          : document.activeElement instanceof HTMLElement &&
+              document.activeElement !== document.body &&
+              !document.activeElement.closest("[data-orka-toast]")
             ? document.activeElement
             : null,
       };
@@ -126,13 +153,16 @@ export function ToastProvider({
     [scope],
   );
   const dismiss = useCallback(
-    (id: number) => {
+    (id: number, restoreFocus = false) => {
       const item = items.find((entry) => entry.id === id);
       if (
-        document.activeElement?.closest("[data-orka-toast]") &&
-        item?.returnFocus?.isConnected
+        (restoreFocus ||
+          document.activeElement?.closest("[data-orka-toast]")) &&
+        item?.returnFocus?.isConnected &&
+        !item.returnFocus.matches(":disabled") &&
+        !item.returnFocus.closest("[inert]")
       )
-        item.returnFocus.focus();
+        item.returnFocus.focus({ preventScroll: true });
       closingRef.current = id;
       setClosing(id);
     },
@@ -451,7 +481,7 @@ export function ToastViewport({ modal = false }: { modal?: boolean }) {
                 className="toast-action"
                 disabled={context.closing === active.id}
                 onClick={() => {
-                  context.dismiss(active.id);
+                  context.dismiss(active.id, true);
                   active.action?.onClick();
                 }}
               >

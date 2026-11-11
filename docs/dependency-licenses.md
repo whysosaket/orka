@@ -74,6 +74,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [@floating-ui/react-dom](https://www.npmjs.com/package/@floating-ui/react-dom/v/2.1.9) | 2.1.9 | MIT |
 | [@floating-ui/utils](https://www.npmjs.com/package/@floating-ui/utils/v/0.2.12) | 0.2.12 | MIT |
 | [@fontsource-variable/inter](https://www.npmjs.com/package/@fontsource-variable/inter/v/5.3.0) | 5.3.0 | OFL-1.1 |
+| [@fontsource/ibm-plex-mono](https://www.npmjs.com/package/@fontsource/ibm-plex-mono/v/5.3.0) | 5.3.0 | OFL-1.1 |
 | [@fontsource/ibm-plex-sans](https://www.npmjs.com/package/@fontsource/ibm-plex-sans/v/5.3.0) | 5.3.0 | OFL-1.1 |
 | [@humanfs/core](https://www.npmjs.com/package/@humanfs/core/v/0.19.2) | 0.19.2 | Apache-2.0 |
 | [@humanfs/node](https://www.npmjs.com/package/@humanfs/node/v/0.16.8) | 0.16.8 | Apache-2.0 |
@@ -94,6 +95,10 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [@nodelib/fs.stat](https://www.npmjs.com/package/@nodelib/fs.stat/v/2.0.5) | 2.0.5 | MIT |
 | [@nodelib/fs.walk](https://www.npmjs.com/package/@nodelib/fs.walk/v/1.2.8) | 1.2.8 | MIT |
 | [@oxc-project/types](https://www.npmjs.com/package/@oxc-project/types/v/0.153.0) | 0.153.0 | MIT |
+| [@pierre/diffs](https://www.npmjs.com/package/@pierre/diffs/v/1.6.4) | 1.6.4 | apache-2.0 |
+| [@pierre/highlights](https://www.npmjs.com/package/@pierre/highlights/v/0.4.0) | 0.4.0 | apache-2.0 |
+| [@pierre/theme](https://www.npmjs.com/package/@pierre/theme/v/2.0.0) | 2.0.0 | apache-2.0 |
+| [@pierre/theming](https://www.npmjs.com/package/@pierre/theming/v/1.0.2) | 1.0.2 | apache-2.0 |
 | [@playwright/test](https://www.npmjs.com/package/@playwright/test/v/1.64.1) | 1.64.1 | Apache-2.0 |
 | [@portable/protocol](https://www.npmjs.com/package/@portable/protocol/v/0.6.0) | 0.6.0 | MIT |
 | [@primer/octicons-react](https://www.npmjs.com/package/@primer/octicons-react/v/19.40.0) | 19.40.0 | MIT |
@@ -140,6 +145,14 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [@rolldown/binding-win32-arm64-msvc](https://www.npmjs.com/package/@rolldown/binding-win32-arm64-msvc/v/1.2.13) | 1.2.13 | MIT |
 | [@rolldown/binding-win32-x64-msvc](https://www.npmjs.com/package/@rolldown/binding-win32-x64-msvc/v/1.2.13) | 1.2.13 | MIT |
 | [@rolldown/pluginutils](https://www.npmjs.com/package/@rolldown/pluginutils/v/1.0.1) | 1.0.1 | MIT |
+| [@shikijs/core](https://www.npmjs.com/package/@shikijs/core/v/4.6.0) | 4.6.0 | MIT |
+| [@shikijs/engine-javascript](https://www.npmjs.com/package/@shikijs/engine-javascript/v/4.6.0) | 4.6.0 | MIT |
+| [@shikijs/engine-oniguruma](https://www.npmjs.com/package/@shikijs/engine-oniguruma/v/4.6.0) | 4.6.0 | MIT |
+| [@shikijs/langs](https://www.npmjs.com/package/@shikijs/langs/v/4.6.0) | 4.6.0 | MIT |
+| [@shikijs/primitive](https://www.npmjs.com/package/@shikijs/primitive/v/4.6.0) | 4.6.0 | MIT |
+| [@shikijs/themes](https://www.npmjs.com/package/@shikijs/themes/v/4.6.0) | 4.6.0 | MIT |
+| [@shikijs/types](https://www.npmjs.com/package/@shikijs/types/v/4.6.0) | 4.6.0 | MIT |
+| [@shikijs/vscode-textmate](https://www.npmjs.com/package/@shikijs/vscode-textmate/v/10.1.0) | 10.1.0 | MIT |
 | [@tanstack/query-core](https://www.npmjs.com/package/@tanstack/query-core/v/5.104.4) | 5.104.4 | MIT |
 | [@tanstack/react-query](https://www.npmjs.com/package/@tanstack/react-query/v/5.104.4) | 5.104.4 | MIT |
 | [@tanstack/react-virtual](https://www.npmjs.com/package/@tanstack/react-virtual/v/3.14.21) | 3.14.21 | MIT |
@@ -350,6 +363,8 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [hachure-fill](https://www.npmjs.com/package/hachure-fill/v/0.5.2) | 0.5.2 | MIT |
 | [hashery](https://www.npmjs.com/package/hashery/v/1.5.1) | 1.5.1 | MIT |
 | [hasown](https://www.npmjs.com/package/hasown/v/2.0.4) | 2.0.4 | MIT |
+| [hast-util-to-html](https://www.npmjs.com/package/hast-util-to-html/v/9.0.5) | 9.0.5 | MIT |
+| [hast-util-to-html](https://www.npmjs.com/package/hast-util-to-html/v/9.0.6) | 9.0.6 | MIT |
 | [hast-util-to-jsx-runtime](https://www.npmjs.com/package/hast-util-to-jsx-runtime/v/2.3.6) | 2.3.6 | MIT |
 | [hast-util-whitespace](https://www.npmjs.com/package/hast-util-whitespace/v/3.0.0) | 3.0.0 | MIT |
 | [hermes-estree](https://www.npmjs.com/package/hermes-estree/v/0.25.1) | 0.25.1 | MIT |
@@ -357,6 +372,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [hookified](https://www.npmjs.com/package/hookified/v/1.15.1) | 1.15.1 | MIT |
 | [hookified](https://www.npmjs.com/package/hookified/v/2.2.0) | 2.2.0 | MIT |
 | [html-url-attributes](https://www.npmjs.com/package/html-url-attributes/v/3.0.1) | 3.0.1 | MIT |
+| [html-void-elements](https://www.npmjs.com/package/html-void-elements/v/3.0.0) | 3.0.0 | MIT |
 | [iconv-lite](https://www.npmjs.com/package/iconv-lite/v/0.6.3) | 0.6.3 | MIT |
 | [ignore](https://www.npmjs.com/package/ignore/v/5.3.2) | 5.3.2 | MIT |
 | [ignore](https://www.npmjs.com/package/ignore/v/7.0.12) | 7.0.12 | MIT |
@@ -405,6 +421,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [locate-path](https://www.npmjs.com/package/locate-path/v/6.0.0) | 6.0.0 | MIT |
 | [lodash-es](https://www.npmjs.com/package/lodash-es/v/4.18.1) | 4.18.1 | MIT |
 | [longest-streak](https://www.npmjs.com/package/longest-streak/v/3.1.0) | 3.1.0 | MIT |
+| [lru_map](https://www.npmjs.com/package/lru_map/v/0.4.1) | 0.4.1 | MIT |
 | [lru-cache](https://www.npmjs.com/package/lru-cache/v/5.1.1) | 5.1.1 | ISC |
 | [markdown-table](https://www.npmjs.com/package/markdown-table/v/3.0.4) | 3.0.4 | MIT |
 | [marked](https://www.npmjs.com/package/marked/v/16.4.2) | 16.4.2 | MIT |
@@ -467,6 +484,8 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [normalize-path](https://www.npmjs.com/package/normalize-path/v/3.0.0) | 3.0.0 | MIT |
 | [object-assign](https://www.npmjs.com/package/object-assign/v/4.1.1) | 4.1.1 | MIT |
 | [object-hash](https://www.npmjs.com/package/object-hash/v/3.0.0) | 3.0.0 | MIT |
+| [oniguruma-parser](https://www.npmjs.com/package/oniguruma-parser/v/0.12.2) | 0.12.2 | MIT |
+| [oniguruma-to-es](https://www.npmjs.com/package/oniguruma-to-es/v/4.3.6) | 4.3.6 | MIT |
 | [optionator](https://www.npmjs.com/package/optionator/v/0.9.4) | 0.9.4 | MIT |
 | [p-limit](https://www.npmjs.com/package/p-limit/v/3.1.0) | 3.1.0 | MIT |
 | [p-locate](https://www.npmjs.com/package/p-locate/v/5.0.0) | 5.0.0 | MIT |
@@ -507,6 +526,9 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [react-style-singleton](https://www.npmjs.com/package/react-style-singleton/v/2.2.3) | 2.2.3 | MIT |
 | [read-cache](https://www.npmjs.com/package/read-cache/v/1.0.2) | 1.0.2 | MIT |
 | [readdirp](https://www.npmjs.com/package/readdirp/v/3.6.0) | 3.6.0 | MIT |
+| [regex](https://www.npmjs.com/package/regex/v/6.1.0) | 6.1.0 | MIT |
+| [regex-recursion](https://www.npmjs.com/package/regex-recursion/v/6.0.2) | 6.0.2 | MIT |
+| [regex-utilities](https://www.npmjs.com/package/regex-utilities/v/2.3.0) | 2.3.0 | MIT |
 | [remark-gfm](https://www.npmjs.com/package/remark-gfm/v/4.0.1) | 4.0.1 | MIT |
 | [remark-parse](https://www.npmjs.com/package/remark-parse/v/11.0.0) | 11.0.0 | MIT |
 | [remark-rehype](https://www.npmjs.com/package/remark-rehype/v/11.1.2) | 11.1.2 | MIT |
@@ -524,6 +546,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [semver](https://www.npmjs.com/package/semver/v/7.8.5) | 7.8.5 | ISC |
 | [shebang-command](https://www.npmjs.com/package/shebang-command/v/2.0.0) | 2.0.0 | MIT |
 | [shebang-regex](https://www.npmjs.com/package/shebang-regex/v/3.0.0) | 3.0.0 | MIT |
+| [shiki](https://www.npmjs.com/package/shiki/v/4.6.0) | 4.6.0 | MIT |
 | [skullet](https://www.npmjs.com/package/skullet/v/0.0.3) | 0.0.3 | MIT |
 | [source-map-js](https://www.npmjs.com/package/source-map-js/v/1.2.2) | 1.2.2 | BSD-3-Clause |
 | [space-separated-tokens](https://www.npmjs.com/package/space-separated-tokens/v/2.0.2) | 2.0.2 | MIT |

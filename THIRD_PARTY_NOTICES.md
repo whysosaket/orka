@@ -5,6 +5,7 @@ Orka's own source is offered under the [MIT license](LICENSE). Third-party depen
 ## Included visual assets
 
 - **Inter Variable:** the font distributed by `@fontsource-variable/inter`, including the font embedded in the generated component gallery, is under the SIL Open Font License 1.1. Its notice is preserved in [licenses/Inter-OFL.txt](licenses/Inter-OFL.txt).
+- **IBM Plex Mono:** the font distributed by `@fontsource/ibm-plex-mono`, used for skill source files and comparisons, is under the SIL Open Font License 1.1. Its notice is preserved in [licenses/IBM-Plex-Mono-OFL.txt](licenses/IBM-Plex-Mono-OFL.txt).
 - **Octicons:** GitHub's icons, rendered through `@primer/octicons-react`, are MIT licensed. The supplied notice is preserved in [licenses/Octicons-MIT.txt](licenses/Octicons-MIT.txt).
 - **Provider marks:** the SVGs in `apps/mac/public/source-icons` identify Codex and Claude. Those product names and marks belong to their respective owners and are not licensed as Orka artwork. Distribution rights and brand-guideline compliance must be checked before a public release; retaining these files is not an assertion of ownership or endorsement.
 - **Orka app artwork:** the supplied app-icon PNGs and their derived favicon/ICNS are project assets. Maintainers must confirm permission to distribute them under the project license before publication.

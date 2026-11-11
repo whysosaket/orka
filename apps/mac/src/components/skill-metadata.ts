@@ -1,20 +1,27 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { readSkillMarkdown } from "./skill-markdown.js";
+import { readSkillMarkdown, type SkillMarkdown } from "./skill-markdown.js";
 import type { Resource } from "@portable/protocol";
 import type { Inspection } from "../types.js";
 
-export function useSkillMetadata(resource: Resource | undefined) {
+export function useSkillMetadata(
+  resource: Resource | undefined,
+  scope: string,
+) {
   const id = resource?.resourceId;
   const key =
     resource?.kind === "skill"
-      ? `${resource.resourceId}:${resource.revision}`
+      ? JSON.stringify([
+          scope,
+          resource.projectId,
+          resource.resourceId,
+          resource.revision,
+          resource.files.find((file) => file.path === "SKILL.md")?.hash,
+        ])
       : "";
-  const [result, setResult] = useState<{
-    key: string;
-    name: string;
-    description: string;
-  } | null>(null);
+  const [result, setResult] = useState<
+    (SkillMarkdown & { key: string }) | null
+  >(null);
   useEffect(() => {
     if (!key || !id) return;
     let active = true;

@@ -1,6 +1,7 @@
 import { displayText } from "./resource-presentation.js";
 import { invoke } from "@tauri-apps/api/core";
 import { ENV_ENABLED } from "../lib/features.js";
+import type { FileManifestEntry } from "./diff-model.js";
 import type { ProjectMember } from "../types.js";
 import type {
   AccessMode,
@@ -33,7 +34,13 @@ export interface InstallPreview {
   dirty: boolean;
   before: Record<string, string>;
   after: Record<string, string>;
-  copies?: { path: string; files: Record<string, string> }[];
+  beforeManifest?: FileManifestEntry[];
+  afterManifest?: FileManifestEntry[];
+  copies?: {
+    path: string;
+    files: Record<string, string>;
+    manifest?: FileManifestEntry[];
+  }[];
 }
 export type ProjectCall = <T>(
   action: string,

@@ -18,6 +18,7 @@ export function CopyLinkButton({
   icon = LinkIcon,
   variant,
   role,
+  nativeTooltip = true,
 }: {
   value: string;
   label?: string;
@@ -29,6 +30,7 @@ export function CopyLinkButton({
   icon?: OcticonIcon;
   variant?: ButtonVariant;
   role?: React.AriaRole;
+  nativeTooltip?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState(false);
@@ -77,7 +79,13 @@ export function CopyLinkButton({
         role={role}
         aria-live={role === "menuitem" ? "polite" : undefined}
         data-keep-open={loadValue ? true : undefined}
-        title={iconOnly ? (copied ? "Link copied" : label) : undefined}
+        title={
+          iconOnly && nativeTooltip
+            ? copied
+              ? "Link copied"
+              : label
+            : undefined
+        }
         onClick={(event) => void copy(event)}
       >
         <span className="copy-link-content" aria-hidden="true">

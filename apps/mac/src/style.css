@@ -3,6 +3,7 @@
 @import "./components/settings/settings.css";
 
 @import "./components/toasts.css";
+@import "./components/skill-detail.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -722,7 +723,6 @@
   .fact-chip--menu:hover:not(:disabled) {
     background: var(--interaction-hover);
   }
-  .fact-chip--menu[aria-pressed="true"],
   .fact-chip--menu[data-state="open"] {
     background: var(--interaction-selected);
   }
@@ -743,17 +743,6 @@
   .detail-path {
     @apply mb-0 mt-1.5 flex items-start gap-1.5 text-body-xs text-muted;
   }
-  .detail-path > .ui-icon {
-    /* Center the 16px glyph box on the first 18px line. */
-    margin-top: 1px;
-  }
-  .detail-path-text {
-    @apply min-w-0 select-text;
-    overflow-wrap: anywhere;
-  }
-  .detail-path-separator {
-    color: var(--text-disabled);
-  }
   .detail-note {
     @apply mb-0 mt-3 text-body-xs text-muted;
   }
@@ -762,11 +751,6 @@
   }
   .detail-notice {
     @apply mb-3 text-body-xs text-muted;
-  }
-  .detail-lede {
-    @apply mb-2 text-body-md text-secondary;
-    white-space: pre-line;
-    overflow-wrap: anywhere;
   }
   .session-preview-status {
     @apply flex items-center justify-between gap-2 px-7 py-2 text-xs text-muted;
