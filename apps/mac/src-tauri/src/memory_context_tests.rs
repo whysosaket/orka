@@ -187,6 +187,284 @@ fn memory_scanner_ignores_generated_and_gitignored_files_and_retires_drafts() {
 }
 
 #[test]
+fn memory_scanner_respects_nested_repositories_ignore_rules() {
+    for parent_is_repository in [false, true] {
+        let f = Fixture::new();
+        if parent_is_repository {
+            instruction_git(&f.root, &["init", "--quiet"]);
+        }
+        let nested = f.root.join("apps/repo");
+        fs::create_dir_all(&nested).unwrap();
+        instruction_git(&nested, &["init", "--quiet"]);
+        write_instruction_ignore_fixture(&nested);
+
+        assert_eq!(
+            discovered_instruction_paths(&f),
+            vec![
+                "instructions/apps/repo/.config/AGENTS.override.md",
+                "instructions/apps/repo/AGENTS.md",
+                "instructions/apps/repo/docs/keep/CLAUDE.md",
+            ],
+            "parent repository: {parent_is_repository}"
+        );
+    }
+}
+
+#[test]
+fn memory_scanner_respects_submodule_ignore_rules() {
+    let f = Fixture::new();
+    let origin = f._home.path().join("submodule-origin");
+    fs::create_dir(&origin).unwrap();
+    instruction_git(&origin, &["init", "--quiet"]);
+    fs::write(origin.join(".gitignore"), "private/\n").unwrap();
+    fs::write(origin.join("AGENTS.md"), "Public instructions\n").unwrap();
+    instruction_git(&origin, &["add", "."]);
+    instruction_git(
+        &origin,
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.test",
+            "commit",
+            "--quiet",
+            "-m",
+            "Fixture submodule",
+        ],
+    );
+    instruction_git(&f.root, &["init", "--quiet"]);
+    instruction_git(
+        &f.root,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "--quiet",
+            origin.to_str().unwrap(),
+            "modules/repo",
+        ],
+    );
+    let submodule = f.root.join("modules/repo");
+    assert!(submodule.join(".git").is_file());
+    write_instruction_ignore_fixture(&submodule);
+
+    assert_eq!(
+        discovered_instruction_paths(&f),
+        vec![
+            "instructions/modules/repo/.config/AGENTS.override.md",
+            "instructions/modules/repo/AGENTS.md",
+            "instructions/modules/repo/docs/keep/CLAUDE.md",
+        ]
+    );
+}
+
+#[test]
+fn memory_scanner_respects_gitignore_without_a_repository() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.root.join("docs/private")).unwrap();
+    fs::write(f.root.join("AGENTS.md"), "Public instructions\n").unwrap();
+    fs::write(f.root.join("docs/.gitignore"), "private/\n").unwrap();
+    fs::write(f.root.join("docs/private/CLAUDE.md"), "Ignored\n").unwrap();
+    assert_eq!(
+        discovered_instruction_paths(&f),
+        vec!["instructions/AGENTS.md"]
+    );
+}
+
+#[test]
+fn memory_scanner_preserves_tracked_instructions_and_nested_repository_boundaries() {
+    let f = Fixture::new();
+    instruction_git(&f.root, &["init", "--quiet"]);
+    fs::write(f.root.join("AGENTS.md"), "Tracked instructions\n").unwrap();
+    instruction_git(&f.root, &["add", "AGENTS.md"]);
+    fs::write(f.root.join(".gitignore"), "AGENTS.md\nprivate/\n").unwrap();
+    let nested = f.root.join("repo");
+    fs::create_dir_all(nested.join("private")).unwrap();
+    instruction_git(&nested, &["init", "--quiet"]);
+    fs::write(nested.join("private/CLAUDE.md"), "Nested instructions\n").unwrap();
+
+    assert_eq!(
+        discovered_instruction_paths(&f),
+        vec![
+            "instructions/AGENTS.md",
+            "instructions/repo/private/CLAUDE.md",
+        ]
+    );
+}
+
+#[test]
+fn memory_scanner_retires_drafts_ignored_by_a_nested_repository() {
+    let mut f = Fixture::new();
+    f.project["governed"] = json!(true);
+    db::upsert(
+        &f.db,
+        "projects",
+        f.project["id"].as_str().unwrap(),
+        "",
+        &f.project,
+    )
+    .unwrap();
+    let nested = f.root.join("repo");
+    fs::create_dir_all(nested.join("private")).unwrap();
+    instruction_git(&nested, &["init", "--quiet"]);
+    fs::write(
+        nested.join("private/AGENTS.md"),
+        "Recoverable instructions\n",
+    )
+    .unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    let draft = db::rows(&f.db, "SELECT value FROM drafts", &[])
+        .unwrap()
+        .remove(0);
+    assert_eq!(draft["status"], "local");
+
+    fs::write(nested.join(".gitignore"), "private/\n").unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    let retired = db::rows(
+        &f.db,
+        "SELECT value FROM drafts WHERE id=?",
+        &[&draft["id"].as_str().unwrap()],
+    )
+    .unwrap()
+    .remove(0);
+    assert_eq!(retired["status"], "dismissed");
+    assert_eq!(retired["dismissalReason"], "ignored_source");
+    assert_eq!(
+        db::blob_read(retired["resource"]["files"][0]["hash"].as_str().unwrap()).unwrap(),
+        b"Recoverable instructions\n"
+    );
+    assert!(nested.join("private/AGENTS.md").exists());
+}
+
+#[test]
+fn memory_scanner_preserves_drafts_when_git_ignore_checks_fail() {
+    let mut f = Fixture::new();
+    f.project["governed"] = json!(true);
+    db::upsert(
+        &f.db,
+        "projects",
+        f.project["id"].as_str().unwrap(),
+        "",
+        &f.project,
+    )
+    .unwrap();
+    let nested = f.root.join("repo");
+    fs::create_dir(&nested).unwrap();
+    instruction_git(&nested, &["init", "--quiet"]);
+    fs::write(nested.join("AGENTS.md"), "Preserved instructions\n").unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    let drafts = db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap();
+    fs::remove_dir_all(nested.join(".git")).unwrap();
+    fs::write(nested.join(".git"), "gitdir: missing-repository\n").unwrap();
+
+    assert!(indexer::scan(&f.db, &f.project).is_err());
+    assert_eq!(
+        db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap(),
+        drafts
+    );
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
+fn memory_scanner_preserves_missing_drafts_unless_git_ignores_them() {
+    let mut f = Fixture::new();
+    f.project["governed"] = json!(true);
+    db::upsert(
+        &f.db,
+        "projects",
+        f.project["id"].as_str().unwrap(),
+        "",
+        &f.project,
+    )
+    .unwrap();
+    let nested = f.root.join("repo");
+    fs::create_dir_all(nested.join("removed")).unwrap();
+    instruction_git(&nested, &["init", "--quiet"]);
+    fs::write(nested.join("removed/AGENTS.md"), "Recoverable draft\n").unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    let drafts = db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap();
+    fs::remove_dir_all(nested.join("removed")).unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    assert_eq!(
+        db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap(),
+        drafts
+    );
+
+    fs::write(nested.join(".gitignore"), "removed/\n").unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    assert_eq!(
+        db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap()[0]["status"],
+        "dismissed"
+    );
+}
+
+fn instruction_git(root: &Path, args: &[&str]) -> String {
+    let mut command = std::process::Command::new("git");
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("GIT_") {
+            command.env_remove(key);
+        }
+    }
+    let output = command
+        .arg("-C")
+        .arg(root)
+        .args(["-c", "core.excludesFile=/dev/null"])
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+fn write_instruction_ignore_fixture(root: &Path) {
+    fs::write(root.join(".gitignore"), "private/\n").unwrap();
+    for directory in ["private", "local", "docs/drop", "docs/keep", ".config"] {
+        fs::create_dir_all(root.join(directory)).unwrap();
+    }
+    fs::write(root.join("docs/.gitignore"), "/*\n!/keep/\n").unwrap();
+    let exclude = instruction_git(
+        root,
+        &[
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "info/exclude",
+        ],
+    );
+    fs::write(exclude, "local/\n").unwrap();
+    for file in [
+        "AGENTS.md",
+        "private/AGENTS.md",
+        "local/CLAUDE.md",
+        "docs/drop/AGENTS.override.md",
+        "docs/keep/CLAUDE.md",
+        ".config/AGENTS.override.md",
+    ] {
+        fs::write(root.join(file), "Synthetic instructions\n").unwrap();
+    }
+}
+
+fn discovered_instruction_paths(f: &Fixture) -> Vec<String> {
+    let mut paths: Vec<_> = indexer::discover(&f.db, &f.project, "memory")
+        .unwrap()
+        .into_iter()
+        .map(|entry| {
+            entry["resource"]["logicalPath"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    paths.sort();
+    paths
+}
+
+#[test]
 fn codex_discovery_uses_stable_thread_identity_and_durable_evidence() {
     let f = Fixture::new();
     let summaries = f._home.path().join(".codex/memories/rollout_summaries");
