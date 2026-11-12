@@ -211,6 +211,25 @@ fn memory_scanner_respects_nested_repositories_ignore_rules() {
 }
 
 #[test]
+fn memory_scanner_reports_progress_for_allowed_nested_instructions() {
+    let f = Fixture::new();
+    let nested = f.root.join("apps/repo");
+    fs::create_dir_all(&nested).unwrap();
+    instruction_git(&nested, &["init", "--quiet"]);
+    write_instruction_ignore_fixture(&nested);
+    let mut project = f.project.clone();
+    project["sharing"] =
+        json!({"memory":true,"skill":false,"plan":false,"session":false,"env":false});
+
+    indexer::scan_with_progress(&f.db, &project).unwrap();
+
+    let progress = db::get(&f.db, "syncProgress").unwrap();
+    assert_eq!(progress["label"], "Checking local files");
+    assert_eq!(progress["detail"], "test · apps/repo/docs/keep/CLAUDE.md");
+    assert_eq!(progress["total"], Value::Null);
+}
+
+#[test]
 fn memory_scanner_respects_submodule_ignore_rules() {
     let f = Fixture::new();
     let origin = f._home.path().join("submodule-origin");

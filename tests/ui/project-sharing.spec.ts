@@ -398,11 +398,16 @@ for (const browserInvites of [true, false]) {
     await settings
       .getByRole("button", { name: "Members", exact: true })
       .click();
-    await settings
-      .getByRole("button", { name: "Add Member", exact: true })
-      .click();
-    await page
-      .getByRole("dialog", { name: "Add Member", exact: true })
+    const addMember = settings.getByRole("button", {
+      name: "Add Member",
+      exact: true,
+    });
+    await addMember.click();
+    const invite = page.getByRole("dialog", {
+      name: "Add Member",
+      exact: true,
+    });
+    await invite
       .getByRole("button", { name: "Copy joining link", exact: true })
       .click();
     await expect
@@ -416,6 +421,20 @@ for (const browserInvites of [true, false]) {
           ? `https://test.orka/join/${inviteToken}`
           : `orka://join/${inviteToken}`,
       );
+    await expect(invite.getByRole("status")).toHaveText(
+      "Joining link copied. It can be used once and expires in 24 hours.",
+    );
+    expect(
+      (await calls(page))
+        .filter(
+          (call) =>
+            call.command === "cloud_action" && call.args.action === "invite",
+        )
+        .map((call) => call.args),
+    ).toEqual([{ action: "invite", input: { projectId: "project" } }]);
+    await invite.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(invite).toHaveCount(0);
+    await expect(addMember).toBeFocused();
   });
 }
 
