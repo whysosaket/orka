@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "5ca5d3276d5ce56e202b3764a07fef8294dcc993",
-  "candidate": true,
-  "sourceTreeSha256": "cf96f848c58fbbc885576eae55d2f6d1ac926ae2a00945cdbfcf782a219461d2",
+  "commit": "2a9f0e3c190b911a34e5c0cf38ca42898359a1d0",
+  "candidate": false,
+  "sourceTreeSha256": "9874929ddc2f10574380b53ebe4ba7cd7ec90f892affefb9ca399810d439a6b7",
   "files": [
     {
       "path": ".dockerignore",
@@ -151,7 +151,7 @@
     },
     {
       "path": "docs/compatibility.md",
-      "sha256": "7e6413c5e938db48784e8a3923d2150d192ed1cf6d843b3ebb941bd730f16d5a",
+      "sha256": "f6324b94117e56f7a0c9bb2dd49c73180e59907186055018a8670b31517298b5",
       "mode": 420
     },
     {
@@ -271,7 +271,7 @@
     },
     {
       "path": "internal/server/governance.go",
-      "sha256": "d3058eede90e52063b7ee0ca69a1ca6e7241daac5a87e7a1e72f8f9c4a5f2cc4",
+      "sha256": "8603f4506dd99ab7fdc6825db850c914f3e425c7840eda2c1967be8cab4580db",
       "mode": 420
     },
     {
@@ -796,7 +796,7 @@
     },
     {
       "path": "tests/project-invite.integration.ts",
-      "sha256": "3d8b3d858abe22725dd07664b83e1435e3c62f423b3b26e79c709990071aa49b",
+      "sha256": "2d6f9e35649272686068af143a864563e75031308974bb0e380f16270263724d",
       "mode": 420
     },
     {
