@@ -5,7 +5,7 @@ import { digest, uuid } from "@portable/protocol";
 export const bytesHash = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 export class Blobs {
-  constructor(private root: string) {}
+  constructor(readonly root: string) {}
   async removeProject(project: string): Promise<void> {
     await rm(join(this.root, uuid.parse(project)), {
       recursive: true,

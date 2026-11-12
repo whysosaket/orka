@@ -7,12 +7,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
 import { Store } from "../bridge/store.js";
-import { Blobs } from "../reference/blobs.js";
+import { Blobs } from "../fixtures/blobs.js";
 import { migrate } from "../bridge/migrations.js";
 import { createApi } from "../bridge/main.js";
-import { authSettings } from "../reference/auth.js";
-import { tokenHash } from "../reference/mcp/oauth.js";
-import { acceptingMemoryResolver } from "../reference/testing/memory-fixtures.js";
+import { authSettings } from "../bridge/auth.js";
+import { tokenHash } from "../bridge/mcp.js";
+import { acceptingMemoryResolver } from "../fixtures/memory-fixtures.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -259,8 +259,11 @@ const api = createApi(
       ? Promise.resolve(owner)
       : Promise.reject(new Error("Fixture credentials required")),
   `http://127.0.0.1:${authAddress.port}`,
-  authSettings({ PUBLIC_URL: origin, MAGIC_LINK_ENABLED: "true" }),
-  undefined,
+  authSettings({
+    DEPLOYMENT_MODE: "cloud",
+    PUBLIC_URL: origin,
+    MAGIC_LINK_ENABLED: "true",
+  }),
   true,
 );
 await new Promise<void>((r) => api.listen(port, "127.0.0.1", r));

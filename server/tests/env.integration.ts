@@ -8,14 +8,10 @@ import { Pool } from "pg";
 import type { EnvVersion } from "@portable/protocol";
 import { createApi } from "./bridge/main.js";
 import { Store } from "./bridge/store.js";
-import { Blobs } from "./reference/blobs.js";
+import { Blobs } from "./fixtures/blobs.js";
 import { migrate } from "./bridge/migrations.js";
-import {
-  identity,
-  version,
-  headerHash,
-} from "./reference/testing/env-fixtures.js";
-import { startEnvMac, type EnvMac } from "./reference/testing/env-native.js";
+import { identity, version, headerHash } from "./fixtures/env-fixtures.js";
+import { startEnvMac, type EnvMac } from "./fixtures/env-native.js";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import type { EnvManifest, EnvSet } from "@portable/protocol";
 

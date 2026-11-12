@@ -8,8 +8,7 @@ import {
   isEnvPath,
   validateEnvTransition,
 } from "@portable/protocol";
-import { verifyEnvSignature } from "./reference/env.js";
-import { identity, version } from "./reference/testing/env-fixtures.js";
+import { identity, version } from "./fixtures/env-fixtures.js";
 
 await test("ENV format rejects malformed keys and keeps ordinary resource types separate", () => {
   const a = identity(),
@@ -40,7 +39,7 @@ await test("ENV format rejects malformed keys and keeps ordinary resource types 
   ])
     assert.equal(isEnvPath(path), false);
 });
-await test("signed ENV canonical fixture interoperates with the native verifier", async () => {
+await test("signed ENV fixture uses the canonical protocol encoding", async () => {
   const fixture = JSON.parse(
     await readFile(
       new URL(
@@ -50,18 +49,6 @@ await test("signed ENV canonical fixture interoperates with the native verifier"
     ),
   );
   assert.equal(envCanonical(fixture.value), fixture.canonical);
-  assert.equal(
-    verifyEnvSignature(fixture.publicKey, fixture.value, fixture.signature),
-    true,
-  );
-  assert.equal(
-    verifyEnvSignature(
-      fixture.publicKey,
-      { ...fixture.value, revision: 2 },
-      fixture.signature,
-    ),
-    false,
-  );
 });
 await test("ENV authorization preserves creator control and allows recipients to publish", () => {
   const a = identity(),

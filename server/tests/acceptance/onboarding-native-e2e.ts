@@ -8,9 +8,9 @@ import { tmpdir } from "node:os";
 import { Pool } from "pg";
 import { migrate } from "../bridge/migrations.js";
 import { Store } from "../bridge/store.js";
-import { Blobs } from "../reference/blobs.js";
+import { Blobs } from "../fixtures/blobs.js";
 import { createApi } from "../bridge/main.js";
-import { authSettings } from "../reference/auth.js";
+import { authSettings } from "../bridge/auth.js";
 
 interface NativeSnapshot {
   background: boolean;

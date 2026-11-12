@@ -11,13 +11,13 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { ResourceInput, Resource } from "@portable/protocol";
 import { Store, HttpError } from "./bridge/store.js";
-import { Blobs } from "./reference/blobs.js";
+import { Blobs } from "./fixtures/blobs.js";
 import { createApi } from "./bridge/main.js";
-import { authSettings } from "./reference/auth.js";
+import { authSettings } from "./bridge/auth.js";
 import { tokenHash } from "./bridge/mcp.js";
 import { readSession } from "./bridge/mcp.js";
-import { addSources } from "./reference/sources.js";
-import { acceptingMemoryResolver } from "./reference/testing/memory-fixtures.js";
+import { addSources } from "./bridge/sources.js";
+import { acceptingMemoryResolver } from "./fixtures/memory-fixtures.js";
 
 await test("Orka plugin: real MCP transport, consent/PKCE, project ACLs, teammate sessions, handoff, refresh and revocation", async () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -77,7 +77,6 @@ await test("Orka plugin: real MCP transport, consent/PKCE, project ACLs, teammat
     `http://127.0.0.1:${authAddress.port}`,
     // Valid configuration may differ from the browser's canonical Origin header.
     authSettings({ PUBLIC_URL: `http://127.0.0.1:0${address.port}` }),
-    undefined,
     true,
   );
   await new Promise<void>((r) => server.listen(address.port, "127.0.0.1", r));
