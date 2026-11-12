@@ -6,6 +6,16 @@ requests are unchanged. Email delivery and verified-recipient enforcement are
 shared by OSS and managed Go servers. See [project email invitations](authentication.md#project-email-invitations)
 for configuration, signup policy and coordinated rollout.
 
+The governance catalog adds `pendingInvites` with `email` and `expiresAt` for
+active email invitations. Owners and Admins on role-policy projects can read the
+list; other members receive an empty array. Joining links and invitation tokens
+are never included. Repeated invitations for one address appear once with the
+latest expiry, and known current member addresses are excluded. Expired and
+consumed invitations disappear on the next catalog read. Both server editions
+share this behavior. Older clients ignore the extra field; updated clients must
+also tolerate its absence on older services. No migration or protocol package
+update is required.
+
 ## Go runtime contract checks
 
 The Go runtime retains the TypeScript protocol package as its contract source.

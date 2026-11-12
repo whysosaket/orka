@@ -22,6 +22,7 @@ export interface GovernanceCatalog {
   policy: ProjectRules;
   access: Record<string, EffectiveAccess>;
   members: ProjectMember[];
+  pendingInvites?: { email: string; expiresAt: string }[];
   memberRules: { userId: string; class: keyof ProjectRules; rule: ClassRule }[];
   resourceRules?: { resourceId: string; userId: string; rule: AccessRule }[];
   resourceCount: number;

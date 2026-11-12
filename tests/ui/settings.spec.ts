@@ -1211,7 +1211,71 @@ for (const width of [1160, 900])
     );
     expect(invitations).toHaveLength(1);
     expect(invitations[0].args.input.email).toBe("person@example.com");
+    await button(dialog, "Done").click();
+    const pending = settings.getByRole("region", {
+      name: "Pending invitations",
+      exact: true,
+    });
+    await expect(pending.getByText("person@example.com")).toBeVisible();
+    await expect(pending.getByText("Pending", { exact: true })).toBeVisible();
   });
+
+for (const role of ["owner", "admin"] as const)
+  test(`${role} sees pending invitations separately from current members`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize({ width: 900, height: 640 });
+    const email = "teammate-with-a-long-email-address@example.com";
+    const settings = await settingsFixture(page, {
+      role,
+      pendingInvites: [{ email, expiresAt: "2026-11-14T12:00:00Z" }],
+    });
+    await button(settings, "Members").click();
+    const pending = settings.getByRole("region", {
+      name: "Pending invitations",
+      exact: true,
+    });
+    await expect(pending.getByText(email, { exact: true })).toBeVisible();
+    await expect(pending.getByText("Pending", { exact: true })).toBeVisible();
+    await expect(pending.getByText("Member", { exact: true })).toBeVisible();
+    await expect(pending.locator("time")).toHaveAttribute(
+      "datetime",
+      "2026-11-14T12:00:00Z",
+    );
+    await expect(pending.getByRole("combobox")).toHaveCount(0);
+    await expect(pending.getByRole("button")).toHaveCount(0);
+    expect(
+      (await new AxeBuilder({ page }).include(".settings-panel").analyze())
+        .violations,
+    ).toEqual([]);
+    await page.screenshot({ path: info.outputPath(`pending-${role}.png`) });
+    await button(settings, "Profile").click();
+    await page.evaluate(() => {
+      (window as any).settingsCatalog.pendingInvites = [];
+    });
+    await button(settings, "Members").click();
+    await expect(pending).toHaveCount(0);
+    await expect(
+      settings.getByText("Jamie Rivera", { exact: true }),
+    ).toBeVisible();
+  });
+
+test("ordinary members do not render invitation recipients", async ({
+  page,
+}) => {
+  const settings = await settingsFixture(page, {
+    role: "member",
+    pendingInvites: [
+      { email: "private@example.com", expiresAt: "2026-11-14T12:00:00Z" },
+    ],
+  });
+  await button(settings, "Members").click();
+  await expect(
+    settings.getByText("Jamie Rivera", { exact: true }),
+  ).toBeVisible();
+  await expect(settings.getByText("private@example.com")).toHaveCount(0);
+  await expect(button(settings, "Add Member")).toHaveCount(0);
+});
 test("failed email invitation preserves the address and offers a joining link", async ({
   page,
 }) => {

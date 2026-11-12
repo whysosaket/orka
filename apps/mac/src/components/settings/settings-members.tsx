@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   HistoryIcon,
   KebabHorizontalIcon,
+  MailIcon,
   PersonAddIcon,
 } from "@primer/octicons-react";
 import type { Project, ProjectMember, Snapshot } from "../../types.js";
@@ -193,6 +194,7 @@ export function SettingsMembers({
     state.governance?.find((entry) => entry.projectId === projectId)?.catalog
       .members ?? null;
   const members = query.data?.members ?? cachedMembers;
+  const pendingInvites = query.data?.pendingInvites ?? [];
   const [busy, setBusy] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -321,6 +323,33 @@ export function SettingsMembers({
           />
         )}
       </LoadingRegion>
+      {(owner || admin) && pendingInvites.length > 0 && (
+        <section aria-label="Pending invitations">
+          <h3>Pending invitations ({pendingInvites.length})</h3>
+          <ul className="settings-group settings-member-list">
+            {pendingInvites.map((invite) => (
+              <li className="settings-member-row" key={invite.email}>
+                <span className="settings-member-avatar">
+                  <MailIcon size={20} aria-hidden="true" />
+                </span>
+                <div className="settings-member-identity">
+                  <div className="settings-identity-name">
+                    <strong title={invite.email}>{invite.email}</strong>
+                    <span className="settings-device-label">Pending</span>
+                  </div>
+                  <p>
+                    Expires{" "}
+                    <time dateTime={invite.expiresAt}>
+                      {new Date(invite.expiresAt).toLocaleString()}
+                    </time>
+                  </p>
+                </div>
+                <span className="settings-member-role">Member</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {query.error && members && (
         <p role="alert">
           Couldn’t refresh members.{" "}
@@ -348,7 +377,10 @@ export function SettingsMembers({
           title="Add Member"
           projectId={projectId}
           projectName={project.name}
-          onClose={() => setInvite(false)}
+          onClose={() => {
+            setInvite(false);
+            void query.refresh();
+          }}
         />
       )}
       {confirmation && (
