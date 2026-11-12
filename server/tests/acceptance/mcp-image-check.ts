@@ -4,12 +4,12 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 
-/** Runs only against disposable image-test accounts and captured fixture email. */
+/** Runs against disposable image-test accounts. */
 export async function checkMcpImage(
   base: string,
   project: string,
   nativeToken: string,
-  email: () => Promise<string>,
+  login: { email: () => Promise<string> } | { password: string },
 ) {
   const jsonPost = (path: string, body: unknown) =>
     fetch(base + path, {
@@ -124,11 +124,17 @@ export async function checkMcpImage(
       }),
       redirect: "manual",
     });
-  const sent = await submit({ action: "send-code" });
-  assert.equal(sent.status, 200, await sent.text());
-  const code = (await email()).match(/<h1>(\d+)<\/h1>/)?.[1];
-  assert.ok(code);
-  const connected = await submit({ action: "connect", code });
+  let credentials: Record<string, string>;
+  if ("email" in login) {
+    const sent = await submit({ action: "send-code" });
+    assert.equal(sent.status, 200, await sent.text());
+    const code = (await login.email()).match(/<h1>(\d+)<\/h1>/)?.[1];
+    assert.ok(code);
+    credentials = { code };
+  } else {
+    credentials = login;
+  }
+  const connected = await submit({ action: "connect", ...credentials });
   assert.equal(connected.status, 303, await connected.text());
   const callback = new URL(connected.headers.get("location")!);
   assert.equal(callback.searchParams.get("state"), "image-acceptance");
@@ -178,7 +184,7 @@ export async function checkMcpImage(
       assert.ok(!result.isError, JSON.stringify(result.content));
       return result.structuredContent!;
     };
-    assert.equal((await client.listTools()).tools.length, 7);
+    assert.equal((await client.listTools()).tools.length, 18);
     await call("get_profile");
     assert.ok(JSON.stringify(await call("list_projects")).includes(project));
     assert.ok(
@@ -205,8 +211,7 @@ export async function checkMcpImage(
       goal: "Continue onboarding",
       sessionIds: [sessionId],
       resourceIds: [planId],
-      currentContext:
-        "Container acceptance with actual GoTrue email-code sign-in.",
+      currentContext: "Container acceptance with actual GoTrue sign-in.",
     });
     assert.equal(handoff.createdSharedResource, false);
     assert.ok(String(handoff.markdown).includes("Continue onboarding"));

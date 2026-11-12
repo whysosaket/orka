@@ -68,7 +68,7 @@ explicit ledger-adoption step before a baseline-based server can start.
 
 `selectedSharing: 1` in `/v2/projects/capabilities` advertises authenticated `POST /v2/sharing/selected`. The endpoint accepts the existing v2 change schema and returns `published` with its normal mutation receipt, `conflict` with its normal conflict receipt, or `approval_required` with an immutable review request. Exact retries retain their identity. Deletions and secret-file payloads are rejected. Existing membership, source audience, publication, suggestion, and ownership checks apply.
 
-Automatic category sharing is a local desktop preference. The updated native plugin bridge can submit one explicitly selected frozen snapshot without changing that preference. Remote MCP tokens remain `orka.read` and cannot call this ordinary API endpoint. OSS and managed editions share this implementation. No protocol or database migration, OAuth scope expansion, provider setting, or environment variable is required. Update the service before enabling local publication; older remote read-only plugins remain compatible.
+Automatic category sharing is a local desktop preference. The updated native plugin bridge can submit one explicitly selected frozen snapshot without changing that preference. Remote MCP tokens cannot call this ordinary API endpoint; shared-resource operations use separate MCP handlers and consent scopes. OSS and managed editions share this implementation. Selected local publication itself requires no protocol or database migration, OAuth scope expansion, provider setting, or environment variable. Plugin 0.3 shared-resource operations additionally require migration `004_mcp_operations.sql` and explicit write/manage consent. Update the service before enabling local publication; older remote read-only plugins remain compatible.
 
 Backend 0.5.3 adds nullable `email` to the existing governance
 catalog member rows in both editions. Migration 011 adds one column to the
@@ -204,3 +204,12 @@ The desktop consumes immutable npm tarballs stored under `vendor/`, with the sou
 Rust verifies the canonical signing fixture from the installed protocol package. Both repositories retain contract tests to verify their respective package/source boundary. Client tests import backend test helpers and core rather than maintaining backend source. Production uses released Go images; local development builds the checked-in source with `sh ./orka-server setup --local --email you@example.com`.
 
 Before upgrades, take and verify a coordinated database/blob backup. Baseline-era startup is idempotent; adopt a completed historical ledger explicitly as described above. Rollback after a destructive migration needs a tested restore; changing an image tag alone is not a database rollback plan.
+
+
+The MCP operations update adds migration `004_mcp_operations.sql`, eleven remote
+operation tools and explicit `orka.write`/`orka.manage` OAuth grants. Existing
+`orka.read` tokens remain read-only. Updated managed Dashboard consent and plugin
+packaging must accompany the API before write-capable distribution. Normal desktop
+wire contracts, sync formats and ENV encryption remain unchanged. See
+[MCP operations](mcp-operations.md) for tool boundaries, exact revisions, retry
+receipts and local-only operations. This source change is not a deployment claim.

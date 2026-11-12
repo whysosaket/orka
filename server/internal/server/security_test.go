@@ -101,6 +101,68 @@ func TestSettingsRejectUnsafeOriginsAndMissingSecrets(t *testing.T) {
 	}
 }
 
+func TestDashboardBrowserBridge(t *testing.T) {
+	env := map[string]string{
+		"DEPLOYMENT_MODE": "cloud", "PUBLIC_URL": "https://api.example.test",
+		"DASHBOARD_URL": "https://dashboard.example.test", "DASHBOARD_PROXY_SECRET": strings.Repeat("a", 64),
+	}
+	settings, err := SettingsFromEnv(env, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := NewAPI(nil, settings, "")
+	for _, tc := range []struct {
+		method, path, key string
+		status            int
+		trusted           bool
+	}{
+		{"GET", "/v2/instance", settings.dashboardKey, 200, false},
+		{"GET", dashboardBridgePrefix + "/v2/instance", "", 404, false},
+		{"GET", dashboardBridgePrefix + "/v2/instance", "wrong", 404, false},
+		{"GET", dashboardBridgePrefix + "/v2/instance", settings.dashboardKey, 200, true},
+		{"POST", dashboardBridgePrefix + "/v2/instance", settings.dashboardKey, 404, false},
+		{"GET", dashboardBridgePrefix + "/v2/projects", settings.dashboardKey, 404, false},
+		{"POST", dashboardBridgePrefix + "/auth/admin/users", settings.dashboardKey, 404, false},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		req.Header.Set("X-Orka-Dashboard-Key", tc.key)
+		res := httptest.NewRecorder()
+		api.ServeHTTP(res, req)
+		if res.Code != tc.status || strings.Contains(res.Body.String(), `"browserBridge":true`) != tc.trusted {
+			t.Errorf("%s %s: HTTP %d %s", tc.method, tc.path, res.Code, res.Body)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, dashboardBridgePrefix+"/auth/authorize", nil)
+	req.RemoteAddr = "192.0.2.1:43865"
+	req.Header.Set("X-Orka-Dashboard-Key", settings.dashboardKey)
+	req.Header.Set("X-Orka-Dashboard-Client-IP", "192.0.2.4")
+	target := settings.DashboardURL + "/auth/session?flow=" + strings.Repeat("a", 43)
+	if authClientIP(req, settings) != "192.0.2.1" || settings.signInRedirect(target, fromDashboard(req)) != desktopRedirect {
+		t.Fatal("untrusted request controlled IP or redirect")
+	}
+	bridge := settings.dashboardRequest(req, "/auth/authorize")
+	if bridge == nil || authClientIP(bridge, settings) != "192.0.2.4" || settings.signInRedirect(target, fromDashboard(bridge)) != target {
+		t.Fatal("trusted dashboard handoff was rejected")
+	}
+	if settings.signInRedirect(target+"&next=https://foreign.example", fromDashboard(bridge)) != desktopRedirect {
+		t.Fatal("trusted dashboard allowed an invalid return URL")
+	}
+	bridge.Header.Set("X-Orka-Dashboard-Client-IP", "192.0.2.4, 192.0.2.5")
+	if authClientIP(bridge, settings) != "192.0.2.1" {
+		t.Fatal("accepted malformed client IP")
+	}
+	env["DASHBOARD_URL"] = "https://API.example.test:443"
+	if _, err := SettingsFromEnv(env, false); err == nil {
+		t.Fatal("noncanonical dashboard origin was accepted")
+	}
+	env["DEPLOYMENT_MODE"] = "self-hosted"
+	env["DASHBOARD_URL"] = settings.DashboardURL
+	if _, err := SettingsFromEnv(env, false); err == nil {
+		t.Fatal("self-hosted accepted a dashboard")
+	}
+}
+
 func TestDesktopEmailConfirmationKeepsVerificationAndHandoffSeparate(t *testing.T) {
 	const origin = "https://orka.example"
 	const code = "12345678-1234-4123-8123-123456789abc"

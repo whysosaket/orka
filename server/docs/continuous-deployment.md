@@ -94,3 +94,15 @@ docker compose ps
 Correct the failure and redeploy. A manual older release is appropriate only after verifying database compatibility; destructive migrations require the [tested restore procedure](../deploy/ec2/README.md#backups-and-restore). CI keeps backups and release directories until an operator deliberately prunes them. Monitor disk capacity, encrypt/copy backups off the instance, and preserve `.env` and JWT secrets separately. CI performs health checks, not continuous availability monitoring or automatic disaster recovery.
 
 Deployment tests cover provenance rejection, public-health failures, first deploy, successive upgrades, preflight/backup/restore failure, unhealthy releases, private configuration permissions and missing data mounts. The lifecycle test simulates Docker failures on Linux; the existing final-image tests cover the real database/auth/image and backup/restore behavior. A live SSH deployment requires the configured host and credentials.
+
+## Vercel dashboard
+
+The managed API host needs `DASHBOARD_URL` (a separate unquoted HTTPS origin)
+and `DASHBOARD_PROXY_SECRET` in its protected environment. Its existing cloud
+Compose file configures the callback and return allowlist in GoTrue. The
+private dashboard deploys to Vercel from Git, with the same proxy secret and its
+own persistent cookie key. The API host keeps the existing Compose project,
+image and data volumes. Deployment verification checks the public dashboard
+health endpoint and advertised origin. Follow the
+[dashboard rollout instructions](https://github.com/prathameshagrawal/orka-dashboard)
+for Vercel environment variables, DNS, provider registration, and smoke tests.

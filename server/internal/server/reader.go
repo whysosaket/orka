@@ -123,6 +123,9 @@ func (r Reader) sourceFilter(q *Queries, project, source, scope string) {
 	q.Require(scope == "" || source != "" || len(sources) <= 1, 400, "Choose a sourceId before reading folder guidance in a project with multiple repositories")
 }
 func (r Reader) run(ctx context.Context, name string, input Object) (any, error) {
+	if includes(operationNames, name) {
+		return r.operation(ctx, name, input)
+	}
 	project := text(input["projectId"])
 	if name == "get_profile" {
 		return r.Store.read(ctx, func(q *Queries) any {

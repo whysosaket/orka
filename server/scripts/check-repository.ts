@@ -16,6 +16,7 @@ assert.deepEqual(
     "001_initial.sql",
     "002_github_repositories.sql",
     "003_email_invitations.sql",
+    "004_mcp_operations.sql",
   ],
 );
 const forbidden = files.filter((path) => {

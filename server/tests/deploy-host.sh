@@ -29,7 +29,8 @@ case "$*" in
   'compose up '*)
     [[ "$ORKA_IMAGE" = ghcr.io/whysosaket/orka-api@sha256:* ]]
     [[ "$COMPOSE_PROJECT_NAME" = orka-managed ]]
-    [[ -f "$COMPOSE_ENV_FILES" && "$COMPOSE_FILE" = *"/deploy/cloud/compose.yml" ]]
+    [[ -f "$COMPOSE_ENV_FILES" ]]
+    [[ "$COMPOSE_FILE" = *"/deploy/cloud/compose.yml" ]]
     [[ ${TEST_FAILURE:-} != up ]] ;;
   *"pg_database_size('orka')"*) if [[ ${TEST_FAILURE:-} = space ]]; then echo 1000000000000; else echo 100; fi ;;
   'compose exec -T db psql '*) cat >/dev/null; [[ ${TEST_FAILURE:-} != backfill ]] ;;
@@ -118,4 +119,12 @@ new_root permissions
 chmod 644 "$root/.env"
 if deploy; then echo 'Expected private env check to fail' >&2; exit 1; fi
 [[ ! -s "$TEST_LOG" ]]
+new_root dashboard
+printf '%s\n' 'DASHBOARD_URL=https://dashboard.example.test' > "$root/.env"
+deploy
+[[ $(readlink "$root/active") = "$(readlink "$root/current")" ]]
+check_credentials_removed
+: > "$root/.env"
+deploy
+[[ $(readlink "$root/active") = "$(readlink "$root/current")" ]]
 echo 'Managed deployment lifecycle checks passed.'

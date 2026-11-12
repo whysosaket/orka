@@ -50,7 +50,6 @@ await test("self-hosted setup generates private independent credentials and pres
     );
     assert.equal(new Set(secrets).size, 4);
     assert.equal(env.DOMAIN, "orka.example.test");
-    assert.equal(env.DISABLE_SIGNUP, "true");
     assert.equal(env.MEMORY_JEV_ENABLED, "false");
     assert.equal(env.ORKA_SERVER_MODE, "public");
     assert.equal(env.COMPOSE_FILE, "compose.yml");
@@ -213,6 +212,15 @@ await test(
         resolve("deploy/ec2/Caddyfile"),
       );
       assert.deepEqual(production.services.admin.profiles, ["tools"]);
+      assert.equal(production.services.dashboard, undefined);
+      assert.equal(
+        production.services.auth.environment.GOTRUE_DISABLE_SIGNUP,
+        "true",
+      );
+      assert.equal(
+        production.services.auth.environment.GOTRUE_EXTERNAL_GITHUB_ENABLED,
+        "false",
+      );
       const local = config(true);
       assert.equal(local.services.api.ports[0].host_ip, "127.0.0.1");
       assert.equal(local.services.api.environment.TRUST_PROXY, "false");

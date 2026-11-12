@@ -21,6 +21,34 @@ var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
 
 const mcpScope = "orka.read"
 
+var mcpScopes = []string{"orka.read", "orka.write", "orka.manage"}
+var mcpPermissionDescriptions = map[string]string{
+	"orka.read":   "Read accessible shared project resources, revision history, permissions and review requests.",
+	"orka.write":  "Create shared memories, update plans and resolve session conflicts within your current access.",
+	"orka.manage": "Change permissions and approve or reject requests within your current authority.",
+}
+
+func normalizedScopes(scope string) string {
+	if scope == "" {
+		return mcpScope
+	}
+	out := []string{}
+	for _, known := range mcpScopes {
+		if includes(strings.Fields(scope), known) {
+			out = append(out, known)
+		}
+	}
+	return strings.Join(out, " ")
+}
+func scopeSubset(requested, granted string) bool {
+	for _, value := range strings.Fields(requested) {
+		if !includes(strings.Fields(granted), value) {
+			return false
+		}
+	}
+	return true
+}
+
 type OAuthError struct{ Code, Message string }
 
 func (e *OAuthError) Error() string         { return e.Message }
@@ -50,8 +78,13 @@ func (o *OAuth) checkResource(value string) error {
 	return nil
 }
 func (o *OAuth) scopes(scope string) error {
-	if scope != "" && scope != mcpScope {
-		return oauthError("invalid_scope", "Only orka.read is supported")
+	for _, value := range strings.Fields(scope) {
+		if !includes(mcpScopes, value) {
+			return oauthError("invalid_scope", "Unsupported Orka scope")
+		}
+	}
+	if scope != "" && len(strings.Fields(scope)) == 0 {
+		return oauthError("invalid_scope", "Choose an Orka scope")
 	}
 	return nil
 }
@@ -73,14 +106,14 @@ func (o *OAuth) register(q *Queries, input Object) Object {
 		q.Check(oauthError("invalid_client_metadata", "Use HTTPS or a native loopback redirect and a supported token authentication method"))
 		return nil
 	}
-	if scope := text(input["scope"]); scope != "" && scope != mcpScope {
-		q.Check(oauthError("invalid_client_metadata", "Only orka.read is supported"))
+	if err := o.scopes(text(input["scope"])); err != nil {
+		q.Check(oauthError("invalid_client_metadata", "Unsupported Orka scope"))
 		return nil
 	}
 	registered := clone(input)
 	registered["client_id"] = newID()
 	registered["client_id_issued_at"] = time.Now().Unix()
-	registered["scope"] = mcpScope
+	registered["scope"] = normalizedScopes(text(input["scope"]))
 	// The HTTP registration handler supplies secrets; direct provider fixtures do not.
 	q.Exec("insert into orka.mcp_clients values($1,$2)", registered["client_id"], registered)
 	return registered
@@ -88,13 +121,13 @@ func (o *OAuth) register(q *Queries, input Object) Object {
 func (o *OAuth) client(q *Queries, id string) Object {
 	return object(q.One("select metadata from orka.mcp_clients where id::text=$1", id)["metadata"])
 }
-func (o *OAuth) issue(q *Queries, client, user, family string) Object {
+func (o *OAuth) issue(q *Queries, client, user, family, scope string) Object {
 	if family == "" {
 		family = newID()
 	}
 	access, refresh := oauthSecret(), oauthSecret()
-	q.Exec("insert into orka.mcp_tokens(access_hash,refresh_hash,family,client_id,user_id,resource,access_expires_at,refresh_expires_at) values($1,$2,$3,$4,$5,$6,now()+interval '1 hour',now()+interval '30 days')", tokenHash(access), tokenHash(refresh), family, client, user, o.resource())
-	return Object{"access_token": access, "token_type": "Bearer", "expires_in": 3600, "refresh_token": refresh, "scope": mcpScope}
+	q.Exec("insert into orka.mcp_tokens(access_hash,refresh_hash,family,client_id,user_id,resource,access_expires_at,refresh_expires_at,scopes) values($1,$2,$3,$4,$5,$6,now()+interval '1 hour',now()+interval '30 days',$7)", tokenHash(access), tokenHash(refresh), family, client, user, o.resource(), normalizedScopes(scope))
+	return Object{"access_token": access, "token_type": "Bearer", "expires_in": 3600, "refresh_token": refresh, "scope": normalizedScopes(scope)}
 }
 func (o *OAuth) lockFamily(q *Queries, client, token string) string {
 	row := q.One("select family from orka.mcp_tokens where client_id=$1 and (access_hash=$2 or refresh_hash=$2)", client, tokenHash(token))
@@ -115,7 +148,7 @@ func (o *OAuth) refresh(ctx context.Context, client, raw, scope, resource string
 		if o.lockFamily(q, client, raw) == "" {
 			return nil
 		}
-		row := q.One("select family,user_id,revoked,resource from orka.mcp_tokens where refresh_hash=$1 and client_id=$2 and refresh_expires_at>now() for update", tokenHash(raw), client)
+		row := q.One("select family,user_id,revoked,resource,scopes from orka.mcp_tokens where refresh_hash=$1 and client_id=$2 and refresh_expires_at>now() for update", tokenHash(raw), client)
 		if row == nil || text(row["resource"]) != o.resource() {
 			return nil
 		}
@@ -123,8 +156,16 @@ func (o *OAuth) refresh(ctx context.Context, client, raw, scope, resource string
 			q.Exec("update orka.mcp_tokens set revoked=true where family=$1", row["family"])
 			return nil
 		}
+		granted := text(row["scopes"])
+		if scope != "" {
+			if !scopeSubset(scope, granted) {
+				q.Check(oauthError("invalid_scope", "Refresh cannot add permissions; reconnect Orka"))
+				return nil
+			}
+			granted = normalizedScopes(scope)
+		}
 		q.Exec("update orka.mcp_tokens set revoked=true where refresh_hash=$1", tokenHash(raw))
-		return o.issue(q, client, text(row["user_id"]), text(row["family"]))
+		return o.issue(q, client, text(row["user_id"]), text(row["family"]), granted)
 	})
 	if err == nil && result == nil {
 		err = oauthError("invalid_grant", "Refresh token unavailable; connect Orka again")
@@ -132,12 +173,12 @@ func (o *OAuth) refresh(ctx context.Context, client, raw, scope, resource string
 	return result, err
 }
 func (o *OAuth) verify(q *Queries, token string) Object {
-	row := q.One("select client_id,user_id,resource,extract(epoch from access_expires_at)::bigint as expires from orka.mcp_tokens where access_hash=$1 and not revoked and access_expires_at>now()", tokenHash(token))
+	row := q.One("select client_id,user_id,resource,scopes,extract(epoch from access_expires_at)::bigint as expires from orka.mcp_tokens where access_hash=$1 and not revoked and access_expires_at>now()", tokenHash(token))
 	if row == nil || text(row["resource"]) != o.resource() {
 		q.Check(oauthError("invalid_token", "Orka connection expired or was revoked"))
 		return nil
 	}
-	return Object{"token": token, "clientId": row["client_id"], "scopes": []string{mcpScope}, "expiresAt": row["expires"], "resource": row["resource"], "extra": Object{"userId": row["user_id"]}}
+	return Object{"token": token, "clientId": row["client_id"], "scopes": strings.Fields(text(row["scopes"])), "expiresAt": row["expires"], "resource": row["resource"], "extra": Object{"userId": row["user_id"]}}
 }
 func (o *OAuth) revoke(ctx context.Context, client, token string) (any, error) {
 	return o.Store.transaction(ctx, func(q *Queries) any {
@@ -170,7 +211,7 @@ func (o *OAuth) exchange(ctx context.Context, client, raw, verifier, redirect, r
 			return nil
 		}
 		q.Exec("delete from orka.mcp_codes where hash=$1", tokenHash(raw))
-		return o.issue(q, client, text(code["userId"]), "")
+		return o.issue(q, client, text(code["userId"]), "", normalizedScopes(text(code["scope"])))
 	})
 }
 func cookieName(tx string) string { return "orka_mcp_" + tx[:min(16, len(tx))] }
@@ -212,7 +253,7 @@ func (o *OAuth) authorize(w http.ResponseWriter, r *http.Request) error {
 		return oauthError("invalid_request", "Invalid redirect_uri")
 	}
 	tx, cookie := oauthSecret(), oauthSecret()
-	params := Object{"codeChallenge": v.Get("code_challenge"), "redirectUri": redirect, "resource": v.Get("resource")}
+	params := Object{"codeChallenge": v.Get("code_challenge"), "redirectUri": redirect, "resource": v.Get("resource"), "scope": normalizedScopes(v.Get("scope"))}
 	if v.Has("state") {
 		params["state"] = v.Get("state")
 	}
@@ -227,12 +268,21 @@ func (o *OAuth) authorize(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	o.cookie(w, tx, cookie, false)
-	o.page(w, tx, text(client["client_name"]), "", "", 200, redirect)
+	o.page(w, r, tx, text(client["client_name"]), "", "", 200, redirect, strings.Fields(text(params["scope"])))
 	return nil
 }
-func (o *OAuth) page(w http.ResponseWriter, tx, client, notice, email string, status int, redirect string) {
+func (o *OAuth) page(w http.ResponseWriter, r *http.Request, tx, client, notice, email string, status int, redirect string, scopes []string) {
 	if client == "" {
 		client = "Connected assistant"
+	}
+	descriptions := []string{}
+	for _, scope := range scopes {
+		descriptions = append(descriptions, mcpPermissionDescriptions[scope])
+	}
+	if fromDashboard(r) {
+		w.WriteHeader(status)
+		_, _ = w.Write(jsonBytes(Object{"transaction": tx, "client": client, "notice": notice, "email": email, "password": o.Settings.Password, "magicLink": o.Settings.MagicLink, "redirect": redirect, "scopes": scopes, "permissionDescriptions": descriptions}))
+		return
 	}
 	formAction := "'self'"
 	if u, err := url.Parse(redirect); err == nil && u.Host != "" {
@@ -254,14 +304,18 @@ func (o *OAuth) page(w http.ResponseWriter, tx, client, notice, email string, st
 		notification = `<p class="notice" role="status">` + escapeHTML(notice) + `</p>`
 	}
 	page := oauthTemplate
-	for key, value := range map[string]string{"CLIENT": escapeHTML(client), "NOTICE": notification, "TRANSACTION": escapeHTML(tx), "EMAIL": escapeHTML(email), "EMAIL_CODE": emailCode, "PASSWORD": password, "ORIGIN": escapeHTML(o.Origin)} {
+	for key, value := range map[string]string{"CLIENT": escapeHTML(client), "NOTICE": notification, "TRANSACTION": escapeHTML(tx), "EMAIL": escapeHTML(email), "EMAIL_CODE": emailCode, "PASSWORD": password, "ORIGIN": escapeHTML(o.Origin), "PERMISSIONS": escapeHTML(strings.Join(descriptions, " "))} {
 		page = strings.ReplaceAll(page, "{{"+key+"}}", value)
 	}
 	w.WriteHeader(status)
 	_, _ = io.WriteString(w, page)
 }
 func (o *OAuth) connect(w http.ResponseWriter, r *http.Request) error {
-	if r.Header.Get("Origin") != o.Origin {
+	origin := o.Origin
+	if fromDashboard(r) {
+		origin = o.Settings.DashboardURL
+	}
+	if r.Header.Get("Origin") != origin {
 		return &HTTPError{Status: 403, Message: "Open the original connection page to continue"}
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
@@ -326,7 +380,7 @@ func (o *OAuth) connect(w http.ResponseWriter, r *http.Request) error {
 		return bad("This sign-in method is unavailable")
 	}
 	if action == "connect" && !password && !regexp.MustCompile(`^\d{6,10}$`).MatchString(v.Get("code")) {
-		o.page(w, tx, text(client["client_name"]), "Enter your email code or password.", email, 400, redirect.String())
+		o.page(w, r, tx, text(client["client_name"]), "Enter your email code or password.", email, 400, redirect.String(), strings.Fields(normalizedScopes(text(params["scope"]))))
 		return nil
 	}
 	path := "/verify"
@@ -349,11 +403,11 @@ func (o *OAuth) connect(w http.ResponseWriter, r *http.Request) error {
 		if ok {
 			notice, status = "Check your email and enter the sign-in code here.", 200
 		}
-		o.page(w, tx, text(client["client_name"]), notice, email, status, redirect.String())
+		o.page(w, r, tx, text(client["client_name"]), notice, email, status, redirect.String(), strings.Fields(normalizedScopes(text(params["scope"]))))
 		return nil
 	}
 	if !ok {
-		o.page(w, tx, text(client["client_name"]), "Could not sign in. Check your credentials or request a fresh email code.", email, 400, redirect.String())
+		o.page(w, r, tx, text(client["client_name"]), "Could not sign in. Check your credentials or request a fresh email code.", email, 400, redirect.String(), strings.Fields(normalizedScopes(text(params["scope"]))))
 		return nil
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
@@ -381,7 +435,7 @@ func (o *OAuth) connect(w http.ResponseWriter, r *http.Request) error {
 		if !q.Require(consumed != nil, 409, "This connection was already completed") {
 			return nil
 		}
-		q.Exec("insert into orka.mcp_codes values($1,$2,now()+interval '5 minutes')", tokenHash(code), Object{"clientId": client["client_id"], "redirectUri": params["redirectUri"], "codeChallenge": params["codeChallenge"], "userId": user, "resource": o.resource()})
+		q.Exec("insert into orka.mcp_codes values($1,$2,now()+interval '5 minutes')", tokenHash(code), Object{"clientId": client["client_id"], "redirectUri": params["redirectUri"], "codeChallenge": params["codeChallenge"], "userId": user, "resource": o.resource(), "scope": normalizedScopes(text(params["scope"]))})
 		return nil
 	})
 	if err != nil {

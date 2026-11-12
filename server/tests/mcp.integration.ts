@@ -241,8 +241,11 @@ await test("Orka plugin: real MCP transport, consent/PKCE, project ACLs, teammat
 
     const anon = await connect();
     const tools = await anon.listTools();
-    assert.equal(tools.tools.length, 7);
-    assert.ok(tools.tools.every((t) => t.annotations?.readOnlyHint === true));
+    assert.equal(tools.tools.length, 18);
+    assert.equal(
+      tools.tools.filter((t) => t.annotations?.readOnlyHint === true).length,
+      13,
+    );
     assert.equal((await call(anon, "list_projects")).isError, true);
     const unauth = await call(anon, "list_projects");
     assert.ok(unauth._meta?.["mcp/www_authenticate"]);

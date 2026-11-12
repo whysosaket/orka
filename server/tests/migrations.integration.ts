@@ -47,6 +47,7 @@ await test("a fresh server installs the baseline and GitHub migration atomically
       "001_initial.sql",
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "004_mcp_operations.sql",
     ],
   );
   await database(async (pool) => {
@@ -55,6 +56,7 @@ await test("a fresh server installs the baseline and GitHub migration atomically
       initialMigration,
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "004_mcp_operations.sql",
     ]);
     assert.equal(
       (
@@ -62,7 +64,7 @@ await test("a fresh server installs the baseline and GitHub migration atomically
           "select count(*) from pg_tables where schemaname='orka'",
         )
       ).rows[0].count,
-      "44",
+      "45",
     );
     const project = randomUUID(),
       owner = randomUUID();
@@ -83,6 +85,7 @@ await test("a fresh server installs the baseline and GitHub migration atomically
       initialMigration,
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "004_mcp_operations.sql",
     ]);
   });
 });
@@ -118,12 +121,49 @@ await test("an existing baseline upgrades GitHub tables without replacing projec
       "insert into orka.invites(token_hash,project_id,expires_at) values('legacy-invite',$1,now()+interval '1 day')",
       [project],
     );
+    const legacyClient = randomUUID(),
+      legacyFamily = randomUUID(),
+      legacyUser = randomUUID();
+    await pool.query("insert into orka.mcp_clients values($1,$2)", [
+      legacyClient,
+      {
+        client_id: legacyClient,
+        redirect_uris: ["https://assistant.example/callback"],
+      },
+    ]);
+    await pool.query(
+      "insert into orka.mcp_tokens(access_hash,refresh_hash,family,client_id,user_id,resource,access_expires_at,refresh_expires_at) values($1,$2,$3,$4,$5,$6,now()+interval '1 hour',now()+interval '1 day')",
+      [
+        "legacy-access-hash",
+        "legacy-refresh-hash",
+        legacyFamily,
+        legacyClient,
+        legacyUser,
+        "https://orka.example/mcp",
+      ],
+    );
     await Promise.all([migrate(pool), migrate(pool)]);
     assert.deepEqual(await ledger(pool), [
       initialMigration,
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "004_mcp_operations.sql",
     ]);
+    assert.deepEqual(
+      (
+        await pool.query(
+          "select scopes,client_id,user_id,resource from orka.mcp_tokens where access_hash='legacy-access-hash'",
+        )
+      ).rows,
+      [
+        {
+          scopes: "orka.read",
+          client_id: legacyClient,
+          user_id: legacyUser,
+          resource: "https://orka.example/mcp",
+        },
+      ],
+    );
     assert.equal(
       (
         await pool.query(
@@ -172,6 +212,7 @@ await test("baseline failure rolls back its DDL and ledger without touching pre-
       initialMigration,
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "004_mcp_operations.sql",
     ]);
   });
 });
@@ -197,6 +238,7 @@ await test("resetting a completed historical ledger is explicit and preserves ap
       initialMigration,
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "004_mcp_operations.sql",
     ]);
     assert.equal(
       (
