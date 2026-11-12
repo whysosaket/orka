@@ -485,9 +485,21 @@ pub fn discover(db: &rusqlite::Connection, project: &Value, kind: &str) -> Resul
 }
 
 pub fn scan(db: &rusqlite::Connection, project: &Value) -> Result<()> {
+    scan_with_status(db, project, false)
+}
+
+pub(crate) fn scan_with_progress(db: &rusqlite::Connection, project: &Value) -> Result<()> {
+    scan_with_status(db, project, true)
+}
+
+fn scan_with_status(
+    db: &rusqlite::Connection,
+    project: &Value,
+    report_progress: bool,
+) -> Result<()> {
     let mut failures = Vec::new();
     for source in crate::sources::views(project) {
-        let result = scan_source(db, &source);
+        let result = scan_source(db, &source, report_progress);
         let key = format!(
             "{}:source:{}",
             project["id"].as_str().unwrap_or(""),
@@ -506,7 +518,7 @@ pub fn scan(db: &rusqlite::Connection, project: &Value) -> Result<()> {
     Ok(())
 }
 
-fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
+fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool) -> Result<()> {
     let Some(raw) = project["path"].as_str() else {
         return Ok(());
     };
@@ -515,6 +527,26 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
         return Err("Connected folder unavailable; deletions paused".into());
     }
     let root = root.canonicalize().map_err(|e| e.to_string())?;
+    let report_file = |path: &Path| -> Result<()> {
+        if report_progress {
+            let relative = path.strip_prefix(&root).ok();
+            let path = relative
+                .or_else(|| path.file_name().map(Path::new))
+                .unwrap_or(path);
+            crate::sync::progress(
+                db,
+                "Checking local files",
+                Some(&format!(
+                    "{} · {}",
+                    crate::projects::display_name(project).unwrap_or("Project"),
+                    path.display()
+                )),
+                0,
+                None,
+            )?;
+        }
+        Ok(())
+    };
     fs::read_dir(&root).map_err(|e| e.to_string())?;
     let project_id = project["id"].as_str().ok_or("Missing project ID")?;
     let scan_id = project["sourceId"]
@@ -584,6 +616,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                 if !instruction_allowed(&root, Path::new(&rel)) {
                     continue;
                 }
+                report_file(e.path())?;
                 seen.insert(scoped_resource_id(db, project, "memory", &logical)?);
                 let result = (|| {
                     collect(
@@ -616,6 +649,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                             .to_string_lossy()
                             .to_string();
                         let logical = format!("claude/{rel}");
+                        report_file(e.path())?;
                         seen.insert(scoped_resource_id(db, project, "memory", &logical)?);
                         let result = (|| {
                             collect(
@@ -742,6 +776,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                 {
                     continue;
                 }
+                report_file(&path)?;
                 collect(
                     db,
                     project,
@@ -779,6 +814,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
             }
         }
         for (name, paths) in skills {
+            report_file(&paths[0].join("SKILL.md"))?;
             let id = scoped_resource_id(db, project, "skill", &name)?;
             seen.insert(id.clone());
             let result = (|| {
@@ -972,6 +1008,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                     .map_err(|e| e.to_string())?
                     .to_string_lossy();
                 let logical = format!("{source}/files/{relative}");
+                report_file(entry.path())?;
                 if let Err(err) =
                     collect_plan_file(db, project, source, &logical, entry.path(), &mut seen)
                 {
@@ -1064,6 +1101,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value) -> Result<()> {
                 if !attributable {
                     continue;
                 }
+                report_file(e.path())?;
                 let (id, cwd, title) = match native::session_info(tool, &records) {
                     Ok(v) => v,
                     Err(err) => {

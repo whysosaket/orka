@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { Snapshot } from "../types.js";
+import type { Snapshot, SyncProgress } from "../types.js";
 import type { ActionFeedback } from "./use-resource-actions.js";
 
 const empty: Snapshot = {
@@ -154,6 +154,44 @@ export function useWorkspace() {
       window.clearTimeout(timer);
     };
   }, [refresh]);
+
+  const profile = state.profile;
+  const user = state.user;
+  const apiUrl = state.config?.apiUrl;
+  const running = state.daemon?.running;
+  useEffect(() => {
+    if (!user || !running) return;
+    let stopped = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const result = await invoke<{
+          user: string | null;
+          progress: SyncProgress | null;
+        }>("sync_progress");
+        if (stopped || result.user !== user || result.progress === undefined)
+          return;
+        setState((current) =>
+          current.profile === profile &&
+          current.user === user &&
+          current.config?.apiUrl === apiUrl &&
+          JSON.stringify(current.syncProgress ?? null) !==
+            JSON.stringify(result.progress)
+            ? { ...current, syncProgress: result.progress }
+            : current,
+        );
+      } catch {
+        // The full snapshot poll still refreshes state and reports read errors.
+      } finally {
+        if (!stopped) timer = window.setTimeout(() => void poll(), 500);
+      }
+    };
+    void poll();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+  }, [profile, user, apiUrl, running]);
 
   return {
     state,

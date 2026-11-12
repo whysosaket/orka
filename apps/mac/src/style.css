@@ -506,7 +506,37 @@
     @apply flex flex-wrap gap-2;
   }
   .sync-menu-feed {
-    @apply min-h-0 overflow-y-auto px-4 pb-4;
+    @apply min-h-0 flex-1 overflow-y-auto px-4 pb-4;
+  }
+  .sync-menu-progress {
+    @apply shrink-0 border-t border-line px-4 py-3;
+  }
+  .sync-menu-progress-status {
+    @apply flex items-start gap-2 text-secondary;
+  }
+  .sync-menu-progress-copy {
+    @apply min-w-0 flex-1;
+  }
+  .sync-menu-progress-copy strong {
+    @apply block text-label-xs text-foreground;
+  }
+  .sync-menu-progress-copy p {
+    @apply m-0 mt-1 line-clamp-2 text-body-xs text-secondary;
+    overflow-wrap: anywhere;
+  }
+  .sync-menu-progress-count {
+    @apply shrink-0 text-body-xs text-secondary;
+    font-variant-numeric: tabular-nums;
+  }
+  .sync-menu-progress-track {
+    @apply mt-3 h-1 overflow-hidden rounded-full bg-panel;
+  }
+  .sync-menu-progress-track > span {
+    @apply block h-full rounded-full bg-foreground;
+    transition: width 160ms var(--motion-control-ease);
+  }
+  .sync-activity-icon svg {
+    animation: sync-activity-spin 1.2s linear infinite;
   }
   .sync-menu-feed h3 {
     @apply mb-2 mt-4 text-label-xs text-muted;
@@ -1604,6 +1634,11 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+@keyframes sync-activity-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 @keyframes popover-disappear {
