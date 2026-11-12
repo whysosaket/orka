@@ -464,3 +464,126 @@ fn plugin_sync_health_uses_the_latest_scoped_attempt_after_recovery() {
         assert_eq!(result["projectSync"], project);
     }
 }
+
+#[test]
+fn incoming_unbound_skill_plan_and_memory_preserve_different_local_files() {
+    for (kind, governed) in [
+        ("skill", false),
+        ("plan", true),
+        ("memory", false),
+        ("memory", true),
+    ] {
+        let mut f = Fixture::new();
+        f.project["governed"] = json!(governed);
+        let id = uuid::Uuid::new_v4().to_string();
+        let incoming = b"Shared accepted content\n";
+        let file = json!({"path":if kind=="skill"{"SKILL.md"}else{"content.md"},"hash":db::blob(incoming).unwrap(),"size":incoming.len(),"executable":false});
+        let logical = match kind {
+            "plan" => "claude/files/collision.md",
+            "skill" => "collision",
+            _ => {
+                if governed {
+                    "knowledge/collision.md"
+                } else {
+                    "instructions/COLLISION.md"
+                }
+            }
+        };
+        let resource = json!({"resourceId":id,"projectId":f.project["id"],"kind":kind,"source":if kind=="plan"{"claude"}else{"shared"},"logicalPath":logical,"title":"Incoming collision","files":[file],"revision":1,"deleted":false});
+        let path = match kind {
+            "skill" => f.root.join(".agents/skills/collision/SKILL.md"),
+            "plan" => f.root.join(".claude/plans/collision.md"),
+            _ => {
+                if governed {
+                    f.root
+                        .join(".orka/memory/resources")
+                        .join(&id)
+                        .join("content.md")
+                } else {
+                    f.root.join("COLLISION.md")
+                }
+            }
+        };
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "Private local content\n").unwrap();
+        db::upsert(
+            &f.db,
+            "resources",
+            &id,
+            f.project["id"].as_str().unwrap(),
+            &resource,
+        )
+        .unwrap();
+        let original = fs::read(&path).unwrap();
+        let error = sync::materialize(&f.db, &f.project, &resource).unwrap_err();
+        assert!(
+            error.contains("Unindexed local files preserved"),
+            "{kind}/{governed}: {error}"
+        );
+        assert_eq!(fs::read(&path).unwrap(), original);
+        assert!(f.outbox().is_empty());
+        assert!(db::rows(&f.db, "SELECT value FROM drafts", &[])
+            .unwrap()
+            .is_empty());
+        assert!(indexer::binding(&f.db, &id).unwrap()["base"].is_null());
+        if kind == "skill" {
+            assert!(!f.root.join(".claude/skills/collision").exists());
+        }
+    }
+}
+
+#[test]
+fn incoming_skill_checks_unbound_mirror_before_updating_either_copy() {
+    let f = Fixture::new();
+    let original = b"Original accepted skill\n";
+    let first = f.root.join(".agents/skills/collision");
+    let second = f.root.join(".claude/skills/collision");
+    fs::create_dir_all(&first).unwrap();
+    fs::create_dir_all(&second).unwrap();
+    fs::write(first.join("SKILL.md"), original).unwrap();
+    fs::write(second.join("SKILL.md"), "Private unindexed mirror\n").unwrap();
+    let files = json!(packages::directory(&first).unwrap());
+    let id = uuid::Uuid::new_v4().to_string();
+    let base = json!({"resourceId":id,"projectId":f.project["id"],"kind":"skill","source":"shared","logicalPath":"collision","title":"Collision","files":files,"revision":1,"deleted":false});
+    let binding = json!({"paths":[first],"base":base,"writeGuard":indexer::manifest_hash(&files),"guards":[indexer::manifest_hash(&files)]});
+    db::upsert(
+        &f.db,
+        "bindings",
+        &id,
+        f.project["id"].as_str().unwrap(),
+        &binding,
+    )
+    .unwrap();
+    let incoming = b"New accepted shared skill\n";
+    let mut resource = base;
+    resource["revision"] = json!(2);
+    resource["files"] = json!([{"path":"SKILL.md","hash":db::blob(incoming).unwrap(),"size":incoming.len(),"executable":false}]);
+    assert!(sync::materialize(&f.db, &f.project, &resource)
+        .unwrap_err()
+        .contains("Unindexed local files preserved"));
+    assert_eq!(fs::read(first.join("SKILL.md")).unwrap(), original);
+    assert_eq!(
+        fs::read_to_string(second.join("SKILL.md")).unwrap(),
+        "Private unindexed mirror\n"
+    );
+    assert_eq!(indexer::binding(&f.db, &id).unwrap(), binding);
+}
+
+#[test]
+fn incoming_unbound_identical_skill_is_adopted_without_a_false_collision() {
+    let f = Fixture::new();
+    let path = f.root.join(".agents/skills/identical");
+    fs::create_dir_all(&path).unwrap();
+    fs::write(path.join("SKILL.md"), "Already the accepted package\n").unwrap();
+    let resource = json!({"resourceId":uuid::Uuid::new_v4().to_string(),"projectId":f.project["id"],"kind":"skill","source":"shared","logicalPath":"identical","title":"Identical","files":packages::directory(&path).unwrap(),"revision":1,"deleted":false});
+    sync::materialize(&f.db, &f.project, &resource).unwrap();
+    assert_eq!(
+        fs::read(path.join("SKILL.md")).unwrap(),
+        fs::read(f.root.join(".claude/skills/identical/SKILL.md")).unwrap()
+    );
+    assert_eq!(
+        indexer::binding(&f.db, resource["resourceId"].as_str().unwrap()).unwrap()["base"],
+        resource
+    );
+    assert!(f.outbox().is_empty());
+}

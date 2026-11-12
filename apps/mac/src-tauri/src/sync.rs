@@ -364,6 +364,39 @@ fn automatic_skill_binding(
     Ok(binding)
 }
 
+fn guard_unbound_destinations(
+    binding: &Value,
+    resource: &Value,
+    root: &Path,
+    paths: &[PathBuf],
+) -> Result<()> {
+    let unbound: Vec<_> = paths
+        .iter()
+        .filter(|path| {
+            !binding["paths"]
+                .as_array()
+                .is_some_and(|mapped| mapped.contains(&json!(path)))
+        })
+        .collect();
+    if unbound.is_empty() {
+        return Ok(());
+    }
+    let incoming = indexer::manifest_hash(&resource["files"]);
+    let empty = indexer::manifest_hash(&json!([]));
+    let current = live_hash(
+        &json!({"paths":unbound,"base":resource}),
+        resource["kind"].as_str().ok_or("Missing kind")?,
+        root,
+    )?;
+    if current
+        .iter()
+        .any(|hash| hash != &empty && hash != &incoming)
+    {
+        return Err("Unindexed local files preserved; incoming version staged. Review or index the local files in Orka before applying this update.".into());
+    }
+    Ok(())
+}
+
 pub fn materialize(db: &rusqlite::Connection, project: &Value, resource: &Value) -> Result<()> {
     let scoped;
     let project = if project["sources"].is_array() && !project["sourceId"].is_string() {
@@ -595,6 +628,7 @@ pub fn materialize(db: &rusqlite::Connection, project: &Value, resource: &Value)
                 root.join(".agents/skills").join(&name),
                 root.join(".claude/skills").join(&name),
             ];
+            guard_unbound_destinations(&b, resource, &root, &paths)?;
             packages::install_mirrors(db, project, id, &paths, files)?;
             paths
         } else if kind == "plan" {
@@ -607,6 +641,7 @@ pub fn materialize(db: &rusqlite::Connection, project: &Value, resource: &Value)
                 resource["source"].as_str().ok_or("Missing plan source")?,
                 &path,
             )?;
+            guard_unbound_destinations(&b, resource, &root, std::slice::from_ref(&path))?;
             fs::create_dir_all(&base).map_err(|e| e.to_string())?;
             packages::write_file(&base, &path, files.first().ok_or("Missing plan file")?)?;
             vec![path]
@@ -622,6 +657,7 @@ pub fn materialize(db: &rusqlite::Connection, project: &Value, resource: &Value)
             } else {
                 project_memory(project, resource)?
             };
+            guard_unbound_destinations(&b, resource, &root, std::slice::from_ref(&path))?;
             fs::create_dir_all(&base).map_err(|e| e.to_string())?;
             packages::write_file(&base, &path, files.first().ok_or("Missing memory file")?)?;
             vec![path]

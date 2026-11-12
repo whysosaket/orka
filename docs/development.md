@@ -69,3 +69,7 @@ Follow [CONTRIBUTING.md](../CONTRIBUTING.md). Unit and browser tests use synthet
 ## Updating the shared protocol
 
 The desktop uses the checksummed client protocol package recorded in `vendor/manifest.json`. Maintainers with access to backend release artifacts can run `npm run backend:update -- vX.Y.Z [release-directory]`. The updater verifies SHA-256 and npm integrity and imports only `@portable/protocol` into the desktop dependency graph. Server source and tooling live independently in `server/`; update that reviewed snapshot using the canonical export procedure in the [server source-update guide](../server/README.md#source-updates). Building either tree needs no private registry access.
+
+## Plugin native acceptance
+
+After building the debug executable, run `npm run test:plugin-native`. This starts a disposable native stdio process with an in-memory test Keychain, synthetic HTTP service and separate agent homes. It checks original queued request identities and payloads, complete shared skill installation and executable flags, then verifies that permission removal and stale revisions stop further downloads. It uses no installed Orka account or personal project. Pass `--binary` to `python3 -B scripts/plugin-native-acceptance.py` to select another debug executable.
