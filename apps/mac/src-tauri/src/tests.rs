@@ -435,6 +435,22 @@ impl Fixture {
     }
 }
 #[test]
+fn sync_progress_local_scan_reports_the_file_without_an_estimated_total() {
+    let f = Fixture::new();
+    fs::write(f.root.join("AGENTS.md"), "Project instructions\n").unwrap();
+    let mut project = f.project.clone();
+    project["sharing"] =
+        json!({"memory":true,"skill":false,"plan":false,"session":false,"env":false});
+    indexer::scan(&f.db, &project).unwrap();
+    assert_eq!(db::get(&f.db, "syncProgress").unwrap(), Value::Null);
+    indexer::scan_with_progress(&f.db, &project).unwrap();
+    let progress = db::get(&f.db, "syncProgress").unwrap();
+    assert_eq!(progress["label"], "Checking local files");
+    assert_eq!(progress["detail"], "test · AGENTS.md");
+    assert_eq!(progress["total"], Value::Null);
+}
+
+#[test]
 fn sync_progress_tracks_requests_and_hides_stopped_or_signed_out_work() {
     let f = Fixture::new();
     assert_eq!(sync::current_progress(&f.db, true).unwrap(), Value::Null);

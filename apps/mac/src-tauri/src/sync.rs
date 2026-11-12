@@ -879,7 +879,7 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             }
         }
     }
-    for (index, p) in local.iter().enumerate() {
+    for p in &local {
         if crate::projects::foreground_waiting()? {
             return Ok(WorkspaceSync::Yielded);
         }
@@ -887,10 +887,10 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             db,
             "Checking local files",
             crate::projects::display_name(p),
-            index,
-            Some(local.len()),
+            0,
+            None,
         )?;
-        match indexer::scan(db, p) {
+        match indexer::scan_with_progress(db, p) {
             Ok(()) => {
                 db::set(
                     db,
@@ -996,14 +996,22 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             .iter()
             .find(|p| p["id"] == q["project"])
             .and_then(|p| crate::projects::display_name(p));
+        let input = &q["value"];
+        let resource_name = input["resource"]["title"]
+            .as_str()
+            .or(input["resource"]["logicalPath"].as_str());
+        let detail = [project_name, resource_name]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" · ");
         progress(
             db,
             "Uploading changes",
-            project_name,
+            Some(&detail),
             index,
             Some(uploads.len()),
         )?;
-        let input = &q["value"];
         let result = async {
             if q["path"] == crate::selective_sharing::QUEUE_PATH {
                 return crate::selective_sharing::send(db, owner, q).await;
@@ -1105,7 +1113,7 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         progress(
             db,
             "Uploading changes",
-            project_name,
+            Some(&detail),
             index + 1,
             Some(uploads.len()),
         )?;
@@ -1125,7 +1133,7 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             None,
         )?;
         let project = p["id"].as_str().ok_or("Missing project")?;
-        let scan = indexer::scan(db, p);
+        let scan = indexer::scan_with_progress(db, p);
         let scanned = scan.is_ok();
         record_result(db, project, scan)?;
         // A failed project preflight must not run permission-reset filesystem
@@ -1163,10 +1171,18 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             if crate::projects::foreground_waiting()? {
                 return Ok(WorkspaceSync::Yielded);
             }
+            let detail = format!(
+                "{} · {}",
+                crate::projects::display_name(p).unwrap_or("Project"),
+                r["title"]
+                    .as_str()
+                    .or(r["logicalPath"].as_str())
+                    .unwrap_or("Update")
+            );
             progress(
                 db,
                 "Applying updates on this Mac",
-                crate::projects::display_name(p),
+                Some(&detail),
                 index,
                 Some(resources.len()),
             )?;
@@ -1188,7 +1204,7 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             progress(
                 db,
                 "Applying updates on this Mac",
-                crate::projects::display_name(p),
+                Some(&detail),
                 index + 1,
                 Some(resources.len()),
             )?;

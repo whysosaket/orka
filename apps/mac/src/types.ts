@@ -63,6 +63,12 @@ export interface Binding {
   availableRevision?: number;
 }
 export type ServiceMode = "cloud" | "self-hosted";
+export interface SyncProgress {
+  label: string;
+  detail?: string | null;
+  completed?: number;
+  total?: number | null;
+}
 export interface Snapshot {
   onboarding?: import("./components/onboarding/model.js").OnboardingInfo;
   accountProfile?:
@@ -94,6 +100,7 @@ export interface Snapshot {
   outbox: { id: string; project: string; error: string | null }[];
   errors: { source: string; error: string }[];
   sync: { online: boolean; lastSync?: string; error?: string } | null;
+  syncProgress?: SyncProgress | null;
   daemon: { running: boolean; heartbeat?: string; error?: string } | null;
   devices:
     | {

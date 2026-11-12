@@ -83,6 +83,15 @@ On an upgraded server with a public service URL, **Invite member** copies a brow
 
 ## Sync
 
+Open the sync status in the workspace header to see current activity at the bottom
+of the Sync panel. Local checks show the project and file being checked without
+estimating a percentage. Upload and apply batches show a progress bar and completed
+item count when their total is known; counts apply to the current phase. Connecting,
+pulling updates, and other work without a known total show activity text instead.
+The footer updates while the panel is open, stays visible below scrolling issues,
+and clears when the pass finishes or fails. The header shows **Syncing…** during
+active work, so you can close and reopen the panel without losing progress.
+
 ### Opt-in project sharing
 
 Create and Join offer independent checkboxes for Memories, Sessions, Plans, Skills, and ENVs. Creating with nothing checked is supported. Choices are saved per project, per account, on this Mac before a folder is connected or sync is requested. Projects first discovered from another Mac also start private; existing local projects keep their prior sharing behavior until changed in **Settings → Project sharing**.

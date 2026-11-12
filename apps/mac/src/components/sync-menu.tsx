@@ -73,6 +73,14 @@ export function SyncMenu({
   const setOpen = onOpenChange ?? setLocalOpen;
   const running = Boolean(state.daemon?.running);
   const connected = running && state.sync?.online && !state.sync?.error;
+  const progress = running && state.user ? state.syncProgress : null;
+  const total = progress?.total;
+  const completed =
+    total && total > 0 && progress?.completed !== undefined
+      ? Math.min(total, Math.max(0, progress.completed))
+      : null;
+  const percentage =
+    completed !== null && total ? Math.round((completed / total) * 100) : null;
   const pending = state.outbox.filter((item) => item.error);
   const setup = state.onboarding?.setup;
   const setupProjects =
@@ -95,8 +103,9 @@ export function SyncMenu({
     : connected
       ? "Sync running"
       : "Sync offline";
-  const visibleStatus =
-    placement === "header" && connected
+  const visibleStatus = progress
+    ? "Syncing…"
+    : placement === "header" && connected
       ? state.outbox.length
         ? "Changes pending"
         : count
@@ -141,7 +150,11 @@ export function SyncMenu({
             className={`sync-status-indicator${connected ? " connected" : ""}`}
             aria-hidden="true"
           >
-            <span className={`dot${connected ? " connected" : ""}`} />
+            {progress ? (
+              <Icon icon={SyncIcon} size="xs" className="sync-activity-icon" />
+            ) : (
+              <span className={`dot${connected ? " connected" : ""}`} />
+            )}
           </span>
           <span className="sync-status-label">
             {placement === "header"
@@ -216,11 +229,11 @@ export function SyncMenu({
               <Button
                 variant="secondary"
                 size="sm"
-                disabled={busy || !running}
+                disabled={busy || !running || Boolean(progress)}
                 onClick={onSync}
               >
                 <Icon icon={SyncIcon} />
-                {busy ? "Working…" : "Sync now"}
+                {progress ? "Syncing…" : busy ? "Working…" : "Sync now"}
               </Button>
               {!running && (
                 <Button
@@ -405,6 +418,44 @@ export function SyncMenu({
               </div>
             ))}
           </div>
+          {progress && (
+            <div className="sync-menu-progress">
+              <div
+                className="sync-menu-progress-status"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <Icon
+                  icon={SyncIcon}
+                  size="sm"
+                  className="sync-activity-icon"
+                />
+                <div className="sync-menu-progress-copy">
+                  <strong>{progress.label}</strong>
+                  {progress.detail && <p>{progress.detail}</p>}
+                </div>
+                {percentage !== null && (
+                  <span className="sync-menu-progress-count">
+                    {completed} of {total}
+                  </span>
+                )}
+              </div>
+              {percentage !== null && (
+                <div
+                  className="sync-menu-progress-track"
+                  role="progressbar"
+                  aria-label={progress.label}
+                  aria-valuemin={0}
+                  aria-valuemax={total ?? undefined}
+                  aria-valuenow={completed ?? undefined}
+                  aria-valuetext={`${completed} of ${total} complete (${percentage}%)`}
+                >
+                  <span style={{ width: `${percentage}%` }} />
+                </div>
+              )}
+            </div>
+          )}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
