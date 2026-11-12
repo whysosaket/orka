@@ -49,21 +49,11 @@ Generated from the locked npm graph with `npm run licenses`. Includes developmen
 | [@keyv/bigmap](https://www.npmjs.com/package/@keyv/bigmap/v/1.3.1) | 1.3.1 | MIT |
 | [@keyv/serialize](https://www.npmjs.com/package/@keyv/serialize/v/1.1.1) | 1.1.1 | MIT |
 | [@modelcontextprotocol/sdk](https://www.npmjs.com/package/@modelcontextprotocol/sdk/v/1.32.1) | 1.32.1 | MIT |
-| [@stablelib/base64](https://www.npmjs.com/package/@stablelib/base64/v/1.0.1) | 1.0.1 | MIT |
-| [@types/body-parser](https://www.npmjs.com/package/@types/body-parser/v/1.19.6) | 1.19.6 | MIT |
-| [@types/connect](https://www.npmjs.com/package/@types/connect/v/3.4.38) | 3.4.38 | MIT |
 | [@types/esrecurse](https://www.npmjs.com/package/@types/esrecurse/v/4.3.1) | 4.3.1 | MIT |
 | [@types/estree](https://www.npmjs.com/package/@types/estree/v/1.0.9) | 1.0.9 | MIT |
-| [@types/express](https://www.npmjs.com/package/@types/express/v/5.0.6) | 5.0.6 | MIT |
-| [@types/express-serve-static-core](https://www.npmjs.com/package/@types/express-serve-static-core/v/5.1.3) | 5.1.3 | MIT |
-| [@types/http-errors](https://www.npmjs.com/package/@types/http-errors/v/2.0.5) | 2.0.5 | MIT |
 | [@types/json-schema](https://www.npmjs.com/package/@types/json-schema/v/7.0.15) | 7.0.15 | MIT |
 | [@types/node](https://www.npmjs.com/package/@types/node/v/24.19.2) | 24.19.2 | MIT |
 | [@types/pg](https://www.npmjs.com/package/@types/pg/v/8.23.1) | 8.23.1 | MIT |
-| [@types/qs](https://www.npmjs.com/package/@types/qs/v/6.15.1) | 6.15.1 | MIT |
-| [@types/range-parser](https://www.npmjs.com/package/@types/range-parser/v/1.2.7) | 1.2.7 | MIT |
-| [@types/send](https://www.npmjs.com/package/@types/send/v/1.2.1) | 1.2.1 | MIT |
-| [@types/serve-static](https://www.npmjs.com/package/@types/serve-static/v/2.2.0) | 2.2.0 | MIT |
 | [@typescript-eslint/eslint-plugin](https://www.npmjs.com/package/@typescript-eslint/eslint-plugin/v/8.71.1) | 8.71.1 | MIT |
 | [@typescript-eslint/parser](https://www.npmjs.com/package/@typescript-eslint/parser/v/8.71.1) | 8.71.1 | MIT |
 | [@typescript-eslint/project-service](https://www.npmjs.com/package/@typescript-eslint/project-service/v/8.71.1) | 8.71.1 | MIT |
@@ -128,7 +118,6 @@ Generated from the locked npm graph with `npm run licenses`. Includes developmen
 | [fast-deep-equal](https://www.npmjs.com/package/fast-deep-equal/v/3.1.3) | 3.1.3 | MIT |
 | [fast-json-stable-stringify](https://www.npmjs.com/package/fast-json-stable-stringify/v/2.1.0) | 2.1.0 | MIT |
 | [fast-levenshtein](https://www.npmjs.com/package/fast-levenshtein/v/2.0.6) | 2.0.6 | MIT |
-| [fast-sha256](https://www.npmjs.com/package/fast-sha256/v/1.3.0) | 1.3.0 | Unlicense |
 | [fast-uri](https://www.npmjs.com/package/fast-uri/v/3.1.9) | 3.1.9 | BSD-3-Clause |
 | [fdir](https://www.npmjs.com/package/fdir/v/6.5.0) | 6.5.0 | MIT |
 | [file-entry-cache](https://www.npmjs.com/package/file-entry-cache/v/11.1.5) | 11.1.5 | MIT |
@@ -202,7 +191,6 @@ Generated from the locked npm graph with `npm run licenses`. Includes developmen
 | [pgpass](https://www.npmjs.com/package/pgpass/v/1.0.5) | 1.0.5 | MIT |
 | [picomatch](https://www.npmjs.com/package/picomatch/v/4.0.7) | 4.0.7 | MIT |
 | [pkce-challenge](https://www.npmjs.com/package/pkce-challenge/v/5.0.1) | 5.0.1 | MIT |
-| [postal-mime](https://www.npmjs.com/package/postal-mime/v/2.7.6) | 2.7.6 | MIT-0 |
 | [postgres-array](https://www.npmjs.com/package/postgres-array/v/2.0.0) | 2.0.0 | MIT |
 | [postgres-bytea](https://www.npmjs.com/package/postgres-bytea/v/1.0.1) | 1.0.1 | MIT |
 | [postgres-date](https://www.npmjs.com/package/postgres-date/v/1.0.7) | 1.0.7 | MIT |
@@ -216,7 +204,6 @@ Generated from the locked npm graph with `npm run licenses`. Includes developmen
 | [range-parser](https://www.npmjs.com/package/range-parser/v/1.3.0) | 1.3.0 | MIT |
 | [raw-body](https://www.npmjs.com/package/raw-body/v/3.0.2) | 3.0.2 | MIT |
 | [require-from-string](https://www.npmjs.com/package/require-from-string/v/2.0.2) | 2.0.2 | MIT |
-| [resend](https://www.npmjs.com/package/resend/v/6.32.1) | 6.32.1 | MIT |
 | [router](https://www.npmjs.com/package/router/v/2.2.0) | 2.2.0 | MIT |
 | [safer-buffer](https://www.npmjs.com/package/safer-buffer/v/2.1.2) | 2.1.2 | MIT |
 | [semver](https://www.npmjs.com/package/semver/v/7.8.5) | 7.8.5 | ISC |
@@ -230,7 +217,6 @@ Generated from the locked npm graph with `npm run licenses`. Includes developmen
 | [side-channel-map](https://www.npmjs.com/package/side-channel-map/v/1.0.1) | 1.0.1 | MIT |
 | [side-channel-weakmap](https://www.npmjs.com/package/side-channel-weakmap/v/1.0.2) | 1.0.2 | MIT |
 | [split2](https://www.npmjs.com/package/split2/v/4.2.0) | 4.2.0 | ISC |
-| [standardwebhooks](https://www.npmjs.com/package/standardwebhooks/v/1.1.1) | 1.1.1 | MIT |
 | [statuses](https://www.npmjs.com/package/statuses/v/2.0.2) | 2.0.2 | MIT |
 | [tinyglobby](https://www.npmjs.com/package/tinyglobby/v/0.2.17) | 0.2.17 | MIT |
 | [toidentifier](https://www.npmjs.com/package/toidentifier/v/1.0.1) | 1.0.1 | MIT |

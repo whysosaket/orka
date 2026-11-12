@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import { Store } from "./bridge/store.js";
-import { Blobs } from "./reference/blobs.js";
+import { Blobs } from "./fixtures/blobs.js";
 import { createApi } from "./bridge/main.js";
-import { authSettings } from "./reference/auth.js";
+import { authSettings } from "./bridge/auth.js";
 import { GitHubRepositories, githubSettings } from "./bridge/github.js";
 
 for (const mode of ["cloud", "self-hosted"] as const)
@@ -113,7 +113,6 @@ for (const mode of ["cloud", "self-hosted"] as const)
       async (token) => token,
       undefined,
       { ...authSettings({}), mode },
-      undefined,
       false,
       github,
     );

@@ -14,9 +14,9 @@ import {
 import { Store } from "./bridge/store.js";
 import { migrate } from "./bridge/migrations.js";
 import { createApi } from "./bridge/main.js";
-import { Blobs, bytesHash } from "./reference/blobs.js";
-import { acceptingMemoryResolver } from "./reference/testing/memory-fixtures.js";
-import { identity, version } from "./reference/testing/env-fixtures.js";
+import { Blobs, bytesHash } from "./fixtures/blobs.js";
+import { acceptingMemoryResolver } from "./fixtures/memory-fixtures.js";
+import { identity, version } from "./fixtures/env-fixtures.js";
 
 // Review workflows remain supported when an owner selects restrictive rules.
 const reviewRule = {

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { Pool } from "pg";
 import { change, type Resource } from "@portable/protocol";
 import { Store } from "./bridge/store.js";
-import { Blobs, bytesHash } from "./reference/blobs.js";
+import { Blobs, bytesHash } from "./fixtures/blobs.js";
 import { createApi } from "./bridge/main.js";
 import { execFileSync } from "node:child_process";
 
