@@ -84,7 +84,7 @@ export function ProjectHome({
     [items],
   );
   // Reuse the reading views' bounded, cached metadata lookups for these six rows.
-  const sessionTitles = useSessionTitles(recent, true);
+  const sessionTitles = useSessionTitles(recent, true, scope);
   const skillSummaries = useSkillSummaries(recent, scope);
   const now = Date.now();
 

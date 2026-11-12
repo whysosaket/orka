@@ -281,18 +281,72 @@ fn collect(
             }
         }
     }
+    let origin = if project["catalogOnly"] == true {
+        crate::local_resources::origin(db, project, kind, source, logical, native_id)?
+    } else {
+        Value::Null
+    };
+    if project["catalogOnly"] == true
+        && db::rows(db, "SELECT value FROM resources WHERE id=?", &[&id])?.is_empty()
+    {
+        if let Some(known_id) = origin["resourceId"].as_str() {
+            id = known_id.to_owned();
+        } else if let Some(previous) = db::rows(db,"SELECT value FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? AND coalesce(json_extract(value,'$.resource.sourceId'),'')=? AND (json_extract(value,'$.resource.logicalPath')=? OR (? IS NOT NULL AND json_extract(value,'$.nativeId')=?)) LIMIT 1",&[&project_id,&kind,&project["sourceId"].as_str().unwrap_or(""),&logical,&native_id,&native_id])?.first() {
+            id = previous["resource"]["resourceId"].as_str().ok_or("Missing resource")?.to_owned();
+        }
+    }
     seen.insert(id.clone());
     let mut b = binding(db, &id)?;
     if project["catalogOnly"] == true {
         let mut resource = json!({"resourceId":id,"kind":kind,"source":source,"logicalPath":logical,"title":title,"files":files,"deleted":false});
         crate::sources::scope(project, &mut resource);
         resource["contextSources"] = scanned_sources(db, project, logical, native_id)?;
+        let previous = db::rows(db, "SELECT value FROM local_resources WHERE id=?", &[&id])?
+            .into_iter()
+            .next()
+            .unwrap_or(Value::Null);
+        let modified = paths
+            .iter()
+            .filter_map(|path| {
+                fs::metadata(path)
+                    .ok()
+                    .and_then(|meta| meta.modified().ok())
+            })
+            .max()
+            .map(|time| chrono::DateTime::<chrono::Utc>::from(time).to_rfc3339());
+        let updated = modified
+            .or_else(|| {
+                (previous["resource"]["files"] == resource["files"])
+                    .then(|| previous["updatedAt"].as_str().map(str::to_owned))
+                    .flatten()
+            })
+            .unwrap_or_else(db::now);
+        let published = db::rows(db, "SELECT value FROM resources WHERE id=?", &[&id])?
+            .into_iter()
+            .next()
+            .unwrap_or(Value::Null);
+        let owner = b["base"]["owner"]
+            .as_str()
+            .map(str::to_owned)
+            .or_else(|| previous["owner"].as_str().map(str::to_owned))
+            .or_else(|| published["owner"].as_str().map(str::to_owned))
+            .or_else(|| origin["owner"].as_str().map(str::to_owned));
+        if let Some(owner) = &owner {
+            let mut known = resource.clone();
+            known["owner"] = json!(owner);
+            crate::local_resources::remember_origin(
+                db,
+                project,
+                &known,
+                &json!({"nativeId":native_id,"paths":paths}),
+            )?;
+        }
         return db::upsert(
             db,
             "local_resources",
             &id,
             project_id,
-            &json!({"resource":resource,"paths":paths,"nativeId":native_id,"discoveredAt":db::now()}),
+            &json!({"resource":resource,"paths":paths,"nativeId":native_id,"discoveredAt":db::now(),"updatedAt":updated,"path":project["path"],"folderIdentity":project["folderIdentity"],"owner":owner,"generation":project["catalogGeneration"]}),
         );
     }
     if kind == "session" {
@@ -576,13 +630,133 @@ pub fn discover(db: &rusqlite::Connection, project: &Value, kind: &str) -> Resul
     local["sharing"] =
         json!({"memory":false,"skill":false,"session":false,"plan":false,"env":false});
     local["sharing"][kind] = json!(true);
-    db.execute(
-        "DELETE FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=?",
-        params![id, kind],
-    )
-    .map_err(|e| e.to_string())?;
+    let generation = Uuid::new_v4().to_string();
+    local["catalogGeneration"] = json!(generation);
+    let previous = db::rows(db,"SELECT value FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=?",&[&id,&kind])?;
     scan(db, &local)?;
+    db.execute("DELETE FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? AND coalesce(json_extract(value,'$.generation'),'')!=?",params![id,kind,generation]).map_err(|e|e.to_string())?;
+    restore_catalog_metadata(db, id, previous)?;
     db::rows(db, "SELECT value FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? ORDER BY json_extract(value,'$.resource.title'),id", &[&id,&kind])
+}
+
+fn restore_catalog_metadata(
+    db: &rusqlite::Connection,
+    project: &str,
+    previous: Vec<Value>,
+) -> Result<()> {
+    for old in previous {
+        let id = old["resource"]["resourceId"]
+            .as_str()
+            .ok_or("Missing resource")?;
+        let Some(mut current) =
+            db::rows(db, "SELECT value FROM local_resources WHERE id=?", &[&id])?
+                .into_iter()
+                .next()
+        else {
+            continue;
+        };
+        if old["owner"].is_string() && !current["owner"].is_string() {
+            current["owner"] = old["owner"].clone();
+        }
+        if old["resource"]["files"] == current["resource"]["files"] && old["updatedAt"].is_string()
+        {
+            current["updatedAt"] = old["updatedAt"].clone();
+        }
+        db::upsert(db, "local_resources", id, project, &current)?;
+    }
+    Ok(())
+}
+
+/// Refresh each source independently. Incomplete histories keep cached entries
+/// while healthy discoveries become available; fatal source errors roll back.
+pub fn discover_library(
+    db: &rusqlite::Connection,
+    project: &Value,
+    kind: &str,
+) -> Result<Vec<String>> {
+    let id = project["id"].as_str().ok_or("Missing project")?;
+    let reads_history = matches!(kind, "session" | "plan");
+    if reads_history {
+        history::clear_missing_session_errors(db)?;
+    }
+    let mut errors = Vec::new();
+    for mut source in crate::sources::views(project) {
+        if !source["path"].is_string() {
+            continue;
+        }
+        source["catalogOnly"] = json!(true);
+        source["sharing"] =
+            json!({"memory":false,"skill":false,"session":false,"plan":false,"env":false});
+        source["sharing"][kind] = json!(true);
+        let generation = Uuid::new_v4().to_string();
+        source["catalogGeneration"] = json!(generation);
+        let source_id = source["sourceId"].as_str().unwrap_or("");
+        let scan_id = if source_id.is_empty() {
+            id.to_owned()
+        } else {
+            format!("{id}:{source_id}")
+        };
+        let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
+        let previous = db::rows(&tx, "SELECT value FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? AND coalesce(json_extract(value,'$.resource.sourceId'),'')=?", &[&id,&kind,&source_id])?;
+        let scan = scan_source(&tx, &source, false);
+        let failures = db::rows(
+            &tx,
+            "SELECT json_object('error',error) FROM errors WHERE source GLOB ? OR (? AND source GLOB ?)",
+            &[
+                &format!("{scan_id}:scan:*"),
+                &reads_history,
+                &format!("{}*", history::UNATTRIBUTED_SESSION_PREFIX),
+            ],
+        )?;
+        let mut messages = failures
+            .iter()
+            .filter_map(|value| value["error"].as_str().map(str::to_owned))
+            .collect::<Vec<_>>();
+        if reads_history {
+            for (tool, directory) in [
+                ("codex", native::codex_home()?.join("sessions")),
+                ("claude", native::claude_home()?.join("projects")),
+            ] {
+                let previously_discovered = previous.iter().any(|entry| {
+                    entry["resource"]["source"] == tool
+                        && (kind == "session"
+                            || entry["resource"]["logicalPath"]
+                                .as_str()
+                                .is_some_and(|path| {
+                                    path.starts_with(&format!("{tool}/sessions/"))
+                                        || path.starts_with(&format!("{tool}/native/"))
+                                }))
+                });
+                if previously_discovered && !directory.is_dir() {
+                    messages.push(format!(
+                        "{tool} history is unavailable; keeping previously discovered items"
+                    ));
+                }
+            }
+        }
+        match scan {
+            Ok(()) => {
+                if messages.is_empty() {
+                    tx.execute("DELETE FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? AND coalesce(json_extract(value,'$.resource.sourceId'),'')=? AND coalesce(json_extract(value,'$.generation'),'')!=?",params![id,kind,source_id,generation]).map_err(|e|e.to_string())?;
+                }
+                // Embedded content has no physical timestamp. Preserve its timestamp
+                // across unchanged scans rather than making every refresh look new.
+                restore_catalog_metadata(&tx, id, previous)?;
+                tx.commit().map_err(|e| e.to_string())?;
+            }
+            Err(error) => {
+                tx.rollback().map_err(|e| e.to_string())?;
+                messages.push(error);
+            }
+        }
+        errors.extend(messages.into_iter().map(|message| {
+            format!(
+                "{}: {message}",
+                source["name"].as_str().unwrap_or("Local discovery")
+            )
+        }));
+    }
+    Ok(errors)
 }
 
 pub fn scan(db: &rusqlite::Connection, project: &Value) -> Result<()> {
@@ -1285,7 +1459,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool
                                             .to_string_lossy()
                                     )
                                 };
-                                if project["governed"] == true {
+                                if project["governed"] == true && project["catalogOnly"] != true {
                                     let mut known = db::get(
                                         db,
                                         &format!(

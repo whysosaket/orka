@@ -1256,7 +1256,7 @@ for (const role of ["owner", "admin"] as const)
     await button(settings, "Members").click();
     await expect(pending).toHaveCount(0);
     await expect(
-      settings.getByText("Jamie Rivera", { exact: true }),
+      settings.getByRole("list").getByText("Jamie Rivera", { exact: true }),
     ).toBeVisible();
   });
 
@@ -1271,7 +1271,7 @@ test("ordinary members do not render invitation recipients", async ({
   });
   await button(settings, "Members").click();
   await expect(
-    settings.getByText("Jamie Rivera", { exact: true }),
+    settings.getByRole("list").getByText("Jamie Rivera", { exact: true }),
   ).toBeVisible();
   await expect(settings.getByText("private@example.com")).toHaveCount(0);
   await expect(button(settings, "Add Member")).toHaveCount(0);

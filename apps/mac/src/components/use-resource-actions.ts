@@ -52,7 +52,12 @@ export function useResourceActions({
   scope: string;
 }) {
   const { resourceId: id, source, owner, title, kind } = resource;
-  const commandKey = JSON.stringify([scope, id, resource.revision]);
+  const commandKey = JSON.stringify([
+    scope,
+    id,
+    resource.revision,
+    resource.hash,
+  ]);
   const activeKey = useRef<string | null>(commandKey);
   activeKey.current = commandKey;
   const launching = useRef(false);

@@ -2,7 +2,7 @@
 
 ## What can leave a Mac
 
-Sharing is selected per project, per account, on each Mac. Newly added projects start with all categories unchecked. Disabling a category stops its future indexing/uploads and automatic local application; it does not delete content already shared with other members or the server.
+Sharing is selected per project, per account, on each Mac. Disabling a category stops its automatic publication and local application; it does not delete content already shared with other members or the server. The desktop's private Sessions, Memories, and Plans catalog can still discover and display local content. Reading, filtering, refreshing, or opening these items does not authorize publication or change sharing preferences. Shared reads remain subject to project and resource permissions.
 
 Memories, skills, plans, and sessions can contain private information. Session snapshots preserve complete conversations, including tool input/output and secrets that may have appeared in a conversation. Project scoping is not a secret-redaction guarantee. Review what you share and whom you invite.
 

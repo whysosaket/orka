@@ -937,6 +937,15 @@
     @apply mb-3 mt-0 shrink-0 rounded-lg bg-raised p-3 text-body-xs;
     overflow-wrap: anywhere;
   }
+  .resource-ownership-toolbar {
+    @apply mb-4 flex items-center justify-between gap-3;
+  }
+  .resource-discovery-status {
+    @apply mb-4 text-body-xs text-muted;
+  }
+  .resource-discovery-status p {
+    @apply mb-1;
+  }
   /* Shared index toolbar: search, source filter, count, sort. */
   .index-toolbar {
     @apply mb-4 flex shrink-0 items-center gap-3;

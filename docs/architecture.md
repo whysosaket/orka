@@ -12,6 +12,14 @@ The API is a separate service. The public `server/` tree includes its shared imp
 
 The user connects a local project and explicitly chooses categories to share. The daemon indexes those categories, persists an outbox, uploads changes, pulls accepted revisions, and applies permitted changes locally. Retry identities and project cursors make interrupted operations resumable. Repository code is transferred with Git.
 
+The desktop library also reads a separate private local catalog for sessions,
+memories, and plans, independent of automatic sharing. Discovery runs through a
+native asynchronous command when a collection opens or refreshes, rather than
+rescanning histories during every workspace snapshot. Local content is not added
+to the published resource table or outbox merely to make it readable. The UI merges
+local and authorized shared identities and filters ownership independently of
+provider and repository.
+
 Memories, plans, and text skill files use three-way merges. Binary files and executable flags use whole-value acceptance. Sessions preserve complete native snapshots and use explicit conflict handling; they are never line-merged. Active native sessions are protected from incoming replacement or deletion.
 
 ENV support remains in the native implementation for compatibility, but is currently disabled in the desktop UI. See the [security model](security-model.md).

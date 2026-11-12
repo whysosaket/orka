@@ -9,6 +9,7 @@ import { SortMenu } from "./sort-menu.js";
 import { memberLabel } from "./project-permissions.js";
 
 export type IndexSort = "updated" | "title" | "author" | "usage";
+export type OwnershipFilter = "all" | "mine" | "shared";
 export type SourceFilter = Resource["source"] | "all";
 
 /** Presentation-only view state for one collection; never touches stored data. */
@@ -17,12 +18,14 @@ export interface IndexFilters {
   source: SourceFilter;
   sort: IndexSort;
   repository?: string;
+  ownership?: OwnershipFilter;
 }
 
 export const defaultIndexFilters: IndexFilters = {
   query: "",
   source: "all",
   sort: "updated",
+  ownership: "all",
 };
 
 const sortLabels: Record<IndexSort, string> = {
@@ -67,6 +70,11 @@ export function applyIndexFilters(
 ): Resource[] {
   const query = filters.query.trim().toLocaleLowerCase();
   const matches = resources.filter((resource) => {
+    if (resource.kind !== "skill") {
+      if (filters.ownership === "mine" && resource.owner !== user) return false;
+      if (filters.ownership === "shared" && resource.owner === user)
+        return false;
+    }
     if (
       filters.repository &&
       filters.repository !== "all" &&
@@ -143,6 +151,7 @@ export function IndexToolbar({
   );
   const filtered = Boolean(
     filters.query.trim() ||
+    (kind !== "skill" && filters.ownership && filters.ownership !== "all") ||
     filters.source !== "all" ||
     (filters.repository && filters.repository !== "all"),
   );
