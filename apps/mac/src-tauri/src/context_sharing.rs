@@ -8,12 +8,12 @@ use uuid::Uuid;
 
 pub const QUEUE_PATH: &str = "/local/context-share";
 
-pub fn publication_resource(db: &Connection, project: &str, resource: &Value) -> Result<Value> {
-    let mut resource = resource.clone();
+pub fn publication_id(db: &Connection, project: &str, resource: &Value) -> Result<String> {
+    let original = resource["resourceId"].as_str().ok_or("Missing resource")?;
     if resource["kind"] == "memory" && resource["source"] != "shared" {
         // Reuse earlier promotions, including requests created before automatic sharing.
-        let previous = db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.resource.resourceId')=? AND json_extract(value,'$.submission.resource.resourceId') IS NOT NULL ORDER BY rowid LIMIT 1", &[&project, &resource["resourceId"].as_str()])?;
-        let id = previous
+        let previous = db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.resource.resourceId')=? AND json_extract(value,'$.submission.resource.resourceId') IS NOT NULL ORDER BY rowid LIMIT 1", &[&project, &original])?;
+        return Ok(previous
             .first()
             .and_then(|draft| draft["submission"]["resource"]["resourceId"].as_str())
             .map(str::to_owned)
@@ -28,7 +28,15 @@ pub fn publication_resource(db: &Connection, project: &str, resource: &Value) ->
                     .as_bytes(),
                 )
                 .to_string()
-            });
+            }));
+    }
+    Ok(original.to_owned())
+}
+
+pub fn publication_resource(db: &Connection, project: &str, resource: &Value) -> Result<Value> {
+    let id = publication_id(db, project, resource)?;
+    let mut resource = resource.clone();
+    if resource["kind"] == "memory" && resource["source"] != "shared" {
         resource["memory"] = json!({"topic":resource["title"].as_str().unwrap_or("Shared memory").chars().take(160).collect::<String>(),"scope":"","provider":resource["source"],"supersedes":[]});
         resource["resourceId"] = json!(id);
         if let Some(sources) = resource["contextSources"].as_array_mut() {

@@ -20,6 +20,27 @@ pub(crate) const UNATTRIBUTED_SESSION_ERROR: &str =
 const MAX_ATTRIBUTION_PREFIX: u64 = 1024 * 1024;
 const MAX_TOTAL: usize = 256 * 1024 * 1024;
 
+pub fn clear_missing_session_errors(db: &rusqlite::Connection) -> Result<()> {
+    for source in db::rows(
+        db,
+        "SELECT json_quote(source) FROM errors WHERE source GLOB ?",
+        &[&format!("{UNATTRIBUTED_SESSION_PREFIX}*")],
+    )? {
+        if let Some(path) = source
+            .as_str()
+            .and_then(|source| source.strip_prefix(UNATTRIBUTED_SESSION_PREFIX))
+        {
+            if fs::symlink_metadata(path)
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+            {
+                db.execute("DELETE FROM errors WHERE source=?", [source.as_str()])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn ordinal_reference(value: &Value) -> bool {
     match value {
         Value::Object(fields) => fields

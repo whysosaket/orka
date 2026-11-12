@@ -12,6 +12,8 @@ mod context_sharing_tests;
 mod global_skill_tests;
 #[path = "governance_tests.rs"]
 mod governance_tests;
+#[path = "local_resource_tests.rs"]
+mod local_resource_tests;
 #[path = "memory_context_tests.rs"]
 mod memory_context_tests;
 #[path = "plan_tests.rs"]

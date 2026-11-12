@@ -941,6 +941,12 @@ test("skill imports stay usable while usage loads and unavailable usage can be r
   ).toBeEnabled();
   await page.getByRole("button", { name: "Retry usage" }).click();
   await expect(page.getByText("Detected in 8 chats")).toBeVisible();
+  await fixture(page, "usage-partial");
+  await page
+    .getByRole("button", { name: "Add global skills", exact: true })
+    .click();
+  await expect(page.getByText("Detected in 8 chats")).toBeVisible();
+  await expect(page.locator(".global-skills-usage-status")).toBeHidden();
 });
 
 for (const viewport of [
@@ -1039,14 +1045,22 @@ test("main Skills remain browsable during usage loading, failures, and partial h
     page.getByText("Skill usage unavailable. History unreadable"),
   ).toHaveCount(0);
   await fixture(page, "project-partial");
-  await expect(
-    page.getByText(
-      "Usage covers available local history; some records could not be read.",
-    ),
-  ).toBeVisible();
+  const historyMessage =
+    "Usage covers available local history; some records could not be read.";
+  const historyNotice = page.getByText(historyMessage);
+  await expect(historyNotice).toHaveCount(0);
   await expect(page.locator(".skill-card").first()).toContainText(
     "Detected in 12 chats",
   );
+  await page.getByRole("button", { name: "Sync stopped", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "Skill usage details" }),
+  ).toContainText(historyMessage);
+  expect(
+    (await new AxeBuilder({ page }).include(".sync-menu").analyze()).violations,
+  ).toEqual([]);
+  await page.getByRole("button", { name: "Close sync status" }).click();
+  await expect(historyNotice).toHaveCount(0);
 });
 
 test("late usage results cannot leak into another project's Skills", async ({

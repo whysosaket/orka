@@ -305,7 +305,7 @@ struct Session {
 
 fn session(db: &Connection, id: &str) -> Result<Session> {
     Uuid::parse_str(id).map_err(|_| "Invalid session ID")?;
-    let resource = governance::resource(db, id)?;
+    let resource = crate::local_resources::resource(db, id)?;
     if resource["kind"] != "session" || resource["deleted"] == true {
         return Err("Session unavailable".into());
     }

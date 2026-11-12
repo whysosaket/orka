@@ -113,6 +113,7 @@ export function ResourceDetail(props: ResourceDetailProps) {
         key={resource.resourceId}
         id={resource.resourceId}
         revision={resource.revision}
+        contentKey={resource.files.map((file) => file.hash).join(":")}
         conflictId={view.preview}
         source={resource.source}
         header={header}

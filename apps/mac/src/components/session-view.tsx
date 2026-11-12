@@ -90,6 +90,7 @@ const SessionTurn = memo(function SessionTurn({
 export interface SessionViewProps {
   id: string;
   revision: number;
+  contentKey: string;
   /** Conflict preview to read instead of the shared version. */
   conflictId: string;
   source: Resource["source"];
@@ -106,6 +107,7 @@ export interface SessionViewProps {
 export function SessionView({
   id,
   revision,
+  contentKey,
   conflictId,
   source,
   header,
@@ -117,7 +119,7 @@ export function SessionView({
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
   const { messages, total, loading, error, removed, hasMore, loadMore, retry } =
-    useSessionMessages(id, revision, conflictId);
+    useSessionMessages(id, revision, conflictId, contentKey);
   const initialLoading = loading && total === null && !error;
   const conversation = mode === "conversation";
   // The header scrolls with the turns, so the virtualizer needs the list's

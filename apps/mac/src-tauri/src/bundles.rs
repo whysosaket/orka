@@ -11,10 +11,7 @@ use std::{
 };
 use uuid::Uuid;
 pub fn export(db: &rusqlite::Connection, id: &str, path: &Path) -> Result<()> {
-    let r = db::rows(db, "SELECT value FROM resources WHERE id=?", &[&id])?
-        .into_iter()
-        .next()
-        .ok_or("Resource not found")?;
+    let r = crate::local_resources::resource(db, id)?;
     let r = crate::session_forks::current_resource(db, &r)?;
     if r["deleted"] == true {
         return Err("Deleted resources cannot be exported".into());

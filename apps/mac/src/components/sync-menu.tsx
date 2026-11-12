@@ -43,11 +43,13 @@ export function SyncMenu({
   actionError = "",
   onDismissError,
   onResumeSetup,
+  skillUsagePartial = false,
 }: {
   placement?: "sidebar" | "header";
   actionError?: string;
   onDismissError?: () => void;
   onResumeSetup?: () => void;
+  skillUsagePartial?: boolean;
   state: Snapshot;
   issues: Map<string, string[]>;
   issueCount: number;
@@ -247,6 +249,18 @@ export function SyncMenu({
             </div>
           </div>
           <div className="sync-menu-feed">
+            {skillUsagePartial && (
+              <section
+                className="sync-menu-notification"
+                aria-label="Skill usage details"
+              >
+                <h3>Skill usage</h3>
+                <p>
+                  Usage covers available local history; some records could not
+                  be read.
+                </p>
+              </section>
+            )}
             {setup && (
               <section className="sync-menu-notification">
                 <h3>

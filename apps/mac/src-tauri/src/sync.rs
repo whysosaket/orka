@@ -861,24 +861,7 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         ),
         &[],
     )?;
-    let prefix = crate::history::UNATTRIBUTED_SESSION_PREFIX;
-    for source in db::rows(
-        db,
-        "SELECT json_quote(source) FROM errors WHERE source GLOB ?",
-        &[&format!("{prefix}*")],
-    )? {
-        if let Some(path) = source
-            .as_str()
-            .and_then(|source| source.strip_prefix(prefix))
-        {
-            if std::fs::symlink_metadata(path)
-                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-            {
-                db.execute("DELETE FROM errors WHERE source=?", [source.as_str()])
-                    .map_err(|e| e.to_string())?;
-            }
-        }
-    }
+    crate::history::clear_missing_session_errors(db)?;
     for p in &local {
         if crate::projects::foreground_waiting()? {
             return Ok(WorkspaceSync::Yielded);

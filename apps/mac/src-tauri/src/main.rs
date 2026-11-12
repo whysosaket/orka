@@ -13,6 +13,7 @@ mod global_skills;
 mod governance;
 mod history;
 mod indexer;
+mod local_resources;
 mod memory_context;
 mod native;
 mod onboarding;
@@ -251,6 +252,7 @@ fn main() {
             profiles::route_auth_callback,
             profiles::profile_events,
             commands::snapshot,
+            local_resources::local_resource_catalog,
             projects::project_command,
             settings::settings_command,
             commands::configure,

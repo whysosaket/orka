@@ -12,6 +12,8 @@ import type {
 export type ProjectResource = Resource & {
   repositoryName?: string;
   local?: true;
+  localChanges?: boolean;
+  sharedRevision?: number;
   global?: boolean;
   sharing?: "queued" | "approval" | "paused" | "blocked";
   fork?: {
