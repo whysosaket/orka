@@ -634,6 +634,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [brotli](https://crates.io/crates/brotli/9.0.0) | 9.0.0 | BSD-3-Clause AND MIT |
 | [brotli-decompressor](https://crates.io/crates/brotli-decompressor/6.0.1) | 6.0.1 | BSD-3-Clause/MIT |
 | [bs58](https://crates.io/crates/bs58/0.5.1) | 0.5.1 | MIT/Apache-2.0 |
+| [bstr](https://crates.io/crates/bstr/1.13.1) | 1.13.1 | MIT OR Apache-2.0 |
 | [bumpalo](https://crates.io/crates/bumpalo/3.20.3) | 3.20.3 | MIT OR Apache-2.0 |
 | [bytemuck](https://crates.io/crates/bytemuck/1.25.2) | 1.25.2 | Zlib OR Apache-2.0 OR MIT |
 | [byteorder](https://crates.io/crates/byteorder/1.5.0) | 1.5.0 | Unlicense OR MIT |
@@ -671,6 +672,8 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [cpufeatures](https://crates.io/crates/cpufeatures/0.3.1) | 0.3.1 | MIT OR Apache-2.0 |
 | [crc32fast](https://crates.io/crates/crc32fast/1.5.2) | 1.5.2 | MIT OR Apache-2.0 |
 | [crossbeam-channel](https://crates.io/crates/crossbeam-channel/0.5.17) | 0.5.17 | MIT OR Apache-2.0 |
+| [crossbeam-deque](https://crates.io/crates/crossbeam-deque/0.8.8) | 0.8.8 | MIT OR Apache-2.0 |
+| [crossbeam-epoch](https://crates.io/crates/crossbeam-epoch/0.9.21) | 0.9.21 | MIT OR Apache-2.0 |
 | [crossbeam-utils](https://crates.io/crates/crossbeam-utils/0.8.23) | 0.8.23 | MIT OR Apache-2.0 |
 | [crunchy](https://crates.io/crates/crunchy/0.2.4) | 0.2.4 | MIT |
 | [crypto-bigint](https://crates.io/crates/crypto-bigint/0.5.5) | 0.5.5 | Apache-2.0 OR MIT |
@@ -764,6 +767,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [glib-macros](https://crates.io/crates/glib-macros/0.18.5) | 0.18.5 | MIT |
 | [glib-sys](https://crates.io/crates/glib-sys/0.18.1) | 0.18.1 | MIT |
 | [glob](https://crates.io/crates/glob/0.3.4) | 0.3.4 | MIT OR Apache-2.0 |
+| [globset](https://crates.io/crates/globset/0.4.21) | 0.4.21 | Unlicense OR MIT |
 | [gobject-sys](https://crates.io/crates/gobject-sys/0.18.0) | 0.18.0 | MIT |
 | [group](https://crates.io/crates/group/0.13.0) | 0.13.0 | MIT/Apache-2.0 |
 | [gtk](https://crates.io/crates/gtk/0.18.2) | 0.18.2 | MIT |
@@ -807,6 +811,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [ident_case](https://crates.io/crates/ident_case/1.0.1) | 1.0.1 | MIT/Apache-2.0 |
 | [idna](https://crates.io/crates/idna/1.1.0) | 1.1.0 | MIT OR Apache-2.0 |
 | [idna_adapter](https://crates.io/crates/idna_adapter/1.2.2) | 1.2.2 | Apache-2.0 OR MIT |
+| [ignore](https://crates.io/crates/ignore/0.4.34) | 0.4.34 | Unlicense OR MIT |
 | [indexmap](https://crates.io/crates/indexmap/1.9.3) | 1.9.3 | Apache-2.0 OR MIT |
 | [indexmap](https://crates.io/crates/indexmap/2.14.2) | 2.14.2 | Apache-2.0 OR MIT |
 | [infer](https://crates.io/crates/infer/0.22.0) | 0.22.0 | MIT |

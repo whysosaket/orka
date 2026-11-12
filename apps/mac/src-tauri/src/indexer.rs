@@ -95,15 +95,116 @@ pub fn scoped_resource_id(
     }
     crate::sources::resource_id(project, kind, path)
 }
-fn instruction_allowed(root: &Path, relative: &Path) -> bool {
-    memory_context::discoverable(relative)
-        && !std::process::Command::new("git")
-            .arg("-C")
-            .arg(root)
-            .args(["check-ignore", "--quiet", "--"])
-            .arg(relative)
-            .output()
-            .is_ok_and(|output| output.status.success())
+fn has_git_repository(path: &Path) -> bool {
+    path.ancestors()
+        .any(|directory| fs::symlink_metadata(directory.join(".git")).is_ok())
+}
+
+fn unversioned_instruction_files(root: &Path) -> Result<BTreeSet<PathBuf>> {
+    let filter_root = root.to_path_buf();
+    let walker = ignore::WalkBuilder::new(root)
+        .hidden(false)
+        .ignore(false)
+        .require_git(false)
+        .current_dir(root)
+        .filter_entry(move |entry| {
+            entry
+                .path()
+                .strip_prefix(&filter_root)
+                .is_ok_and(memory_context::discoverable)
+                && !(entry.file_type().is_some_and(|kind| kind.is_dir())
+                    && fs::symlink_metadata(entry.path().join(".git")).is_ok())
+        })
+        .build();
+    let mut files = BTreeSet::new();
+    for entry in walker {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if let Some(error) = entry.error() {
+            return Err(error.to_string());
+        }
+        if entry.file_type().is_some_and(|kind| kind.is_file())
+            && matches!(
+                entry.file_name().to_str(),
+                Some("AGENTS.md" | "AGENTS.override.md" | "CLAUDE.md")
+            )
+        {
+            files.insert(
+                entry
+                    .path()
+                    .strip_prefix(root)
+                    .map_err(|e| e.to_string())?
+                    .to_path_buf(),
+            );
+        }
+    }
+    Ok(files)
+}
+
+fn git_instruction_allowed(path: &Path) -> Result<Option<bool>> {
+    let parent = path
+        .parent()
+        .and_then(|parent| parent.ancestors().find(|directory| directory.is_dir()))
+        .ok_or("Missing instruction folder")?;
+    if !has_git_repository(parent) {
+        return Ok(None);
+    }
+    let mut command = std::process::Command::new("git");
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("GIT_") {
+            command.env_remove(key);
+        }
+    }
+    let output = command
+        .arg("-C")
+        .arg(parent)
+        .args(["check-ignore", "--quiet", "--"])
+        .arg(path)
+        .output()
+        .map_err(|e| e.to_string())?;
+    match output.status.code() {
+        Some(0) => Ok(Some(false)),
+        Some(1) => Ok(Some(true)),
+        _ => Err(format!(
+            "Cannot verify Git ignore rules for {}",
+            path.display()
+        )),
+    }
+}
+
+fn instruction_files(root: &Path) -> Result<BTreeSet<PathBuf>> {
+    let unversioned = if has_git_repository(root) {
+        BTreeSet::new()
+    } else {
+        unversioned_instruction_files(root)?
+    };
+    let mut files = BTreeSet::new();
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| {
+            entry
+                .path()
+                .strip_prefix(root)
+                .is_ok_and(memory_context::discoverable)
+        })
+    {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if !entry.file_type().is_file()
+            || !matches!(
+                entry.file_name().to_str(),
+                Some("AGENTS.md" | "AGENTS.override.md" | "CLAUDE.md")
+            )
+        {
+            continue;
+        }
+        let relative = entry.path().strip_prefix(root).map_err(|e| e.to_string())?;
+        if !git_instruction_allowed(entry.path())?.unwrap_or_else(|| unversioned.contains(relative))
+        {
+            continue;
+        }
+        files.insert(relative.to_path_buf());
+    }
+    Ok(files)
 }
 pub fn manifest_hash(files: &Value) -> String {
     db::digest(files.to_string().as_bytes())
@@ -571,52 +672,58 @@ fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool
     )
     .map_err(|e| e.to_string())?;
     let mut seen = BTreeSet::new();
-    // Keep ignored source drafts recoverable without leaving fixture copies in review.
-    for mut draft in db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')='local' AND json_extract(value,'$.resource.kind')='memory'", &[&project_id])?.into_iter().filter(|_| project["catalogOnly"] != true) {
-        if !crate::sources::matches(project, &draft["resource"]) { continue; }
-        if let Some(relative) = draft["resource"]["logicalPath"].as_str().and_then(|p| p.strip_prefix("instructions/")) {
-            if !instruction_allowed(&root, Path::new(relative)) {
-                draft["status"] = json!("dismissed");
-                draft["dismissalReason"] = json!("ignored_source");
-                db::upsert(db, "drafts", draft["id"].as_str().ok_or("Missing draft")?, project_id, &draft)?;
-            }
+    let drafts: Vec<_> = db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')='local' AND json_extract(value,'$.resource.kind')='memory'", &[&project_id])?.into_iter().filter(|_| project["catalogOnly"] != true).collect();
+    // Finish ignore discovery before retiring drafts or inferring deletions.
+    let instructions = if crate::projects::sharing_allowed(project, "memory") || !drafts.is_empty()
+    {
+        instruction_files(&root)?
+    } else {
+        BTreeSet::new()
+    };
+    let mut ignored_drafts = Vec::new();
+    for draft in drafts {
+        if !crate::sources::matches(project, &draft["resource"]) {
+            continue;
         }
+        let Some(relative) = draft["resource"]["logicalPath"]
+            .as_str()
+            .and_then(|path| path.strip_prefix("instructions/"))
+        else {
+            continue;
+        };
+        let path = root.join(relative);
+        let allowed = memory_context::discoverable(Path::new(relative))
+            && if path.try_exists().map_err(|e| e.to_string())? {
+                instructions.contains(Path::new(relative))
+            } else {
+                git_instruction_allowed(&path)?.unwrap_or(true)
+            };
+        if !allowed {
+            ignored_drafts.push(draft);
+        }
+    }
+    // Keep ignored source drafts recoverable without leaving fixture copies in review.
+    for mut draft in ignored_drafts {
+        draft["status"] = json!("dismissed");
+        draft["dismissalReason"] = json!("ignored_source");
+        db::upsert(
+            db,
+            "drafts",
+            draft["id"].as_str().ok_or("Missing draft")?,
+            project_id,
+            &draft,
+        )?;
     }
     let claude = native::claude_home()?;
     let codex = native::codex_home()?;
     let mut memory_complete = true;
     if crate::projects::sharing_allowed(project, "memory") {
         let result = (|| {
-            for entry in WalkDir::new(&root)
-                .follow_links(false)
-                .into_iter()
-                .filter_entry(|e| {
-                    !e.file_type().is_dir()
-                        || e.path()
-                            .strip_prefix(&root)
-                            .is_ok_and(memory_context::discoverable)
-                })
-            {
-                let e = entry.map_err(|e| e.to_string())?;
-                if !e.file_type().is_file()
-                    || !matches!(
-                        e.file_name().to_str(),
-                        Some("AGENTS.md" | "AGENTS.override.md" | "CLAUDE.md")
-                    )
-                {
-                    continue;
-                }
-                let rel = e
-                    .path()
-                    .strip_prefix(&root)
-                    .map_err(|e| e.to_string())?
-                    .to_string_lossy()
-                    .to_string();
+            for relative in &instructions {
+                let path = root.join(relative);
+                let rel = relative.to_string_lossy().to_string();
                 let logical = format!("instructions/{rel}");
-                if !instruction_allowed(&root, Path::new(&rel)) {
-                    continue;
-                }
-                report_file(e.path())?;
+                report_file(&path)?;
                 seen.insert(scoped_resource_id(db, project, "memory", &logical)?);
                 let result = (|| {
                     collect(
@@ -627,8 +734,8 @@ fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool
                             source: "shared",
                             logical: &logical,
                             title: &rel,
-                            files: vec![packages::file(e.path(), "content.md")?],
-                            paths: vec![e.path().into()],
+                            files: vec![packages::file(&path, "content.md")?],
+                            paths: vec![path],
                             native_id: None,
                         },
                         &mut seen,
