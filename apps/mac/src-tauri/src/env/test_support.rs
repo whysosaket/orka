@@ -158,6 +158,10 @@ pub fn run() {
                     serde_json::from_value(input["context"].clone())
                         .map_err(|error| error.to_string())?,
                 )),
+                "plugin" => runtime.block_on(crate::plugin_mcp::call(
+                    super::field(&input, "tool")?,
+                    &input["input"],
+                )),
                 "governance" => runtime.block_on(crate::governance::governance_command(
                     input["operation"]
                         .as_str()

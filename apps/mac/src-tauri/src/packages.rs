@@ -303,3 +303,23 @@ pub fn recover_installations(db: &rusqlite::Connection) -> Result<()> {
     }
     Ok(())
 }
+
+pub(crate) fn recover_project_installations(
+    db: &rusqlite::Connection,
+    project: &Value,
+) -> Result<()> {
+    let id = project["id"].as_str().ok_or("Missing project")?;
+    for row in db::rows(db, "SELECT json_object('key',key,'journal',json(value)) FROM meta WHERE key LIKE 'installation:%' AND value!='null' AND json_extract(value,'$.project.id')=?", &[&id])? {
+        let journal = &row["journal"];
+        let source = crate::sources::for_resource(project, &journal["project"])
+            .ok_or("Connect the installation's original repository before repair")?;
+        crate::sources::validate(&source)?;
+        if source["path"] != journal["project"]["path"] || source["folderIdentity"] != journal["project"]["folderIdentity"] {
+            return Err("Installation folder changed; pending recovery data was preserved".into());
+        }
+        let key = row["key"].as_str().ok_or("Invalid installation key")?;
+        let result = recover_installation(db, key, journal);
+        crate::sync::record_result(db, &format!("{id}:{key}"), result)?;
+    }
+    Ok(())
+}

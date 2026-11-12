@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const endpoint = process.argv[2];
-const output = resolve(process.argv[3] ?? "artifacts/orka-plugin-0.2.0.zip");
+const output = resolve(process.argv[3] ?? "artifacts/orka-plugin-0.3.0.zip");
 const desktopOutput = output.replace(/\.zip$/i, "") + "-desktop.zip";
 const appBinary =
   process.argv[4] ??
@@ -64,24 +64,43 @@ const initialized = await rpc(1, "initialize", {
 if (initialized.serverInfo?.name !== "orka")
   throw new Error("Endpoint is not the implemented Orka MCP server");
 const listed = await rpc(2, "tools/list");
-const required = [
-  "get_profile",
-  "list_projects",
-  "get_project_context",
-  "list_team_members",
-  "list_sessions",
-  "fetch_resource",
-  "prepare_claude_handoff",
-];
+const required = {
+  get_profile: "orka.read",
+  list_projects: "orka.read",
+  get_project_context: "orka.read",
+  list_team_members: "orka.read",
+  list_sessions: "orka.read",
+  fetch_resource: "orka.read",
+  prepare_claude_handoff: "orka.read",
+  search_resources: "orka.read",
+  get_resource_history: "orka.read",
+  compare_revisions: "orka.read",
+  list_skills: "orka.read",
+  get_permissions: "orka.read",
+  list_requests: "orka.read",
+  create_memory: "orka.write",
+  update_plan: "orka.write",
+  resolve_conflict: "orka.write",
+  update_permissions: "orka.manage",
+  review_request: "orka.manage",
+};
+const scopes = ["orka.read", "orka.write", "orka.manage"];
 if (
-  listed.tools?.length !== required.length ||
-  !required.every((name) =>
+  !Array.isArray(listed.tools) ||
+  new Set(listed.tools.map((tool) => tool.name)).size !== listed.tools.length ||
+  !Object.entries(required).every(([name, scope]) =>
     listed.tools.some(
-      (t) =>
-        t.name === name &&
-        t.annotations?.readOnlyHint === true &&
-        t.securitySchemes?.some(
-          (s) => s.type === "oauth2" && s.scopes?.includes("orka.read"),
+      (tool) =>
+        tool.name === name &&
+        tool.annotations?.readOnlyHint === (scope === "orka.read") &&
+        Array.isArray(tool.securitySchemes) &&
+        tool.securitySchemes.length > 0 &&
+        tool.securitySchemes.every(
+          (scheme) =>
+            scheme.type === "oauth2" &&
+            Array.isArray(scheme.scopes) &&
+            scheme.scopes.includes("orka.read") &&
+            scheme.scopes.includes(scope),
         ),
     ),
   )
@@ -97,7 +116,8 @@ if (!metadataResponse.ok) throw new Error("OAuth discovery is unavailable");
 const metadata = await metadataResponse.json();
 if (
   metadata.resource !== url.href ||
-  !metadata.authorization_servers?.includes(url.origin + "/")
+  !metadata.authorization_servers?.includes(url.origin + "/") ||
+  !scopes.every((scope) => metadata.scopes_supported?.includes(scope))
 )
   throw new Error("OAuth resource or issuer does not match the MCP endpoint");
 const authorization = await (
@@ -108,7 +128,8 @@ const authorization = await (
 ).json();
 if (
   !authorization.code_challenge_methods_supported?.includes("S256") ||
-  !authorization.registration_endpoint
+  !authorization.registration_endpoint ||
+  !scopes.every((scope) => authorization.scopes_supported?.includes(scope))
 )
   throw new Error("PKCE and dynamic client registration are required");
 const manifest = JSON.parse(await readFile(join(root, "plugin.json"), "utf8"));
@@ -135,7 +156,7 @@ try {
               type: "oauth",
               client: { mode: "dcr" },
               baseScopes: ["orka.read"],
-              defaultScopes: ["orka.read"],
+              defaultScopes: scopes,
             },
           },
         },
@@ -246,7 +267,8 @@ try {
         endpoint: url.href,
         verifiedAt: new Date().toISOString(),
         protocolVersion: initialized.protocolVersion,
-        tools: required,
+        tools: Object.keys(required),
+        scopes,
         authenticatedWorkflowVerified: false,
         developmentOnly: url.protocol === "http:",
       },

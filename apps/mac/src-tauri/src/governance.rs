@@ -237,6 +237,15 @@ pub fn localize_outbox(db: &Connection, project: &Value) -> Result<()> {
     }
     Ok(())
 }
+pub(crate) fn block_legacy_retry(db: &Connection, project: &Value) -> Result<()> {
+    if !governed(project) {
+        return Ok(());
+    }
+    let id = project["id"].as_str().ok_or("Missing project")?;
+    db.execute("UPDATE outbox SET error='409: Legacy knowledge requires review in Orka before publication; original queued bytes and request ID preserved' WHERE project=? AND path NOT IN (?,?) AND json_extract(value,'$.resource.kind') IN ('memory','skill')",params![id,crate::global_skills::IMPORT_PATH,crate::selective_sharing::QUEUE_PATH]).map_err(|e|e.to_string())?;
+    Ok(())
+}
+
 pub fn detach_legacy_memory(db: &Connection, project: &Value) -> Result<()> {
     if !governed(project) {
         return Ok(());
