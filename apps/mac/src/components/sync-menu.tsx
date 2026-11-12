@@ -433,7 +433,9 @@ export function SyncMenu({
                 />
                 <div className="sync-menu-progress-copy">
                   <strong>{progress.label}</strong>
-                  {progress.detail && <p>{progress.detail}</p>}
+                  {progress.detail && (
+                    <p title={progress.detail}>{progress.detail}</p>
+                  )}
                 </div>
                 {percentage !== null && (
                   <span className="sync-menu-progress-count">

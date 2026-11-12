@@ -521,7 +521,7 @@
     @apply block text-label-xs text-foreground;
   }
   .sync-menu-progress-copy p {
-    @apply m-0 mt-1 text-body-xs text-secondary;
+    @apply m-0 mt-1 line-clamp-2 text-body-xs text-secondary;
     overflow-wrap: anywhere;
   }
   .sync-menu-progress-count {

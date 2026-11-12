@@ -225,10 +225,11 @@ for (const size of [
   }) => {
     await page.setViewportSize(size);
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.evaluate(() => {
+    const detail = `Orka · ${"WWWWWWWWWWWW/".repeat(60)}AGENTS.md`;
+    await page.evaluate((detail) => {
       window.syncProgressFixture.progress = {
         label: "Applying updates on this Mac",
-        detail: `Orka · ${"nested-folder/".repeat(8)}AGENTS.md`,
+        detail,
         completed: 3,
         total: 12,
       };
@@ -239,10 +240,14 @@ for (const size of [
           error: `File ${i} needs review before syncing`,
         }),
       );
-    });
+    }, detail);
     const dialog = await openSync(page);
     await expect(dialog).toContainText("24 sync issues");
     const footer = dialog.locator(".sync-menu-progress");
+    await expect(footer.locator(".sync-menu-progress-copy p")).toHaveAttribute(
+      "title",
+      detail,
+    );
     const bounds = (await dialog.boundingBox())!;
     const progressBounds = (await footer.boundingBox())!;
     expect(progressBounds.y + progressBounds.height).toBeLessThanOrEqual(
@@ -254,6 +259,16 @@ for (const size of [
         .locator(".sync-menu-feed")
         .evaluate((element) => element.scrollHeight > element.clientHeight),
     ).toBe(true);
+    const firstIssue = dialog.getByText("File 0 needs review before syncing", {
+      exact: true,
+    });
+    await expect(firstIssue).toBeInViewport({ ratio: 1 });
+    const lastIssue = dialog.getByText("File 23 needs review before syncing", {
+      exact: true,
+    });
+    await lastIssue.scrollIntoViewIfNeeded();
+    await expect(lastIssue).toBeInViewport({ ratio: 1 });
+    await expect(dialog.getByRole("progressbar")).toBeInViewport({ ratio: 1 });
     await expect(footer.locator(".sync-activity-icon svg")).toHaveCSS(
       "animation-name",
       "none",
