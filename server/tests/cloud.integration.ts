@@ -11,9 +11,9 @@ import {
   type Receipt,
 } from "@portable/protocol";
 import { Store, HttpError } from "./bridge/store.js";
-import { Blobs, bytesHash } from "./reference/blobs.js";
+import { Blobs, bytesHash } from "./fixtures/blobs.js";
 import { createApi } from "./bridge/main.js";
-import { acceptingMemoryResolver } from "./reference/testing/memory-fixtures.js";
+import { acceptingMemoryResolver } from "./fixtures/memory-fixtures.js";
 
 await test("exchange API: isolation, retries, merges, snapshots, and session conflict concurrency", async () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });

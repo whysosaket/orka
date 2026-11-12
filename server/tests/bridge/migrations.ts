@@ -1,13 +1,18 @@
 import type { Pool } from "pg";
 import { tmpdir } from "node:os";
-import { Blobs } from "../reference/blobs.js";
+import { Blobs } from "../fixtures/blobs.js";
 import { Store } from "./store.js";
-export {
-  initialMigration,
-  legacyMigrationNames,
-  LegacySchemaError,
-} from "../reference/migrations.js";
-import { LegacySchemaError } from "../reference/migrations.js";
+import { command } from "./command.js";
+import { HttpError } from "./errors.js";
+
+export const { initialMigration, legacyMigrationNames } = command<{
+  initialMigration: string;
+  legacyMigrationNames: string[];
+}>("migration-info");
+
+export class LegacySchemaError extends HttpError {
+  readonly code = "ORKA_BASELINE_REQUIRED";
+}
 const stores = new WeakMap<Pool, Store>();
 export async function migrate(
   pool: Pool,
@@ -22,7 +27,7 @@ export async function migrate(
     await store.invoke("migrate", options);
   } catch (error) {
     if ((error as { code?: string }).code === "ORKA_BASELINE_REQUIRED")
-      throw new LegacySchemaError();
+      throw new LegacySchemaError(500, (error as Error).message);
     throw error;
   }
 }

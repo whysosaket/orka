@@ -6,10 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import { Store } from "./bridge/store.js";
-import { Blobs, bytesHash } from "./reference/blobs.js";
+import { Blobs, bytesHash } from "./fixtures/blobs.js";
 import { createApi } from "./bridge/main.js";
-import { identity, version } from "./reference/testing/env-fixtures.js";
-import { startEnvMac, type EnvMac } from "./reference/testing/env-native.js";
+import { identity, version } from "./fixtures/env-fixtures.js";
+import { startEnvMac, type EnvMac } from "./fixtures/env-native.js";
 
 await test("shared project names are owner-only, validated, revisioned, and retryable", async () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });

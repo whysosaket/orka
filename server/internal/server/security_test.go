@@ -31,6 +31,12 @@ func TestJevRejectsMalformedAndUncertainAnswers(t *testing.T) {
 			object(field(v["answers"], "conflict_0"))["probabilities"] = Object{"keep_current": 0.3, "accept_incoming": 0.4, "keep_both": 0.3}
 		}, "jev_uncertain"},
 		{"wrong model", func(v Object) { v["model"] = "other" }, "jev_invalid_response"},
+		{"wrong answer id", func(v Object) { v["answers"] = Object{"wrong_id": field(v["answers"], "conflict_0")} }, "jev_invalid_answers"},
+		{"confidence out of bounds", func(v Object) { object(field(v["answers"], "conflict_0"))["confidence"] = 2 }, "jev_invalid_response"},
+		{"probabilities do not sum to one", func(v Object) {
+			object(field(v["answers"], "conflict_0"))["probabilities"] = Object{"keep_current": 0.9, "accept_incoming": 0.9, "keep_both": 0.9}
+		}, "jev_invalid_probabilities"},
+		{"choice disagrees with probabilities", func(v Object) { object(field(v["answers"], "conflict_0"))["choice"] = "keep_current" }, "jev_invalid_probabilities"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

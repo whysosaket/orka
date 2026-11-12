@@ -9,8 +9,8 @@ import { Pool } from "pg";
 import { defaultRolePolicies, type RolePolicies } from "@portable/protocol";
 import { Store } from "./bridge/store.js";
 import { createApi } from "./bridge/main.js";
-import { acceptingMemoryResolver } from "./reference/testing/memory-fixtures.js";
-import { Blobs, bytesHash } from "./reference/blobs.js";
+import { acceptingMemoryResolver } from "./fixtures/memory-fixtures.js";
+import { Blobs, bytesHash } from "./fixtures/blobs.js";
 
 await test("role policies: authorization, atomic rollback, replay, conflicts, access, membership and legacy migration", async () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -646,17 +646,14 @@ await test("role policies: authorization, atomic rollback, replay, conflicts, ac
     ]);
     const preview = (await legacyAction("migration-preview")).value;
     assert.equal(
-      await store.permissions.canRead(member, legacy, restricted, pool),
+      await store.permissions.canRead(member, legacy, restricted),
       false,
     );
     assert.equal(
-      await store.permissions.canRead(member, legacy, derived, pool),
+      await store.permissions.canRead(member, legacy, derived),
       false,
     );
-    assert.equal(
-      await store.permissions.canRead(owner, legacy, derived, pool),
-      true,
-    );
+    assert.equal(await store.permissions.canRead(owner, legacy, derived), true);
     assert.equal(preview.previous.pending.length, 1);
     assert.equal(preview.retainedRestrictions.length, 1);
     assert.equal(preview.previous.memberRules[0].rule.mode, "suggest");
@@ -723,17 +720,14 @@ await test("role policies: authorization, atomic rollback, replay, conflicts, ac
     );
     const reviews = (await legacyAction("requests")).value;
     assert.equal(
-      await store.permissions.canRead(member, legacy, restricted, pool),
+      await store.permissions.canRead(member, legacy, restricted),
       false,
     );
     assert.equal(
-      await store.permissions.canRead(member, legacy, derived, pool),
+      await store.permissions.canRead(member, legacy, derived),
       false,
     );
-    assert.equal(
-      await store.permissions.canRead(owner, legacy, derived, pool),
-      true,
-    );
+    assert.equal(await store.permissions.canRead(owner, legacy, derived), true);
     assert.equal(
       reviews.find(
         (request: { id: string }) => request.id === submitted.value.id,
@@ -868,7 +862,7 @@ await test(
   "isolated native Macs persist profiles, separate local sharing/names, block queued disconnect and revoked writes, and keep private files",
   { skip: !process.env.ORKA_ENV_NATIVE_BIN },
   async () => {
-    const { startEnvMac } = await import("./reference/testing/env-native.js");
+    const { startEnvMac } = await import("./fixtures/env-native.js");
     const { DatabaseSync } = await import("node:sqlite");
     const { mkdir, writeFile, readFile } = await import("node:fs/promises");
     const { createHash } = await import("node:crypto");

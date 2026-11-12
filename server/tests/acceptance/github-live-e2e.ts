@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { parseEnv } from "node:util";
 import { Pool } from "pg";
 import { Store } from "../bridge/store.js";
-import { Blobs } from "../reference/blobs.js";
+import { Blobs } from "../fixtures/blobs.js";
 import { migrate } from "../bridge/migrations.js";
 import { createApi } from "../bridge/main.js";
 import { githubSettings, GitHubRepositories } from "../bridge/github.js";
@@ -79,7 +79,6 @@ const repositories = new GitHubRepositories(store, github);
 const server = createApi(
   store,
   async (token) => token,
-  undefined,
   undefined,
   undefined,
   false,

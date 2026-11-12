@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { Store } from "./bridge/store.js";
-import { Blobs } from "./reference/blobs.js";
+import { Blobs } from "./fixtures/blobs.js";
 import { createApi } from "./bridge/main.js";
 
 await test("disabled GitHub integration rejects actions on the server", async () => {

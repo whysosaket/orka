@@ -8,9 +8,9 @@ import { Pool } from "pg";
 import type { Change, ResourceInput } from "@portable/protocol";
 import { Store, HttpError } from "./bridge/store.js";
 import { createApi } from "./bridge/main.js";
-import { authSettings } from "./reference/auth.js";
-import { Blobs } from "./reference/blobs.js";
-import { acceptingMemoryResolver } from "./reference/testing/memory-fixtures.js";
+import { authSettings } from "./bridge/auth.js";
+import { Blobs } from "./fixtures/blobs.js";
+import { acceptingMemoryResolver } from "./fixtures/memory-fixtures.js";
 
 for (const mode of ["cloud", "self-hosted"]) {
   await test(`${mode} selected sharing preserves permissions, snapshots, reviews and retry identity`, async () => {
