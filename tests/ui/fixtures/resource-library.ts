@@ -147,21 +147,21 @@ export async function resourceLibraryFixture(
                 },
               ],
               resources: shared,
-              governance: options.restricted
-                ? [
-                    {
-                      projectId: "project",
-                      catalog: {
-                        access: {
+              governance: [
+                {
+                  projectId: "project",
+                  catalog: {
+                    access: options.restricted
+                      ? {
                           memory: { mode: "hidden" },
                           session: { mode: "hidden" },
                           plan: { mode: "hidden" },
-                        },
-                        members: [],
-                      },
-                    },
-                  ]
-                : [],
+                        }
+                      : {},
+                    members: [{ id: "mira", role: "member", name: "Mira" }],
+                  },
+                },
+              ],
               bindings: [],
               conflicts: [],
               activity: [],

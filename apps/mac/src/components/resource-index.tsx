@@ -173,7 +173,7 @@ export function ResourceIndex({
             </Button>
           </div>
         )}
-        {(kind !== "skill" || resources.length > 0 || filtered) && (
+        {(resources.length > 0 || filtered) && (
           <IndexToolbar
             kind={kind}
             count={visible.length}

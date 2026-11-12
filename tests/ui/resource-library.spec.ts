@@ -35,7 +35,7 @@ for (const { kind, label } of kinds) {
       .click();
     await expect(table.locator("tbody tr")).toHaveCount(1);
     await expect(table).toContainText(`Mira's ${kind}`);
-    await expect(table).toContainText("Owner: mira");
+    await expect(table).toContainText("Owner: Mira");
     await table
       .getByRole("button", { name: `Mira's ${kind}`, exact: true })
       .click();
