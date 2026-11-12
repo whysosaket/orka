@@ -226,6 +226,9 @@ fn ignoring_an_automatically_queued_instruction_cancels_its_upload() {
     fs::write(f.root.join("AGENTS.md"), "Private source\n").unwrap();
     indexer::scan(&f.db, &f.project).unwrap();
     assert_eq!(f.outbox().len(), 1);
+    fs::write(f.root.join("AGENTS.md"), "Updated private source\n").unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    assert_eq!(f.outbox().len(), 1);
     fs::write(f.root.join(".gitignore"), "AGENTS.md\n").unwrap();
     indexer::scan(&f.db, &f.project).unwrap();
     assert!(f.outbox().is_empty());
@@ -233,6 +236,51 @@ fn ignoring_an_automatically_queued_instruction_cancels_its_upload() {
         db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap()[0]["dismissalReason"],
         "ignored_source"
     );
+}
+
+#[test]
+fn pending_approvals_resolve_and_pull_before_the_next_exact_base_snapshot_is_prepared() {
+    for kind in ["instructions", "skill"] {
+        let f = fixture("owner");
+        let path = if kind == "instructions" {
+            f.root.join("AGENTS.md")
+        } else {
+            f.root.join(".agents/skills/example/SKILL.md")
+        };
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "Version A\n").unwrap();
+        indexer::scan(&f.db, &f.project).unwrap();
+        let first = queued(&f);
+        let owner = db::get(&f.db, "user").unwrap();
+        let request = json!({"id":first["id"],"projectId":f.project["id"],"resourceId":first["value"]["resource"]["resourceId"],"status":"pending","author":owner,"canReview":true});
+        context_sharing::complete(&f.db, &first, &json!({"proposal":request})).unwrap();
+        f.db.execute("DELETE FROM outbox", []).unwrap();
+        fs::write(&path, "Version B\n").unwrap();
+        indexer::scan(&f.db, &f.project).unwrap();
+        context_sharing::queue_waiting(&f.db, &f.project).unwrap();
+        assert!(
+            f.outbox().is_empty(),
+            "pending proposal must serialize the next snapshot"
+        );
+        let mut approved = request;
+        approved["status"] = json!("approved");
+        governance::reconcile_requests(
+            &f.db,
+            f.project["id"].as_str().unwrap(),
+            &json!([approved]),
+        )
+        .unwrap();
+        let mut discovery = f.project.clone();
+        discovery["deferAutomaticSharing"] = json!(true);
+        indexer::scan(&f.db, &discovery).unwrap();
+        assert!(
+            f.outbox().is_empty(),
+            "pre-pull discovery must not freeze a stale base"
+        );
+        publish(&f, &first, 1);
+        context_sharing::queue_waiting(&f.db, &f.project).unwrap();
+        assert_eq!(queued(&f)["value"]["baseRevision"], 1);
+    }
 }
 
 #[test]

@@ -87,7 +87,13 @@ pub fn queue_automatic(db: &Connection, project: &Value, draft_id: &str) -> Resu
             "publish" | "suggest"
         )
     {
-        queue(db, project, draft_id)?;
+        if project["deferAutomaticSharing"] == true {
+            let mut draft = draft;
+            draft["automaticSharing"] = json!(true);
+            db::upsert(db, "drafts", draft_id, project_id, &draft)?;
+        } else {
+            queue(db, project, draft_id)?;
+        }
     }
     Ok(())
 }
@@ -214,7 +220,7 @@ pub fn queue(db: &Connection, project: &Value, draft_id: &str) -> Result<Value> 
     }
     if draft["submission"].is_null() {
         let prepared = publication_resource(db, project_id, &draft["resource"])?;
-        let pending: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM outbox WHERE project=? AND json_extract(value,'$.resource.resourceId')=?)", rusqlite::params![project_id, prepared["resourceId"].as_str()], |row| row.get(0)).map_err(|error|error.to_string())?;
+        let pending: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM outbox WHERE project=?1 AND json_extract(value,'$.resource.resourceId')=?2) OR EXISTS(SELECT 1 FROM drafts WHERE project=?1 AND json_extract(value,'$.status')='proposed' AND json_extract(value,'$.submission.resource.resourceId')=?2)", rusqlite::params![project_id, prepared["resourceId"].as_str()], |row| row.get(0)).map_err(|error|error.to_string())?;
         if pending {
             draft["automaticSharing"] = json!(true);
             db::upsert(db, "drafts", draft_id, project_id, &draft)?;

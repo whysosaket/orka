@@ -890,7 +890,9 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             0,
             None,
         )?;
-        match indexer::scan_with_progress(db, p) {
+        let mut discovery = p.clone();
+        discovery["deferAutomaticSharing"] = json!(true);
+        match indexer::scan_with_progress(db, &discovery) {
             Ok(()) => {
                 db::set(
                     db,
@@ -1138,7 +1140,9 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             None,
         )?;
         let project = p["id"].as_str().ok_or("Missing project")?;
-        let scan = indexer::scan_with_progress(db, p);
+        let mut discovery = p.clone();
+        discovery["deferAutomaticSharing"] = json!(true);
+        let scan = indexer::scan_with_progress(db, &discovery);
         let scanned = scan.is_ok();
         record_result(db, project, scan)?;
         // A failed project preflight must not run permission-reset filesystem
@@ -1146,11 +1150,6 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         if !scanned {
             continue;
         }
-        record_result(
-            db,
-            &format!("{project}:sharing"),
-            crate::context_sharing::queue_waiting(db, p),
-        )?;
         if crate::projects::foreground_waiting()? {
             return Ok(WorkspaceSync::Yielded);
         }
@@ -1169,6 +1168,13 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         if !pulled {
             continue;
         }
+        // Prepare unsent context only after pending approvals and accepted
+        // revisions have arrived; exact-base resources must not freeze early.
+        record_result(
+            db,
+            &format!("{project}:sharing"),
+            crate::context_sharing::queue_waiting(db, p),
+        )?;
         if db::get(&db::open()?, "user")? != owner {
             return Err("Account changed; sync will restart with its own cache".into());
         }

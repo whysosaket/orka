@@ -673,7 +673,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool
     )
     .map_err(|e| e.to_string())?;
     let mut seen = BTreeSet::new();
-    let drafts: Vec<_> = db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')='local' AND json_extract(value,'$.resource.kind')='memory'", &[&project_id])?.into_iter().filter(|_| project["catalogOnly"] != true).collect();
+    let drafts: Vec<_> = db::rows(db, "SELECT value FROM drafts WHERE project=?1 AND json_extract(value,'$.resource.kind')='memory' AND (json_extract(value,'$.status')='local' OR EXISTS (SELECT 1 FROM outbox WHERE path=?2 AND json_extract(outbox.value,'$.contextDraft')=drafts.id))", &[&project_id,&crate::context_sharing::QUEUE_PATH])?.into_iter().filter(|_| project["catalogOnly"] != true).collect();
     // Finish ignore discovery before retiring drafts or inferring deletions.
     let instructions = if crate::projects::sharing_allowed(project, "memory") || !drafts.is_empty()
     {
