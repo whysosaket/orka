@@ -135,6 +135,43 @@ impl Host for FakeHost {
     }
 }
 
+#[test]
+fn local_library_launcher_resumes_private_native_session_without_publishing_or_forking() {
+    let mut f = Fixture::new();
+    f.project["sharing"] =
+        json!({"memory":false,"skill":false,"session":false,"plan":false,"env":false});
+    db::upsert(
+        &f.db,
+        "projects",
+        f.project["id"].as_str().unwrap(),
+        "",
+        &f.project,
+    )
+    .unwrap();
+    super::sharing_tests::seed(&f);
+    let catalog = crate::local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    let id = catalog["resources"][0]["resourceId"].as_str().unwrap();
+    let host = FakeHost::default();
+    let options = session_launcher::options_with(id, &host).unwrap();
+    assert!(serde_json::to_value(options)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|option| option["available"] == true));
+    let result =
+        session_launcher::launch_with(id, Tool::Codex, Destination::Terminal, false, &host)
+            .unwrap();
+    assert_eq!(result["forked"], false);
+    assert!(host.forks.borrow().is_empty());
+    assert_eq!(host.calls.borrow().len(), 1);
+    assert!(f.outbox().is_empty());
+    assert!(f.resources().is_empty());
+    assert!(db::rows(&f.db, "SELECT value FROM bindings", &[])
+        .unwrap()
+        .is_empty());
+}
+
 fn session(f: &Fixture, source: &str, teammate: bool) -> Value {
     let native_id = uuid::Uuid::new_v4().to_string();
     let records = if source == "codex" {

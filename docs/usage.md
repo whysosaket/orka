@@ -1,6 +1,6 @@
 # Orka v1
 
-Add or join a project, choose what to share from this Mac, map it to a local folder, and inspect **Memories, Skills, Sessions, Plans**. All sharing choices start unchecked for newly added projects. Editing opens your existing editor. Settings contain project sharing, the sync interval, background service, and connected devices.
+Add or join a project, choose what to share from this Mac, map it to a local folder, and inspect **Memories, Skills, Sessions, Plans**. Sharing choices control automatic synchronization independently of local visibility. Editing opens your existing editor. Settings contain project sharing, the sync interval, background service, and connected devices.
 
 Governed projects add resource permissions, private memory candidates and reviewed
 publication. See [sharing and private memory](governed-sharing.md) for setup,
@@ -40,6 +40,18 @@ personal names also work with earlier compatible services. No data migration is
 required. The desktop pins the matching versioned 0.5.1 backend packages.
 
 ## Native resources
+
+Sessions, Memories, and Plans open on **All**. Choose **Mine** to see your local
+and shared items, or **Shared with me** for authorized items owned by other project
+members. Ownership stays with the original owner when someone else edits an item.
+Repository, provider, search, and sort controls apply within the selected view.
+
+Local items remain visible when automatic sharing is off. **On this Mac** means
+an item has not been published; viewing or opening it does not share it. A shared
+session can have newer private turns on this Mac without updating its published
+snapshot. Unshared items from another Mac are available only on that Mac. The
+local list refreshes independently of synchronization and remains usable offline.
+Use **Refresh local items** to check for changes without uploading anything.
 
 - Instructions: `AGENTS.md`, `AGENTS.override.md`, and `CLAUDE.md`, including nested project instructions. `CLAUDE.local.md` is excluded.
 - Claude auto-memory: the project's native memory directory, respecting `autoMemoryDirectory`.
@@ -94,9 +106,16 @@ active work, so you can close and reopen the panel without losing progress.
 
 ### Opt-in project sharing
 
-Create and Join offer independent checkboxes for Memories, Sessions, Plans, Skills, and ENVs. Creating with nothing checked is supported. Choices are saved per project, per account, on this Mac before a folder is connected or sync is requested. Projects first discovered from another Mac also start private; existing local projects keep their prior sharing behavior until changed in **Settings → Project sharing**.
+Create and Join offer independent **Share automatically** and **Only when asked**
+choices for Memories, Sessions, Plans, and Skills. New projects default to automatic
+Memories, Plans, and Skills, with Sessions shared only when asked. Choices are saved
+per project, per account, on this Mac. Existing choices are preserved and can be
+changed in **Settings → Sharing**. Local Sessions, Memories, and Plans remain visible
+under either choice.
 
-Only selected ordinary categories are indexed. In governed projects, memory and
+Automatic publication indexes only selected ordinary categories. Browsing Sessions,
+Memories, and Plans also discovers local content in a separate private catalog,
+without enabling sharing, queuing uploads, or creating review requests. In governed projects, memory and
 skill discovery creates private drafts. Shared skills install automatically into
 both project skill folders when Skills sharing is enabled and the member has
 access. Clean skill updates apply automatically; conflicting local edits are

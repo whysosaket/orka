@@ -73,6 +73,8 @@ import {
   skillSummaryKey,
 } from "./components/use-skill-summaries.js";
 import { useSessionTitles } from "./components/use-session-titles.js";
+import { useLocalResources } from "./components/use-local-resources.js";
+import { resourceCatalog } from "./components/resource-catalog.js";
 import { useWorkspace } from "./components/use-workspace.js";
 import { useAccount } from "./components/use-account.js";
 import { MemberNamesProvider } from "./components/member-names.js";
@@ -267,26 +269,33 @@ function WorkspaceApp({
     ? index.repository
     : "all";
   const projectPath = selectedProject?.path;
-  const catalogResources = useMemo<ProjectResource[]>(() => {
-    const sharedIds = new Set(
-      state.resources
-        .filter((item) => !item.deleted)
-        .map((item) => item.resourceId),
-    );
-    return [
-      ...state.resources,
-      ...(state.localSkills ?? []).filter(
-        (item) => !sharedIds.has(item.resourceId),
-      ),
-    ].map((item) => ({
-      ...item,
-      repositoryName: repositoryLabel(
-        state.projects.find((project) => project.id === item.projectId)
-          ?.sources ?? [],
-        item.sourceId,
-      ),
-    }));
-  }, [state.resources, state.localSkills, state.projects]);
+  const localCatalog = useLocalResources({
+    scope: workspaceScope,
+    project: selectedProject,
+    page: tab,
+    user: state.user,
+    serviceOrigin: state.config?.apiUrl,
+  });
+  const catalogResources = useMemo<ProjectResource[]>(
+    () =>
+      resourceCatalog(state.resources, [
+        ...(state.localSkills ?? []),
+        ...localCatalog.resources,
+      ]).map((item) => ({
+        ...item,
+        repositoryName: repositoryLabel(
+          state.projects.find((project) => project.id === item.projectId)
+            ?.sources ?? [],
+          item.sourceId,
+        ),
+      })),
+    [
+      state.resources,
+      state.localSkills,
+      localCatalog.resources,
+      state.projects,
+    ],
+  );
   const resources = useMemo(
     () =>
       catalogResources.filter(
@@ -294,7 +303,11 @@ function WorkspaceApp({
       ),
     [catalogResources, project, tab],
   );
-  const sessionTitles = useSessionTitles(resources, tab === "session");
+  const sessionTitles = useSessionTitles(
+    resources,
+    tab === "session",
+    workspaceScope,
+  );
   const skillSummaries = useSkillSummaries(resources, workspaceScope);
   const skillUsage = useProjectSkillUsage(
     project,
@@ -841,6 +854,9 @@ function WorkspaceApp({
                       ?.catalog.access[tab]?.mode === "hidden",
                   )}
                   loading={sessionTitles.loading}
+                  discovering={localCatalog.loading}
+                  discoveryErrors={localCatalog.errors}
+                  onRefreshLocal={localCatalog.refresh}
                   status={
                     sessionTitles.unavailable && !sessionTitles.loading ? (
                       <div className="session-preview-status" role="status">

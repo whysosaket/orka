@@ -68,6 +68,7 @@ export function SessionLauncher({
     scope,
     resource.resourceId,
     resource.revision,
+    resource.hash,
     resource.localForkId,
     project.id,
     project.path,

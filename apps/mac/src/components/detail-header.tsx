@@ -111,7 +111,7 @@ export function DetailHeader({
             </Button>
           )}
           <ResourceActions key={resource.resourceId}>
-            {!session && !resource.local && (
+            {!session && !resource.local && !resource.localChanges && (
               <Button
                 size="sm"
                 variant="tertiary"
@@ -144,12 +144,17 @@ export function DetailHeader({
               <div data-keep-open>
                 <CopyLinkButton
                   value={`orka://project/${project.id}/${resource.resourceId}`}
+                  label={
+                    resource.localChanges
+                      ? "Copy shared snapshot link"
+                      : "Copy link"
+                  }
                   disabled={busy}
                   onError={onError}
                 />
               </div>
             )}
-            {!resource.local && !session && resource.kind !== "memory" && (
+            {!session && resource.kind !== "memory" && (
               <Button
                 disabled={busy}
                 onClick={() => void actions.exportZip()}
@@ -169,32 +174,35 @@ export function DetailHeader({
                 {view.rawMarkdown ? "Show formatted" : "Show Markdown"}
               </Button>
             )}
-            {session && resource.revision > 0 && (
-              <>
-                <Button
-                  disabled={busy}
-                  onClick={() => void actions.sessionAction("copy")}
-                  variant="tertiary"
-                  size="sm"
-                >
-                  Create copy
-                </Button>
-                {(project.rolePolicies
-                  ? project.role === "owner" ||
-                    (project.role === "admin" &&
-                      resource.access?.mode === "publish")
-                  : resource.owner === user) && (
+            {session &&
+              !resource.local &&
+              !resource.localChanges &&
+              resource.revision > 0 && (
+                <>
                   <Button
                     disabled={busy}
-                    onClick={() => void actions.sessionAction("delete")}
+                    onClick={() => void actions.sessionAction("copy")}
                     variant="tertiary"
                     size="sm"
                   >
-                    Remove from history
+                    Create copy
                   </Button>
-                )}
-              </>
-            )}
+                  {(project.rolePolicies
+                    ? project.role === "owner" ||
+                      (project.role === "admin" &&
+                        resource.access?.mode === "publish")
+                    : resource.owner === user) && (
+                    <Button
+                      disabled={busy}
+                      onClick={() => void actions.sessionAction("delete")}
+                      variant="tertiary"
+                      size="sm"
+                    >
+                      Remove from history
+                    </Button>
+                  )}
+                </>
+              )}
             <div className="resource-diagnostics">
               {!resource.local && resource.revision > 0 && (
                 <p>Revision {resource.revision}</p>
@@ -214,6 +222,17 @@ export function DetailHeader({
           session ? undefined : { selected: view.file, onSelect: view.setFile }
         }
       />
+      {resource.local && (
+        <p className="detail-note">
+          On this Mac. This {resource.kind} hasn’t been shared.
+        </p>
+      )}
+      {resource.localChanges && (
+        <p className="detail-note">
+          Local changes are only on this Mac. Shared links open the last shared
+          snapshot.
+        </p>
+      )}
       {session && actions.launchError && (
         <p className="detail-note detail-launch-error" role="alert">
           {actions.launchError}
