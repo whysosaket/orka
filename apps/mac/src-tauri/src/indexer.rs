@@ -621,22 +621,18 @@ fn collect_embedded_plan(
 }
 
 pub fn discover(db: &rusqlite::Connection, project: &Value, kind: &str) -> Result<Vec<Value>> {
-    if !matches!(kind, "memory" | "skill" | "session" | "plan") {
-        return Err("Choose memories, skills, sessions, or plans".into());
-    }
     let id = project["id"].as_str().ok_or("Missing project")?;
-    let mut local = project.clone();
-    local["catalogOnly"] = json!(true);
-    local["sharing"] =
-        json!({"memory":false,"skill":false,"session":false,"plan":false,"env":false});
-    local["sharing"][kind] = json!(true);
     let generation = Uuid::new_v4().to_string();
-    local["catalogGeneration"] = json!(generation);
-    let previous = db::rows(db,"SELECT value FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=?",&[&id,&kind])?;
-    scan(db, &local)?;
-    db.execute("DELETE FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? AND coalesce(json_extract(value,'$.generation'),'')!=?",params![id,kind,generation]).map_err(|e|e.to_string())?;
-    restore_catalog_metadata(db, id, previous)?;
-    db::rows(db, "SELECT value FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? ORDER BY json_extract(value,'$.resource.title'),id", &[&id,&kind])
+    refresh_catalog(
+        db,
+        project,
+        kind,
+        &generation,
+        !project["sources"].is_array(),
+    )?;
+    // Sharing may use fresh discoveries only; incomplete scans retain older
+    // entries exclusively for the desktop's private reading catalog.
+    db::rows(db, "SELECT value FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? AND json_extract(value,'$.generation')=? ORDER BY json_extract(value,'$.resource.title'),id", &[&id,&kind,&generation])
 }
 
 fn restore_catalog_metadata(
@@ -674,6 +670,19 @@ pub fn discover_library(
     project: &Value,
     kind: &str,
 ) -> Result<Vec<String>> {
+    refresh_catalog(db, project, kind, &Uuid::new_v4().to_string(), false)
+}
+
+fn refresh_catalog(
+    db: &rusqlite::Connection,
+    project: &Value,
+    kind: &str,
+    generation: &str,
+    propagate_source_error: bool,
+) -> Result<Vec<String>> {
+    if !matches!(kind, "memory" | "skill" | "session" | "plan") {
+        return Err("Choose memories, skills, sessions, or plans".into());
+    }
     let id = project["id"].as_str().ok_or("Missing project")?;
     let reads_history = matches!(kind, "session" | "plan");
     if reads_history {
@@ -688,7 +697,6 @@ pub fn discover_library(
         source["sharing"] =
             json!({"memory":false,"skill":false,"session":false,"plan":false,"env":false});
         source["sharing"][kind] = json!(true);
-        let generation = Uuid::new_v4().to_string();
         source["catalogGeneration"] = json!(generation);
         let source_id = source["sourceId"].as_str().unwrap_or("");
         let scan_id = if source_id.is_empty() {
@@ -746,6 +754,9 @@ pub fn discover_library(
             }
             Err(error) => {
                 tx.rollback().map_err(|e| e.to_string())?;
+                if propagate_source_error {
+                    return Err(error);
+                }
                 messages.push(error);
             }
         }
