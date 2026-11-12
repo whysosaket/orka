@@ -194,13 +194,23 @@ pub fn capture(
             resource["contextSources"] = json!(sources);
         }
     }
+    let latest = if matches!(resource["kind"].as_str(), Some("memory" | "skill")) {
+        db::rows(db,"SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.resource.resourceId')=? ORDER BY coalesce(json_extract(value,'$.updatedAt'),json_extract(value,'$.createdAt')) DESC,rowid DESC LIMIT 1", &[&project_id,&resource["resourceId"].as_str()])?.into_iter().next()
+    } else {
+        None
+    };
     let draft = json!({"id":id,"projectId":project_id,"resource":resource,"paths":paths,"status":"local","createdAt":db::now()});
     db.execute(
         "INSERT OR IGNORE INTO drafts VALUES(?,?,?)",
         params![id, project_id, draft.to_string()],
     )
     .map_err(|e| e.to_string())?;
-    if resource["kind"] == "skill" {
+    if matches!(resource["kind"].as_str(), Some("memory" | "skill"))
+        && latest.as_ref().is_some_and(|latest| latest["id"] != id)
+    {
+        db.execute("UPDATE drafts SET value=json_remove(json_set(value,'$.status','local','$.resource',json(?)),'$.submission','$.requestId','$.request','$.dismissalReason') WHERE id=? AND project=? AND (json_extract(value,'$.status') IN ('published','approved') OR json_extract(value,'$.dismissalReason')='source_replaced')",params![resource.to_string(),id,project_id]).map_err(|error|error.to_string())?;
+    }
+    if resource["kind"] == "skill" || resource["kind"] == "memory" {
         db.execute(
             "UPDATE drafts SET value=json_set(value,'$.updatedAt',?) WHERE id=? AND project=?",
             params![db::now(), id, project_id],
@@ -694,7 +704,7 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
             if action=="draft" {
                 let related=related_knowledge(&db,project_id,&draft)?;
                 let (files,manifest)=preview_files(&draft["resource"]["files"])?;
-                let can_publish = crate::context_sharing::publication_mode(&db,project_id,&draft["resource"])? == "publish";
+                let can_publish = matches!(draft["resource"]["kind"].as_str(), Some("memory" | "skill")) && crate::context_sharing::publication_mode(&db,project_id,&draft["resource"])? == "publish";
                 return Ok(json!({"draft":draft,"files":files,"manifest":manifest,"related":related,"canPublish":can_publish}));
             }
             if let Some(files) = input.get("reviewedFiles") {
@@ -718,7 +728,7 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
                     return Err("Local or shared files changed; review the update again".into());
                 }
             }
-            if input["publishIfAllowed"] == true || crate::context_sharing::publication_mode(&db, project_id, &draft["resource"])? == "publish" {
+            if matches!(draft["resource"]["kind"].as_str(), Some("memory" | "skill")) && (input["publishIfAllowed"] == true || crate::context_sharing::publication_mode(&db, project_id, &draft["resource"])? == "publish") {
                 return crate::context_sharing::queue(&db, &p, id);
             }
             projects::require_sharing(&db,project_id,draft["resource"]["kind"].as_str().ok_or("Missing kind")?)?;

@@ -714,6 +714,11 @@ fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool
             project_id,
             &draft,
         )?;
+        db.execute(
+            "DELETE FROM outbox WHERE path=? AND json_extract(value,'$.contextDraft')=?",
+            params![crate::context_sharing::QUEUE_PATH, draft["id"].as_str()],
+        )
+        .map_err(|error| error.to_string())?;
     }
     let claude = native::claude_home()?;
     let codex = native::codex_home()?;

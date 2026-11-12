@@ -98,6 +98,13 @@ fn memory_edits_reuse_the_shared_identity_and_keep_native_learning_unchanged() {
         f.outbox().is_empty(),
         "consolidated shared bytes must not repeatedly republish native learning"
     );
+    let other_source = uuid::Uuid::new_v4().to_string();
+    db::set(
+        &f.db,
+        &format!("exposedSources:{}", f.project["id"].as_str().unwrap()),
+        &json!([accepted["resourceId"], other_source]),
+    )
+    .unwrap();
     fs::write(&native, "Updated learning\n").unwrap();
     indexer::scan(&f.db, &f.project).unwrap();
     let second = queued(&f);
@@ -107,7 +114,168 @@ fn memory_edits_reuse_the_shared_identity_and_keep_native_learning_unchanged() {
         second["value"]["resource"]["resourceId"]
     );
     assert_eq!(second["value"]["baseRevision"], 1);
+    assert_eq!(
+        second["value"]["resource"]["contextSources"],
+        json!([other_source])
+    );
     assert_eq!(f.resources().len(), 1);
+}
+
+fn publish(f: &Fixture, queued: &Value, revision: u64) {
+    let mut accepted = queued["value"]["resource"].clone();
+    accepted["projectId"] = f.project["id"].clone();
+    accepted["revision"] = json!(revision);
+    accepted["owner"] = db::get(&f.db, "user").unwrap();
+    accepted["updatedBy"] = accepted["owner"].clone();
+    context_sharing::complete(
+        &f.db,
+        queued,
+        &json!({"event":{"resource":accepted,"conflicts":[]}}),
+    )
+    .unwrap();
+    f.db.execute("DELETE FROM outbox WHERE id=?", [queued["id"].as_str()])
+        .unwrap();
+}
+
+#[test]
+fn reverting_to_a_published_native_version_creates_a_new_publication() {
+    for kind in ["memory", "skill"] {
+        let f = fixture("owner");
+        let path = if kind == "memory" {
+            native_memory(&f, "Version A\n")
+        } else {
+            let path = f.root.join(".agents/skills/example/SKILL.md");
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, "Version A\n").unwrap();
+            path
+        };
+        indexer::scan(&f.db, &f.project).unwrap();
+        let first = queued(&f);
+        publish(&f, &first, 1);
+        fs::write(&path, "Version B\n").unwrap();
+        indexer::scan(&f.db, &f.project).unwrap();
+        let second = queued(&f);
+        publish(&f, &second, 2);
+        fs::write(&path, "Version A\n").unwrap();
+        indexer::scan(&f.db, &f.project).unwrap();
+        let third = queued(&f);
+        assert_eq!(
+            third["value"]["resource"]["resourceId"],
+            first["value"]["resource"]["resourceId"]
+        );
+        assert_eq!(
+            third["value"]["resource"]["files"],
+            first["value"]["resource"]["files"]
+        );
+        assert_eq!(third["value"]["baseRevision"], 2);
+        assert_ne!(third["id"], first["id"]);
+        let before = f.outbox();
+        indexer::scan(&f.db, &f.project).unwrap();
+        assert_eq!(f.outbox(), before);
+    }
+}
+
+#[test]
+fn offline_context_edits_wait_for_the_previous_publication_before_freezing_their_base() {
+    for kind in ["instructions", "skill"] {
+        let f = fixture("owner");
+        let path = if kind == "instructions" {
+            f.root.join("AGENTS.md")
+        } else {
+            f.root.join(".agents/skills/example/SKILL.md")
+        };
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "Version A\n").unwrap();
+        indexer::scan(&f.db, &f.project).unwrap();
+        let first = queued(&f);
+        fs::write(&path, "Version B\n").unwrap();
+        indexer::scan(&f.db, &f.project).unwrap();
+        fs::write(&path, "Version C\n").unwrap();
+        indexer::scan(&f.db, &f.project).unwrap();
+        assert_eq!(
+            f.outbox().len(),
+            1,
+            "{kind}: only one snapshot may have a frozen base"
+        );
+        publish(&f, &first, 1);
+        context_sharing::queue_waiting(&f.db, &f.project).unwrap();
+        let latest = queued(&f);
+        assert_eq!(latest["value"]["baseRevision"], 1);
+        let bytes = db::blob_read(
+            latest["value"]["resource"]["files"][0]["hash"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            bytes, b"Version C\n",
+            "{kind}: coalesce unsent intermediate content"
+        );
+    }
+}
+
+#[test]
+fn ignoring_an_automatically_queued_instruction_cancels_its_upload() {
+    let f = fixture("owner");
+    assert!(std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(&f.root)
+        .status()
+        .unwrap()
+        .success());
+    fs::write(f.root.join("AGENTS.md"), "Private source\n").unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    assert_eq!(f.outbox().len(), 1);
+    fs::write(f.root.join(".gitignore"), "AGENTS.md\n").unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    assert!(f.outbox().is_empty());
+    assert_eq!(
+        db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap()[0]["dismissalReason"],
+        "ignored_source"
+    );
+}
+
+#[test]
+fn restricted_plan_and_session_scans_keep_their_suggestion_flow_without_context_queue_errors() {
+    let mut f = fixture("suggest");
+    super::sharing_tests::seed(&f);
+    f.project["sharing"] = json!({"plan":true,"session":true});
+    db::upsert(
+        &f.db,
+        "projects",
+        f.project["id"].as_str().unwrap(),
+        "",
+        &f.project,
+    )
+    .unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    let resources = f.resources();
+    assert!(!resources.is_empty());
+    f.db.execute("DELETE FROM outbox", []).unwrap();
+    for mut resource in resources {
+        resource["access"] = json!({"mode":"suggest"});
+        resource["files"] = json!([]);
+        db::upsert(
+            &f.db,
+            "resources",
+            resource["resourceId"].as_str().unwrap(),
+            f.project["id"].as_str().unwrap(),
+            &resource,
+        )
+        .unwrap();
+    }
+    indexer::scan(&f.db, &f.project).unwrap();
+    assert!(db::rows(
+        &f.db,
+        "SELECT json_object('source',source,'error',error) FROM errors",
+        &[]
+    )
+    .unwrap()
+    .is_empty());
+    assert!(!db::rows(&f.db, "SELECT value FROM drafts", &[])
+        .unwrap()
+        .is_empty());
+    assert!(f.outbox().is_empty());
 }
 
 #[test]

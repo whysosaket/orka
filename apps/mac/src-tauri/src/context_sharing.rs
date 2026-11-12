@@ -31,6 +31,9 @@ pub fn publication_resource(db: &Connection, project: &str, resource: &Value) ->
             });
         resource["memory"] = json!({"topic":resource["title"].as_str().unwrap_or("Shared memory").chars().take(160).collect::<String>(),"scope":"","provider":resource["source"],"supersedes":[]});
         resource["resourceId"] = json!(id);
+        if let Some(sources) = resource["contextSources"].as_array_mut() {
+            sources.retain(|source| source != &id);
+        }
         resource["source"] = json!("shared");
         resource["logicalPath"] = json!(format!("knowledge/{id}.md"));
     }
@@ -77,13 +80,26 @@ pub fn queue_automatic(db: &Connection, project: &Value, draft_id: &str) -> Resu
     .into_iter()
     .next()
     .ok_or("Draft unavailable")?;
-    if draft["status"] == "local"
+    if matches!(draft["resource"]["kind"].as_str(), Some("memory" | "skill"))
+        && draft["status"] == "local"
         && matches!(
             publication_mode(db, project_id, &draft["resource"])?.as_str(),
             "publish" | "suggest"
         )
     {
         queue(db, project, draft_id)?;
+    }
+    Ok(())
+}
+
+pub fn queue_waiting(db: &Connection, project: &Value) -> Result<()> {
+    let project_id = project["id"].as_str().ok_or("Missing project")?;
+    for draft in db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')='local' AND json_extract(value,'$.automaticSharing')=1 AND json_extract(value,'$.submission') IS NULL ORDER BY rowid", &[&project_id])? {
+        let latest = db::rows(db,"SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.resource.resourceId')=? ORDER BY coalesce(json_extract(value,'$.updatedAt'),json_extract(value,'$.createdAt')) DESC,rowid DESC LIMIT 1", &[&project_id,&draft["resource"]["resourceId"].as_str()])?;
+        if latest.first().is_none_or(|latest|latest["id"]!=draft["id"]) { continue; }
+        if projects::sharing_allowed(project, draft["resource"]["kind"].as_str().unwrap_or("")) {
+            queue_automatic(db, project, draft["id"].as_str().ok_or("Missing draft")?)?;
+        }
     }
     Ok(())
 }
@@ -198,6 +214,12 @@ pub fn queue(db: &Connection, project: &Value, draft_id: &str) -> Result<Value> 
     }
     if draft["submission"].is_null() {
         let prepared = publication_resource(db, project_id, &draft["resource"])?;
+        let pending: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM outbox WHERE project=? AND json_extract(value,'$.resource.resourceId')=?)", rusqlite::params![project_id, prepared["resourceId"].as_str()], |row| row.get(0)).map_err(|error|error.to_string())?;
+        if pending {
+            draft["automaticSharing"] = json!(true);
+            db::upsert(db, "drafts", draft_id, project_id, &draft)?;
+            return Ok(json!({"status":"queued"}));
+        }
         let mut resource = json!({});
         for key in [
             "resourceId",

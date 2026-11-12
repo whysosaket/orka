@@ -1146,6 +1146,11 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         if !scanned {
             continue;
         }
+        record_result(
+            db,
+            &format!("{project}:sharing"),
+            crate::context_sharing::queue_waiting(db, p),
+        )?;
         if crate::projects::foreground_waiting()? {
             return Ok(WorkspaceSync::Yielded);
         }
