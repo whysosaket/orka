@@ -149,6 +149,9 @@ pub fn project(db: &Connection, id: &str) -> Result<Value> {
         .next()
         .ok_or("Project unavailable".into())
 }
+pub fn latest_draft(db: &Connection, project: &str, resource: &str) -> Result<Option<Value>> {
+    Ok(db::rows(db,"SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.resource.resourceId')=? ORDER BY coalesce(json_extract(value,'$.updatedAt'),json_extract(value,'$.createdAt')) DESC,rowid DESC LIMIT 1", &[&project,&resource])?.into_iter().next())
+}
 pub fn capture(
     db: &Connection,
     project: &Value,
@@ -195,11 +198,44 @@ pub fn capture(
         }
     }
     let latest = if matches!(resource["kind"].as_str(), Some("memory" | "skill")) {
-        db::rows(db,"SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.resource.resourceId')=? ORDER BY coalesce(json_extract(value,'$.updatedAt'),json_extract(value,'$.createdAt')) DESC,rowid DESC LIMIT 1", &[&project_id,&resource["resourceId"].as_str()])?.into_iter().next()
+        latest_draft(
+            db,
+            project_id,
+            resource["resourceId"].as_str().ok_or("Missing resource")?,
+        )?
     } else {
         None
     };
-    let draft = json!({"id":id,"projectId":project_id,"resource":resource,"paths":paths,"status":"local","createdAt":db::now()});
+    let prepared = crate::context_sharing::publication_resource(db, project_id, &resource)?;
+    let current = db::rows(
+        db,
+        "SELECT value FROM resources WHERE id=? AND project=?",
+        &[&prepared["resourceId"].as_str(), &project_id],
+    )?
+    .into_iter()
+    .next()
+    .unwrap_or(Value::Null);
+    let base = if protected(&resource) {
+        indexer::binding(
+            db,
+            resource["resourceId"].as_str().ok_or("Missing resource")?,
+        )?["base"]["revision"]
+            .as_i64()
+            .unwrap_or(0)
+    } else {
+        current["revision"].as_i64().unwrap_or(0)
+    };
+    let preceding = latest
+        .as_ref()
+        .map(|latest| {
+            if latest["submission"].is_object() {
+                latest["id"].clone()
+            } else {
+                latest["precedingDraft"].clone()
+            }
+        })
+        .unwrap_or(Value::Null);
+    let draft = json!({"id":id,"projectId":project_id,"resource":resource,"paths":paths,"status":"local","createdAt":db::now(),"baseRevision":base,"precedingDraft":preceding});
     db.execute(
         "INSERT OR IGNORE INTO drafts VALUES(?,?,?)",
         params![id, project_id, draft.to_string()],
@@ -208,7 +244,7 @@ pub fn capture(
     if matches!(resource["kind"].as_str(), Some("memory" | "skill"))
         && latest.as_ref().is_some_and(|latest| latest["id"] != id)
     {
-        db.execute("UPDATE drafts SET value=json_remove(json_set(value,'$.status','local','$.resource',json(?)),'$.submission','$.requestId','$.request','$.dismissalReason') WHERE id=? AND project=? AND (json_extract(value,'$.status') IN ('published','approved') OR json_extract(value,'$.dismissalReason')='source_replaced')",params![resource.to_string(),id,project_id]).map_err(|error|error.to_string())?;
+        db.execute("UPDATE drafts SET value=json_remove(json_set(value,'$.status','local','$.resource',json(?),'$.baseRevision',?,'$.precedingDraft',json(?)),'$.submission','$.requestId','$.request','$.dismissalReason','$.conflictReview') WHERE id=? AND project=? AND (json_extract(value,'$.status') IN ('published','approved') OR json_extract(value,'$.dismissalReason')='source_replaced')",params![resource.to_string(),base,preceding.to_string(),id,project_id]).map_err(|error|error.to_string())?;
     }
     if resource["kind"] == "skill" || resource["kind"] == "memory" {
         db.execute(
@@ -705,7 +741,9 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
                 let related=related_knowledge(&db,project_id,&draft)?;
                 let (files,manifest)=preview_files(&draft["resource"]["files"])?;
                 let can_publish = matches!(draft["resource"]["kind"].as_str(), Some("memory" | "skill")) && crate::context_sharing::publication_mode(&db,project_id,&draft["resource"])? == "publish";
-                return Ok(json!({"draft":draft,"files":files,"manifest":manifest,"related":related,"canPublish":can_publish}));
+                let prepared=crate::context_sharing::publication_resource(&db,project_id,&draft["resource"])?;
+                let current=db::rows(&db,"SELECT value FROM resources WHERE id=? AND project=?", &[&prepared["resourceId"].as_str(),&project_id])?.into_iter().next().unwrap_or(Value::Null);
+                return Ok(json!({"draft":draft,"files":files,"manifest":manifest,"related":related,"canPublish":can_publish,"baseRevision":current["revision"].as_u64().unwrap_or(0),"before":if current["files"].is_array(){texts(&current["files"])?}else{json!({})}}));
             }
             if let Some(files) = input.get("reviewedFiles") {
                 if !files.is_array() || files != &draft["resource"]["files"]
@@ -713,22 +751,32 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
                     return Err("Local or shared files changed; review the update again".into());
                 }
                 if draft["resource"]["kind"] == "skill" {
-                    let latest = db::rows(&db,"SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.resource.resourceId')=? ORDER BY coalesce(json_extract(value,'$.updatedAt'),json_extract(value,'$.createdAt')) DESC, rowid DESC LIMIT 1", &[&project_id, &draft["resource"]["resourceId"].as_str().ok_or("Missing resource")?])?;
-                    if latest.first().is_none_or(|current| current["id"] != draft["id"]) {
+                    let latest = latest_draft(&db,project_id,draft["resource"]["resourceId"].as_str().ok_or("Missing resource")?)?;
+                    if latest.as_ref().is_none_or(|current| current["id"] != draft["id"]) {
                         return Err("Local or shared files changed; review the update again".into());
                     }
                 }
             }
             if let Some(revision) = input.get("reviewedRevision") {
-                let resource_id = draft["resource"]["resourceId"].as_str().ok_or("Missing resource")?;
+                let prepared=crate::context_sharing::publication_resource(&db,project_id,&draft["resource"])?;
+                let resource_id = prepared["resourceId"].as_str().ok_or("Missing resource")?;
                 let current = db::rows(&db, "SELECT value FROM resources WHERE id=? AND project=?", &[&resource_id, &project_id])?
                     .first().and_then(|resource| resource["revision"].as_u64()).unwrap_or(0);
                 if revision.as_u64() != Some(current)
                     || (!draft["submission"].is_null() && revision != &draft["submission"]["baseRevision"]) {
                     return Err("Local or shared files changed; review the update again".into());
                 }
+                draft["baseRevision"]=revision.clone();
+                draft["conflictReview"]=json!(false);
+                db::upsert(&db,"drafts",id,project_id,&draft)?;
             }
             if matches!(draft["resource"]["kind"].as_str(), Some("memory" | "skill")) && (input["publishIfAllowed"] == true || crate::context_sharing::publication_mode(&db, project_id, &draft["resource"])? == "publish") {
+                if input["publishIfAllowed"]==true && input["reviewedRevision"].is_null() {
+                    let prepared=crate::context_sharing::publication_resource(&db,project_id,&draft["resource"])?;
+                    draft["baseRevision"]=db::rows(&db,"SELECT value FROM resources WHERE id=? AND project=?", &[&prepared["resourceId"].as_str(),&project_id])?.first().map(|resource|resource["revision"].clone()).unwrap_or(json!(0));
+                    draft["conflictReview"]=json!(false);
+                    db::upsert(&db,"drafts",id,project_id,&draft)?;
+                }
                 return crate::context_sharing::queue(&db, &p, id);
             }
             projects::require_sharing(&db,project_id,draft["resource"]["kind"].as_str().ok_or("Missing kind")?)?;

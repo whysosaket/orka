@@ -24,6 +24,8 @@ interface SuggestionDetail {
   files: Record<string, string>;
   related: { resource: Resource; duplicate: boolean }[];
   canPublish?: boolean;
+  baseRevision?: number;
+  before?: Record<string, string>;
 }
 export function ProjectRequests({
   project,
@@ -263,7 +265,7 @@ export function ProjectRequests({
                   {suggestion.draft.resource.memory!.supersedes.join(", ")}
                 </p>
               )}
-              <FileReview files={suggestion.files} />
+              <FileReview files={suggestion.files} before={suggestion.before} />
               {["stale", "rejected"].includes(suggestion.draft.status) && (
                 <Button
                   disabled={busy}
@@ -301,6 +303,9 @@ export function ProjectRequests({
                     await call("submit-draft", {
                       id: suggestion.draft.id,
                       reviewedFiles: suggestion.draft.resource.files,
+                      ...(suggestion.baseRevision === undefined
+                        ? {}
+                        : { reviewedRevision: suggestion.baseRevision }),
                     });
                     setSuggestion(null);
                     setMessage(

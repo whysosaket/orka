@@ -82,6 +82,7 @@ pub fn queue_automatic(db: &Connection, project: &Value, draft_id: &str) -> Resu
     .ok_or("Draft unavailable")?;
     if matches!(draft["resource"]["kind"].as_str(), Some("memory" | "skill"))
         && draft["status"] == "local"
+        && draft["conflictReview"] != true
         && matches!(
             publication_mode(db, project_id, &draft["resource"])?.as_str(),
             "publish" | "suggest"
@@ -101,8 +102,8 @@ pub fn queue_automatic(db: &Connection, project: &Value, draft_id: &str) -> Resu
 pub fn queue_waiting(db: &Connection, project: &Value) -> Result<()> {
     let project_id = project["id"].as_str().ok_or("Missing project")?;
     for draft in db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')='local' AND json_extract(value,'$.automaticSharing')=1 AND json_extract(value,'$.submission') IS NULL ORDER BY rowid", &[&project_id])? {
-        let latest = db::rows(db,"SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.resource.resourceId')=? ORDER BY coalesce(json_extract(value,'$.updatedAt'),json_extract(value,'$.createdAt')) DESC,rowid DESC LIMIT 1", &[&project_id,&draft["resource"]["resourceId"].as_str()])?;
-        if latest.first().is_none_or(|latest|latest["id"]!=draft["id"]) { continue; }
+        let latest = governance::latest_draft(db,project_id,draft["resource"]["resourceId"].as_str().ok_or("Missing resource")?)?;
+        if latest.as_ref().is_none_or(|latest|latest["id"]!=draft["id"]) { continue; }
         if projects::sharing_allowed(project, draft["resource"]["kind"].as_str().unwrap_or("")) {
             queue_automatic(db, project, draft["id"].as_str().ok_or("Missing draft")?)?;
         }
@@ -243,7 +244,7 @@ pub fn queue(db: &Connection, project: &Value, draft_id: &str) -> Result<Value> 
                 resource[key] = prepared[key].clone();
             }
         }
-        let base = db::rows(
+        let current = db::rows(
             db,
             "SELECT value FROM resources WHERE id=? AND project=?",
             &[
@@ -251,9 +252,33 @@ pub fn queue(db: &Connection, project: &Value, draft_id: &str) -> Result<Value> 
                 &project_id,
             ],
         )?
-        .first()
-        .map(|resource| resource["revision"].clone())
-        .unwrap_or(json!(0));
+        .into_iter()
+        .next()
+        .unwrap_or(Value::Null);
+        let mut base = draft["baseRevision"].as_u64().unwrap_or(0);
+        let revision = current["revision"].as_u64().unwrap_or(0);
+        if let Some(preceding) = draft["precedingDraft"].as_str() {
+            if let Some(previous) = db::rows(
+                db,
+                "SELECT value FROM drafts WHERE id=? AND project=?",
+                &[&preceding, &project_id],
+            )?
+            .first()
+            {
+                if matches!(previous["status"].as_str(), Some("published" | "approved"))
+                    && current["updatedBy"] == db::get(db, "user")?
+                    && previous["submission"]["resource"]["files"] == current["files"]
+                {
+                    base = revision;
+                }
+            }
+        }
+        if governance::protected(&resource) && base != revision {
+            draft["automaticSharing"] = json!(false);
+            draft["conflictReview"] = json!(true);
+            db::upsert(db, "drafts", draft_id, project_id, &draft)?;
+            return Ok(json!({"status":"review_required"}));
+        }
         draft["requestId"] = json!(uuid::Uuid::new_v4().to_string());
         draft["submission"] = json!({"version":2,"id":draft["requestId"],"projectId":project_id,"deviceId":db::device(db)?,"baseRevision":base,"resource":resource});
     }

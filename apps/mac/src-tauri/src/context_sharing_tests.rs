@@ -284,6 +284,73 @@ fn pending_approvals_resolve_and_pull_before_the_next_exact_base_snapshot_is_pre
 }
 
 #[test]
+fn concurrent_teammate_changes_require_review_before_local_context_can_replace_them() {
+    for kind in ["instructions", "skill"] {
+        let f = fixture("owner");
+        let path = if kind == "instructions" {
+            f.root.join("AGENTS.md")
+        } else {
+            f.root.join(".agents/skills/example/SKILL.md")
+        };
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "Version A\n").unwrap();
+        indexer::scan(&f.db, &f.project).unwrap();
+        let first = queued(&f);
+        publish(&f, &first, 1);
+        let mut accepted = f.resources()[0].clone();
+        db::upsert(
+            &f.db,
+            "bindings",
+            accepted["resourceId"].as_str().unwrap(),
+            f.project["id"].as_str().unwrap(),
+            &json!({"base":accepted,"paths":[path]}),
+        )
+        .unwrap();
+        fs::write(&path, "Local version B\n").unwrap();
+        let mut discovery = f.project.clone();
+        discovery["deferAutomaticSharing"] = json!(true);
+        indexer::scan(&f.db, &discovery).unwrap();
+        accepted["revision"] = json!(2);
+        accepted["updatedBy"] = json!("teammate");
+        accepted["files"][0]["hash"] = json!(db::blob(b"Teammate version C\n").unwrap());
+        accepted["files"][0]["size"] = json!(19);
+        db::upsert(
+            &f.db,
+            "resources",
+            accepted["resourceId"].as_str().unwrap(),
+            f.project["id"].as_str().unwrap(),
+            &accepted,
+        )
+        .unwrap();
+        context_sharing::queue_waiting(&f.db, &f.project).unwrap();
+        assert!(
+            f.outbox().is_empty(),
+            "{kind}: automatic sharing must preserve the teammate update"
+        );
+        let draft = db::rows(
+            &f.db,
+            "SELECT value FROM drafts WHERE json_extract(value,'$.conflictReview')=1",
+            &[],
+        )
+        .unwrap()
+        .remove(0);
+        assert_eq!(draft["baseRevision"], 1);
+        assert_eq!(draft["automaticSharing"], false);
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let input = json!({"projectId":f.project["id"],"id":draft["id"]});
+        let review = runtime
+            .block_on(governance::governance_command("draft".into(), input))
+            .unwrap();
+        assert_eq!(review["baseRevision"], 2);
+        assert!(review["before"].to_string().contains("Teammate version C"));
+        let result=runtime.block_on(governance::governance_command("submit-draft".into(),json!({"projectId":f.project["id"],"id":draft["id"],"reviewedFiles":draft["resource"]["files"],"reviewedRevision":2}))).unwrap();
+        assert_eq!(result["status"], "queued");
+        assert_eq!(queued(&f)["value"]["baseRevision"], 2);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "Local version B\n");
+    }
+}
+
+#[test]
 fn restricted_plan_and_session_scans_keep_their_suggestion_flow_without_context_queue_errors() {
     let mut f = fixture("suggest");
     super::sharing_tests::seed(&f);
