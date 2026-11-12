@@ -968,26 +968,8 @@ async fn sync_workspace(
     .into_iter()
     .filter(|p| project_filter.is_none_or(|id| p["id"] == id))
     .collect::<Vec<_>>();
-    let prefix = crate::history::UNATTRIBUTED_SESSION_PREFIX;
-    for source in db::rows(
-        db,
-        "SELECT json_quote(source) FROM errors WHERE source GLOB ?",
-        &[&format!("{prefix}*")],
-    )?
-    .into_iter()
-    .filter(|_| project_filter.is_none())
-    {
-        if let Some(path) = source
-            .as_str()
-            .and_then(|source| source.strip_prefix(prefix))
-        {
-            if std::fs::symlink_metadata(path)
-                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-            {
-                db.execute("DELETE FROM errors WHERE source=?", [source.as_str()])
-                    .map_err(|e| e.to_string())?;
-            }
-        }
+    if project_filter.is_none() {
+        crate::history::clear_missing_session_errors(db)?;
     }
     for p in &local {
         if crate::projects::foreground_waiting()? {

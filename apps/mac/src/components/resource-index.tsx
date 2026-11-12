@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useRef } from "react";
-import type { Resource } from "@portable/protocol";
+import { SyncIcon } from "@primer/octicons-react";
+import type { ProjectResource as Resource } from "../types.js";
+import { SegmentedControl } from "./segmented-control.js";
+import { IconButton } from "./icon-button.js";
 import { Button } from "./button.js";
 import {
   IndexToolbar,
@@ -37,6 +40,9 @@ export interface ResourceIndexProps {
   noAccess?: boolean;
   /** Session titles still loading. */
   loading?: boolean;
+  discovering?: boolean;
+  discoveryErrors?: string[];
+  onRefreshLocal?: () => void;
   /** A notice above the toolbar, such as unavailable session titles. */
   status?: React.ReactNode;
   accessRequest?: React.ReactNode;
@@ -65,6 +71,9 @@ export function ResourceIndex({
   connected,
   noAccess,
   loading,
+  discovering = false,
+  discoveryErrors = [],
+  onRefreshLocal,
   status,
   accessRequest,
   floatingAction,
@@ -73,6 +82,7 @@ export function ResourceIndex({
   onOpen,
 }: ResourceIndexProps) {
   const memberName = useMemberLabel(user);
+  const ownership = kind === "skill" ? "all" : (filters.ownership ?? "all");
   const root = useRef<HTMLElement>(null);
   const visible = useMemo(
     () =>
@@ -114,6 +124,55 @@ export function ResourceIndex({
       )}
       <div className="resource-index-body">
         {accessRequest}
+        {kind !== "skill" && (
+          <div className="resource-ownership-toolbar">
+            <SegmentedControl
+              label="Filter by ownership"
+              value={ownership}
+              options={[
+                { value: "all", label: "All" },
+                { value: "mine", label: "Mine" },
+                { value: "shared", label: "Shared with me" },
+              ]}
+              onChange={(ownership) => onFilters({ ...filters, ownership })}
+            />
+            {onRefreshLocal && (
+              <IconButton
+                icon={SyncIcon}
+                size="sm"
+                variant="tertiary"
+                aria-label="Refresh local items"
+                title={`Refresh local ${collectionNoun(kind)}`}
+                disabled={discovering}
+                onClick={onRefreshLocal}
+              />
+            )}
+          </div>
+        )}
+        {kind !== "skill" && discovering && (
+          <p className="resource-discovery-status" role="status">
+            Checking {collectionNoun(kind)} on this Mac…
+          </p>
+        )}
+        {kind !== "skill" && discoveryErrors.length > 0 && (
+          <div className="resource-discovery-status" role="alert">
+            <p>
+              Some local {collectionNoun(kind)} couldn’t be checked. Previously
+              discovered items are kept.
+            </p>
+            {discoveryErrors.map((error, index) => (
+              <p key={index}>{error}</p>
+            ))}
+            <Button
+              size="sm"
+              variant="tertiary"
+              onClick={onRefreshLocal}
+              disabled={discovering}
+            >
+              Try again
+            </Button>
+          </div>
+        )}
         {(resources.length > 0 || filtered) && (
           <IndexToolbar
             kind={kind}
@@ -125,13 +184,26 @@ export function ResourceIndex({
             usageLoading={skillUsage?.loading}
           />
         )}
-        {!resources.length && !filtered ? (
-          <p className="empty">
-            {noAccess
-              ? `Access to shared ${collectionNoun(kind)} is restricted.`
-              : connected
-                ? `No ${collectionNoun(kind)} yet.`
-                : "Connect a folder to get started."}
+        {!visible.length &&
+        (!filtered ||
+          (!resources.length &&
+            (discovering || discoveryErrors.length > 0))) ? (
+          <p className="empty" role="status">
+            {discovering && !resources.length
+              ? `Looking for ${collectionNoun(kind)} on this Mac…`
+              : discoveryErrors.length > 0 && !resources.length
+                ? `Local ${collectionNoun(kind)} could not be checked.`
+                : noAccess && ownership === "shared"
+                  ? `Access to shared ${collectionNoun(kind)} is restricted.`
+                  : ownership === "mine"
+                    ? `No ${collectionNoun(kind)} of your own yet.`
+                    : ownership === "shared"
+                      ? `No ${collectionNoun(kind)} have been shared with you yet.`
+                      : noAccess
+                        ? `Access to shared ${collectionNoun(kind)} is restricted.`
+                        : connected
+                          ? `No ${collectionNoun(kind)} yet.`
+                          : "Connect a folder to get started."}
           </p>
         ) : !visible.length ? (
           <div className="index-empty-filtered" role="status">
@@ -140,7 +212,11 @@ export function ResourceIndex({
               size="sm"
               variant="tertiary"
               onClick={() =>
-                onFilters({ ...defaultIndexFilters, sort: filters.sort })
+                onFilters({
+                  ...defaultIndexFilters,
+                  ownership,
+                  sort: filters.sort,
+                })
               }
             >
               Clear filters
@@ -172,7 +248,7 @@ export function ResourceIndex({
             conflicted={conflicted}
             loading={loading}
             focusResource={focusResource}
-            filtered={filtered}
+            filtered={filtered || ownership !== "all"}
             onOpen={onOpen}
           />
         )}

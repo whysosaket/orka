@@ -74,20 +74,17 @@ export function useProjectSkillUsage(
 }
 
 export function ProjectSkillUsageStatus({
-  usage,
   loading,
   error,
   retry,
 }: ReturnType<typeof useProjectSkillUsage>) {
-  if (!loading && !error && !usage?.partial) return null;
+  if (!loading && !error) return null;
   return (
     <div className="session-preview-status" role="status">
       <span>
         {loading
           ? "Checking project skill usage…"
-          : error
-            ? `Skill usage unavailable. ${error}`
-            : "Usage covers available local history; some records could not be read."}
+          : `Skill usage unavailable. ${error}`}
       </span>
       {error && !loading && (
         <Button size="sm" variant="tertiary" onClick={retry}>

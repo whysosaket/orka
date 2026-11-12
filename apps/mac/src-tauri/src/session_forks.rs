@@ -177,6 +177,11 @@ pub fn record(
 }
 
 pub fn resumable(db: &Connection, resource: &Value) -> Result<Option<Value>> {
+    if resource["nativeId"].is_string()
+        && crate::local_resources::native_binding(db, resource)?.is_some()
+    {
+        return Ok(Some(resource.clone()));
+    }
     let id = resource["resourceId"].as_str().ok_or("Missing session")?;
     let fork = info(db, id)?;
     if !fork.is_null()
@@ -202,6 +207,11 @@ fn has_native_file(binding: &Value) -> bool {
 }
 
 pub fn binding(db: &Connection, resource: &Value) -> Result<Value> {
+    if resource["nativeId"].is_string() {
+        if let Some(binding) = crate::local_resources::native_binding(db, resource)? {
+            return Ok(binding);
+        }
+    }
     let id = resource["resourceId"].as_str().ok_or("Missing session")?;
     let mut binding = indexer::binding(db, id)?;
     let native_id = binding["nativeId"].as_str().ok_or(

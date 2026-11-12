@@ -128,7 +128,7 @@ export function ResourceTable({
           <th scope="col">{label}</th>
           {showRepository && <th scope="col">Repository</th>}
           <th scope="col">Source</th>
-          <th scope="col">Author</th>
+          <th scope="col">Updated by</th>
           <th scope="col">Updated</th>
           <th scope="col">
             <span className="sr-only">Open</span>
@@ -234,9 +234,18 @@ export function ResourceTable({
                         {pathSuffix(resource)}
                       </small>
                     )}
-                    {resource.fork && resource.revision === 0 && (
+                    {(resource.local ||
+                      (resource.fork && resource.revision === 0) ||
+                      resource.localChanges) && (
                       <small className="resource-table-suffix">
-                        On this Mac
+                        {resource.localChanges
+                          ? "Local changes"
+                          : "On this Mac"}
+                      </small>
+                    )}
+                    {!resource.local && resource.owner !== user && (
+                      <small className="resource-table-suffix">
+                        Owner: {memberName(resource.owner)}
                       </small>
                     )}
                     {conflicted.has(resource.resourceId) && (

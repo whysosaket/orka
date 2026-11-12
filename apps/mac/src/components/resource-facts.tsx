@@ -85,6 +85,13 @@ export function ResourceFacts({ resource, user, file }: ResourceFactsProps) {
   return (
     <>
       <div className="detail-facts" role="group" aria-label="Resource facts">
+        <FactChip label="Sharing">
+          {resource.local
+            ? "On this Mac"
+            : resource.localChanges
+              ? "Local changes"
+              : "Shared"}
+        </FactChip>
         {resource.repositoryName && (
           <FactChip label="Repository">{resource.repositoryName}</FactChip>
         )}

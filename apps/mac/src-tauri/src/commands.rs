@@ -444,10 +444,7 @@ pub fn disconnect_project(id: String) -> Result<()> {
 pub async fn session_display_title(id: String) -> Result<Option<String>> {
     tauri::async_runtime::spawn_blocking(move || {
         let db = db::open()?;
-        let resource = db::rows(&db, "SELECT value FROM resources WHERE id=?", &[&id])?
-            .into_iter()
-            .next()
-            .ok_or("Session not found")?;
+        let resource = crate::local_resources::resource(&db, &id)?;
         if resource["kind"] != "session" || resource["deleted"] == true {
             return Err("Session unavailable".into());
         }
@@ -464,15 +461,12 @@ fn inspected_resource(
     id: &str,
     conflict_id: Option<String>,
 ) -> Result<Value> {
-    let resource = db::rows(db, "SELECT value FROM resources WHERE id=?", &[&id])?
-        .into_iter()
-        .next();
-    let resource = match resource {
-        Some(resource) if resource["deleted"] == true => {
+    let resource = match crate::local_resources::resource(db, id) {
+        Ok(resource) if resource["deleted"] == true => {
             crate::global_skills::local_skill(db, id)?.unwrap_or(resource)
         }
-        Some(resource) => resource,
-        None => crate::global_skills::local_skill(db, id)?.ok_or("Resource not found")?,
+        Ok(resource) => resource,
+        Err(error) => crate::global_skills::local_skill(db, id)?.ok_or(error)?,
     };
     let Some(conflict_id) = conflict_id else {
         return crate::session_forks::current_resource(db, &resource);
@@ -594,20 +588,27 @@ pub fn inspect_resource(id: String, file: String, conflict_id: Option<String>) -
         (String::from_utf8(bytes).ok(), None, None)
     };
     Ok(
-        json!({"content":content,"previous":previous,"paths":if r["local"] == true { &r["paths"] } else { &binding["paths"] },"messages":messages,"conversation":conversation}),
+        json!({"content":content,"previous":previous,"paths":if r["paths"].is_array() { &r["paths"] } else { &binding["paths"] },"messages":messages,"conversation":conversation}),
     )
 }
 #[tauri::command]
 pub fn open_editor(id: String, file: String) -> Result<()> {
     let db = db::open()?;
     let b = indexer::binding(&db, &id)?;
-    let local = crate::global_skills::local_skill(&db, &id)?;
-    let r = local.as_ref().unwrap_or(&b["base"]);
+    let r = inspected_resource(&db, &id, None)?;
+    if r["local"] == true || r["localChanges"] == true {
+        let project =
+            crate::governance::project(&db, r["projectId"].as_str().ok_or("Missing project")?)?;
+        crate::sources::validate(
+            &crate::sources::for_resource(&project, &r)
+                .ok_or("Connect this resource's repository")?,
+        )?;
+    }
     if r["kind"] == "session" {
         return Err("Use Resume for sessions".into());
     }
     let mut path = PathBuf::from(
-        (if r["local"] == true {
+        (if r["paths"].is_array() {
             &r["paths"]
         } else {
             &b["paths"]

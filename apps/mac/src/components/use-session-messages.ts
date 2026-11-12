@@ -27,6 +27,7 @@ export function useSessionMessages(
   id: string,
   revision: number,
   conflictId: string,
+  contentKey: string,
 ) {
   const [state, setState] = useState<State>(initial);
   const generation = useRef(0);
@@ -73,7 +74,7 @@ export function useSessionMessages(
     return () => {
       generation.current += 1;
     };
-  }, [fetchPage, revision]);
+  }, [fetchPage, revision, contentKey]);
   const hasMore = state.total !== null && state.messages.length < state.total;
   const loadMore = useCallback(() => {
     if (!state.loading && !state.error && hasMore)

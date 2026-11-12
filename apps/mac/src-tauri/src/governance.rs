@@ -383,6 +383,7 @@ fn reset_source(db: &Connection, project_id: &str, events: &Value, p: &Value) ->
             continue;
         }
         let b = indexer::binding(db, id)?;
+        crate::local_resources::remember_origin(db, p, &r, &b)?;
         for queued in db::rows(db,"SELECT json_object('id',id,'value',json(value)) FROM outbox WHERE project=? AND (json_extract(value,'$.resource.resourceId')=? OR json_extract(value,'$.resourceId')=?)",&[&project_id,&id,&id])? {
             if queued["value"]["resource"]["files"].is_array() {
                 capture(db,p,&queued["value"]["resource"],&b["paths"])?;
