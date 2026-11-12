@@ -281,10 +281,17 @@ fn collect(
             }
         }
     }
+    let origin = if project["catalogOnly"] == true {
+        crate::local_resources::origin(db, project, kind, source, logical, native_id)?
+    } else {
+        Value::Null
+    };
     if project["catalogOnly"] == true
         && db::rows(db, "SELECT value FROM resources WHERE id=?", &[&id])?.is_empty()
     {
-        if let Some(previous) = db::rows(db,"SELECT value FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? AND coalesce(json_extract(value,'$.resource.sourceId'),'')=? AND (json_extract(value,'$.resource.logicalPath')=? OR (? IS NOT NULL AND json_extract(value,'$.nativeId')=?)) LIMIT 1",&[&project_id,&kind,&project["sourceId"].as_str().unwrap_or(""),&logical,&native_id,&native_id])?.first() {
+        if let Some(known_id) = origin["resourceId"].as_str() {
+            id = known_id.to_owned();
+        } else if let Some(previous) = db::rows(db,"SELECT value FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? AND coalesce(json_extract(value,'$.resource.sourceId'),'')=? AND (json_extract(value,'$.resource.logicalPath')=? OR (? IS NOT NULL AND json_extract(value,'$.nativeId')=?)) LIMIT 1",&[&project_id,&kind,&project["sourceId"].as_str().unwrap_or(""),&logical,&native_id,&native_id])?.first() {
             id = previous["resource"]["resourceId"].as_str().ok_or("Missing resource")?.to_owned();
         }
     }
@@ -322,7 +329,18 @@ fn collect(
             .as_str()
             .map(str::to_owned)
             .or_else(|| previous["owner"].as_str().map(str::to_owned))
-            .or_else(|| published["owner"].as_str().map(str::to_owned));
+            .or_else(|| published["owner"].as_str().map(str::to_owned))
+            .or_else(|| origin["owner"].as_str().map(str::to_owned));
+        if let Some(owner) = &owner {
+            let mut known = resource.clone();
+            known["owner"] = json!(owner);
+            crate::local_resources::remember_origin(
+                db,
+                project,
+                &known,
+                &json!({"nativeId":native_id,"paths":paths}),
+            )?;
+        }
         return db::upsert(
             db,
             "local_resources",
@@ -649,14 +667,18 @@ fn restore_catalog_metadata(
     Ok(())
 }
 
-/// Refresh each connected source independently, keeping its last complete scan
-/// when a transient filesystem or history error prevents a complete result.
+/// Refresh each source independently. Incomplete histories keep cached entries
+/// while healthy discoveries become available; fatal source errors roll back.
 pub fn discover_library(
     db: &rusqlite::Connection,
     project: &Value,
     kind: &str,
 ) -> Result<Vec<String>> {
     let id = project["id"].as_str().ok_or("Missing project")?;
+    let reads_history = matches!(kind, "session" | "plan");
+    if reads_history {
+        history::clear_missing_session_errors(db)?;
+    }
     let mut errors = Vec::new();
     for mut source in crate::sources::views(project) {
         if !source["path"].is_string() {
@@ -679,31 +701,60 @@ pub fn discover_library(
         let scan = scan_source(&tx, &source, false);
         let failures = db::rows(
             &tx,
-            "SELECT json_object('error',error) FROM errors WHERE source GLOB ?",
-            &[&format!("{scan_id}:scan:*")],
+            "SELECT json_object('error',error) FROM errors WHERE source GLOB ? OR (? AND source GLOB ?)",
+            &[
+                &format!("{scan_id}:scan:*"),
+                &reads_history,
+                &format!("{}*", history::UNATTRIBUTED_SESSION_PREFIX),
+            ],
         )?;
         let mut messages = failures
             .iter()
             .filter_map(|value| value["error"].as_str().map(str::to_owned))
             .collect::<Vec<_>>();
-        if let Err(error) = scan {
-            messages.push(error);
+        if reads_history {
+            for (tool, directory) in [
+                ("codex", native::codex_home()?.join("sessions")),
+                ("claude", native::claude_home()?.join("projects")),
+            ] {
+                let previously_discovered = previous.iter().any(|entry| {
+                    entry["resource"]["source"] == tool
+                        && (kind == "session"
+                            || entry["resource"]["logicalPath"]
+                                .as_str()
+                                .is_some_and(|path| {
+                                    path.starts_with(&format!("{tool}/sessions/"))
+                                        || path.starts_with(&format!("{tool}/native/"))
+                                }))
+                });
+                if previously_discovered && !directory.is_dir() {
+                    messages.push(format!(
+                        "{tool} history is unavailable; keeping previously discovered items"
+                    ));
+                }
+            }
         }
-        if messages.is_empty() {
-            tx.execute("DELETE FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? AND coalesce(json_extract(value,'$.resource.sourceId'),'')=? AND coalesce(json_extract(value,'$.generation'),'')!=?",params![id,kind,source_id,generation]).map_err(|e|e.to_string())?;
-            // Embedded content has no physical timestamp. Preserve its timestamp
-            // across unchanged scans rather than making every refresh look new.
-            restore_catalog_metadata(&tx, id, previous)?;
-            tx.commit().map_err(|e| e.to_string())?;
-        } else {
-            tx.rollback().map_err(|e| e.to_string())?;
-            errors.extend(messages.into_iter().map(|message| {
-                format!(
-                    "{}: {message}",
-                    source["name"].as_str().unwrap_or("Local discovery")
-                )
-            }));
+        match scan {
+            Ok(()) => {
+                if messages.is_empty() {
+                    tx.execute("DELETE FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? AND coalesce(json_extract(value,'$.resource.sourceId'),'')=? AND coalesce(json_extract(value,'$.generation'),'')!=?",params![id,kind,source_id,generation]).map_err(|e|e.to_string())?;
+                }
+                // Embedded content has no physical timestamp. Preserve its timestamp
+                // across unchanged scans rather than making every refresh look new.
+                restore_catalog_metadata(&tx, id, previous)?;
+                tx.commit().map_err(|e| e.to_string())?;
+            }
+            Err(error) => {
+                tx.rollback().map_err(|e| e.to_string())?;
+                messages.push(error);
+            }
         }
+        errors.extend(messages.into_iter().map(|message| {
+            format!(
+                "{}: {message}",
+                source["name"].as_str().unwrap_or("Local discovery")
+            )
+        }));
     }
     Ok(errors)
 }

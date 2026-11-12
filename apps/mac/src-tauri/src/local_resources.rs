@@ -27,6 +27,90 @@ fn shared(db: &Connection, id: &str) -> Result<Option<Value>> {
     )
 }
 
+fn origin_key(
+    project: &Value,
+    kind: &str,
+    provider: &str,
+    logical: &str,
+    native_id: Option<&str>,
+) -> Result<String> {
+    let project_id = project["id"].as_str().ok_or("Missing project")?;
+    let identity = json!({"sourceId":project["sourceId"],"kind":kind,"provider":provider,"nativeId":native_id,"logicalPath":if native_id.is_some(){None}else{Some(logical)}});
+    Ok(format!(
+        "localResourceOrigin:{project_id}:{}",
+        db::digest(identity.to_string().as_bytes())
+    ))
+}
+
+pub fn origin(
+    db: &Connection,
+    project: &Value,
+    kind: &str,
+    provider: &str,
+    logical: &str,
+    native_id: Option<&str>,
+) -> Result<Value> {
+    db::get(
+        db,
+        &origin_key(project, kind, provider, logical, native_id)?,
+    )
+}
+
+/// Keep identity and ownership outside the prunable reading catalog so an
+/// archived native history retains its origin when it becomes available again.
+pub fn remember_origin(
+    db: &Connection,
+    project: &Value,
+    resource: &Value,
+    binding: &Value,
+) -> Result<()> {
+    if !matches!(
+        resource["kind"].as_str(),
+        Some("memory" | "session" | "plan")
+    ) || !resource["owner"].is_string()
+    {
+        return Ok(());
+    }
+    let id = resource["resourceId"].as_str().ok_or("Missing resource")?;
+    let mut scope = project.clone();
+    scope["sourceId"] = resource["sourceId"].clone();
+    if let Some(source) = sources::for_resource(project, resource) {
+        scope = source;
+    }
+    let key = origin_key(
+        &scope,
+        resource["kind"].as_str().ok_or("Missing category")?,
+        resource["source"].as_str().ok_or("Missing provider")?,
+        resource["logicalPath"]
+            .as_str()
+            .ok_or("Missing resource path")?,
+        binding["nativeId"].as_str(),
+    )?;
+    db::set(
+        db,
+        &key,
+        &json!({"resourceId":id,"owner":resource["owner"],"projectId":project["id"],"sourceId":resource["sourceId"],"nativeId":binding["nativeId"],"path":scope["path"],"folderIdentity":scope["folderIdentity"]}),
+    )?;
+    let Some(mut entry) = db::rows(db, "SELECT value FROM local_resources WHERE id=?", &[&id])?
+        .into_iter()
+        .next()
+    else {
+        return Ok(());
+    };
+    entry["owner"] = resource["owner"].clone();
+    entry["nativeId"] = binding["nativeId"].clone();
+    entry["paths"] = binding["paths"].clone();
+    entry["path"] = project["path"].clone();
+    entry["folderIdentity"] = project["folderIdentity"].clone();
+    db::upsert(
+        db,
+        "local_resources",
+        id,
+        project["id"].as_str().ok_or("Missing project")?,
+        &entry,
+    )
+}
+
 fn normalize(db: &Connection, project: &Value, entry: &Value) -> Result<Option<Value>> {
     let input = &entry["resource"];
     let Some(source) = sources::for_resource(project, input) else {
@@ -89,6 +173,7 @@ fn entries(db: &Connection, project: &Value, kind: &str) -> Result<Vec<Value>> {
         }
         let Some(source) = sources::for_resource(project, &draft["resource"]) else { continue };
         let mut entry = draft;
+        entry["owner"] = entry["resource"]["owner"].clone();
         entry["path"] = source["path"].clone();
         entry["folderIdentity"] = source["folderIdentity"].clone();
         entry["updatedAt"] = entry["updatedAt"].as_str().or(entry["createdAt"].as_str()).map_or(Value::Null, |value| json!(value));
@@ -107,6 +192,9 @@ pub fn catalog(db: &Connection, project: &Value, kind: &str) -> Result<Value> {
         if let Some(mut resource) = normalize(db, project, &entry)? {
             if resource["revision"].as_u64().unwrap_or(0) > 0 {
                 entry["owner"] = resource["owner"].clone();
+                let mut native = entry["resource"].clone();
+                native["owner"] = resource["owner"].clone();
+                remember_origin(db, project, &native, &entry)?;
                 let local_id = entry["resource"]["resourceId"]
                     .as_str()
                     .ok_or("Missing resource")?;

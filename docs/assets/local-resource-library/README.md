@@ -6,7 +6,7 @@ synthetic Tauri bridge in `tests/ui/fixtures/resource-library.ts`.
 - Before UI source: `a061f98` (main before this change).
 - After UI source: `9ce8ad1`. Subsequent native-only fixes do not change these screens.
 - Matching viewports: 1160×800 and 900×640, scale 1, dark desktop theme,
-  reduced motion, loaded bundled fonts, no pointer/focus selection.
+  reduced motion, loaded bundled fonts, no forced hover or error states.
 - The development annotation toolbar is hidden on both sides.
 - Private examples use the same synthetic project, two connected repositories,
   all automatic sharing categories off, offline status, and two local sessions.

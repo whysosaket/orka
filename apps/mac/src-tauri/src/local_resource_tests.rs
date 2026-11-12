@@ -125,6 +125,93 @@ fn local_library_keeps_last_complete_scan_on_source_failure() {
 }
 
 #[test]
+fn local_library_missing_history_provider_preserves_sessions_and_embedded_plans() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    let sessions = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    let plans = local_resources::catalog(&f.db, &f.project, "plan").unwrap();
+    assert_eq!(
+        sessions["errors"],
+        json!([]),
+        "a provider that was never installed is not an error"
+    );
+    let directory = native::codex_home().unwrap().join("sessions");
+    let moved = f._home.path().join("unavailable-history");
+    fs::rename(&directory, &moved).unwrap();
+    for (kind, before) in [("session", sessions), ("plan", plans)] {
+        let after = local_resources::catalog(&f.db, &f.project, kind).unwrap();
+        assert_eq!(after["resources"], before["resources"]);
+        assert!(!after["errors"].as_array().unwrap().is_empty());
+    }
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
+fn local_library_first_discovery_keeps_healthy_sessions_beside_corrupt_unrelated_history() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    let path = native::codex_home()
+        .unwrap()
+        .join("sessions/unrelated-corrupt.jsonl");
+    fs::write(path, b"not valid native JSON\n").unwrap();
+    let catalog = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    assert_eq!(catalog["resources"].as_array().unwrap().len(), 1);
+    assert!(!catalog["errors"].as_array().unwrap().is_empty());
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
+fn local_library_unattributed_oversized_history_preserves_last_known_sessions() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    let before = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    let directory = native::codex_home().unwrap().join("sessions");
+    for entry in fs::read_dir(&directory).unwrap() {
+        fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    let oversized = fs::File::create(directory.join("unattributed.jsonl")).unwrap();
+    oversized.set_len(crate::history::MAX_FILE + 1).unwrap();
+    let after = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    assert_eq!(after["resources"], before["resources"]);
+    assert!(!after["errors"].as_array().unwrap().is_empty());
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
+fn local_library_removed_unattributed_error_recovers_without_sync_and_does_not_affect_memories() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    let memories = local_resources::catalog(&f.db, &f.project, "memory").unwrap();
+    assert_eq!(memories["resources"].as_array().unwrap().len(), 1);
+    let oversized_path = native::codex_home()
+        .unwrap()
+        .join("sessions/unattributed.jsonl");
+    fs::File::create(&oversized_path)
+        .unwrap()
+        .set_len(crate::history::MAX_FILE + 1)
+        .unwrap();
+    let sessions = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    assert!(!sessions["errors"].as_array().unwrap().is_empty());
+    fs::remove_file(f.root.join("AGENTS.md")).unwrap();
+    let memories = local_resources::catalog(&f.db, &f.project, "memory").unwrap();
+    assert_eq!(
+        memories["errors"],
+        json!([]),
+        "memory discovery must ignore unrelated history errors"
+    );
+    assert!(memories["resources"].as_array().unwrap().is_empty());
+    fs::remove_file(oversized_path).unwrap();
+    let recovered = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    assert_eq!(
+        recovered["errors"],
+        json!([]),
+        "local refresh alone must clear errors for deleted oversized histories"
+    );
+    assert_eq!(recovered["resources"].as_array().unwrap().len(), 1);
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
 fn local_library_preserves_published_owner_and_private_session_updates() {
     let mut f = Fixture::new();
     prepare(&mut f);
@@ -273,6 +360,137 @@ fn local_library_keeps_imported_session_provenance_after_binding_removal() {
     let found = local_resources::catalog(&f.db, &f.project, "session").unwrap();
     assert!(found["resources"].as_array().unwrap().is_empty());
     assert!(local_resources::resource(&f.db, &imported_id).is_err());
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
+fn local_library_first_discovery_after_governed_revocation_keeps_native_session_foreign() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    f.project["governed"] = json!(true);
+    db::upsert(
+        &f.db,
+        "projects",
+        f.project["id"].as_str().unwrap(),
+        "",
+        &f.project,
+    )
+    .unwrap();
+    let path = fs::read_dir(native::codex_home().unwrap().join("sessions"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let bytes = fs::read(&path).unwrap();
+    let records = native::complete_records(&bytes).unwrap();
+    let (native_id, _, _) = native::session_info("codex", &records).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let resource = json!({"resourceId":id,"projectId":f.project["id"],"owner":uuid::Uuid::new_v4().to_string(),"updatedBy":"teammate","updatedAt":db::now(),"revision":5,"kind":"session","source":"codex","logicalPath":format!("codex/{native_id}"),"title":"Teammate session","files":crate::history::session_files("codex",&path,Some(&f.root)).unwrap(),"deleted":false,"access":{"mode":"read"}});
+    db::upsert(
+        &f.db,
+        "resources",
+        &id,
+        f.project["id"].as_str().unwrap(),
+        &resource,
+    )
+    .unwrap();
+    db::upsert(
+        &f.db,
+        "bindings",
+        &id,
+        f.project["id"].as_str().unwrap(),
+        &json!({"base":resource,"nativeId":native_id,"paths":[path]}),
+    )
+    .unwrap();
+    assert!(db::rows(&f.db, "SELECT value FROM local_resources", &[])
+        .unwrap()
+        .is_empty());
+
+    crate::governance::reset(&f.db, f.project["id"].as_str().unwrap(), &json!([])).unwrap();
+    assert!(f.resources().is_empty());
+    assert!(db::rows(&f.db, "SELECT value FROM bindings", &[])
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        bytes,
+        "native history outside the project remains intact"
+    );
+
+    let catalog = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    assert_eq!(catalog["errors"], json!([]));
+    assert!(
+        catalog["resources"].as_array().unwrap().is_empty(),
+        "first-ever discovery must not relabel a revoked teammate session as Mine"
+    );
+    assert!(local_resources::resource(&f.db, &id).is_err());
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
+fn local_library_archived_revoked_session_keeps_origin_after_cache_pruning_and_plugin_refresh() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    f.project["governed"] = json!(true);
+    db::upsert(
+        &f.db,
+        "projects",
+        f.project["id"].as_str().unwrap(),
+        "",
+        &f.project,
+    )
+    .unwrap();
+    let path = fs::read_dir(native::codex_home().unwrap().join("sessions"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let records = native::complete_records(&fs::read(&path).unwrap()).unwrap();
+    let (native_id, _, _) = native::session_info("codex", &records).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let resource = json!({"resourceId":id,"projectId":f.project["id"],"owner":uuid::Uuid::new_v4().to_string(),"updatedBy":"teammate","updatedAt":db::now(),"revision":5,"kind":"session","source":"codex","logicalPath":format!("codex/{native_id}"),"title":"Teammate session","files":crate::history::session_files("codex",&path,Some(&f.root)).unwrap(),"deleted":false,"access":{"mode":"read"}});
+    db::upsert(
+        &f.db,
+        "resources",
+        &id,
+        f.project["id"].as_str().unwrap(),
+        &resource,
+    )
+    .unwrap();
+    db::upsert(
+        &f.db,
+        "bindings",
+        &id,
+        f.project["id"].as_str().unwrap(),
+        &json!({"base":resource,"nativeId":native_id,"paths":[path]}),
+    )
+    .unwrap();
+    crate::governance::reset(&f.db, f.project["id"].as_str().unwrap(), &json!([])).unwrap();
+    let archived = native::codex_home().unwrap().join("archived_sessions");
+    fs::create_dir(&archived).unwrap();
+    let archived_path = archived.join(path.file_name().unwrap());
+    fs::rename(&path, &archived_path).unwrap();
+    let absent = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    assert!(absent["resources"].as_array().unwrap().is_empty());
+    assert!(db::rows(&f.db, "SELECT value FROM local_resources", &[])
+        .unwrap()
+        .is_empty());
+    assert!(indexer::discover(&f.db, &f.project, "session")
+        .unwrap()
+        .is_empty());
+    fs::rename(&archived_path, &path).unwrap();
+    let restored = indexer::discover(&f.db, &f.project, "session").unwrap();
+    assert_eq!(
+        restored[0]["resource"]["resourceId"], id,
+        "native identity must survive pruning of every listing entry"
+    );
+    let restored = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    assert!(
+        restored["resources"].as_array().unwrap().is_empty(),
+        "unarchiving cannot turn a revoked teammate session into Mine"
+    );
     assert!(f.outbox().is_empty());
 }
 
