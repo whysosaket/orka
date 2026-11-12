@@ -145,6 +145,13 @@ In **Settings → Members → Add Member**, enter a teammate's email and select
 The teammate must sign in with the verified email address that received the
 invitation. It works once and expires after 24 hours.
 
+On an updated service, Owners and Admins can see active email invitations under
+**Settings → Members → Pending invitations**, with the recipient and expiry.
+Close **Add Member** after sending to refresh the list. Invitations disappear
+after acceptance or expiry when the list refreshes; joining links do not name a
+recipient and are not listed. Invited teammates receive Member access only after
+accepting.
+
 **Use joining link** remains available alongside email. Servers without email
 delivery open directly on **Copy joining link**. Delivery errors preserve the
 entered email and allow switching to a link. Invites retain your service's signup

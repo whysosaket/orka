@@ -4,6 +4,7 @@ export async function settingsFixture(
   options: {
     noProjects?: boolean;
     emailInvites?: boolean;
+    pendingInvites?: { email: string; expiresAt: string }[];
     failEmailInvite?: boolean;
     update?: {
       installedVersion: string;
@@ -213,6 +214,9 @@ export async function settingsFixture(
       policyRevision: 1,
       rolePolicies: options.legacy ? null : structuredClone(policies),
       members,
+      ...(options.pendingInvites
+        ? { pendingInvites: structuredClone(options.pendingInvites) }
+        : {}),
       policy: {
         instructions: { mode: "suggest", create: "suggest", canShare: false },
         memory: { mode: "read", create: "hidden", canShare: false },
@@ -418,6 +422,15 @@ export async function settingsFixture(
               throw new Error(
                 "Invitation email could not be sent. Try again or use a joining link.",
               );
+            catalog.pendingInvites = [
+              ...(catalog.pendingInvites ?? []).filter(
+                (invite) => invite.email !== args.input.email,
+              ),
+              {
+                email: args.input.email,
+                expiresAt: new Date(Date.now() + 86400000).toISOString(),
+              },
+            ];
             return { sent: true, email: args.input.email };
           }
           if (command === "cloud_action" && args.action === "invite")

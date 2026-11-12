@@ -153,6 +153,19 @@ for (const mode of ["cloud", "self-hosted"] as const) {
       assert.equal(deliveries[0].email, "person@example.com");
       assert.equal(deliveries[0].tokenHash, tokenHash);
       assert.equal(deliveries[0].committed, true);
+      const catalog = async () => {
+        const response = await post("/v2/governance/action", {
+          action: "catalog",
+          input: { projectId },
+        });
+        assert.equal(response.status, 200);
+        return response.json();
+      };
+      const pending = (await catalog()).pendingInvites;
+      assert.equal(pending.length, 1);
+      assert.deepEqual(Object.keys(pending[0]).sort(), ["email", "expiresAt"]);
+      assert.equal(pending[0].email, "person@example.com");
+      assert.ok(Date.parse(pending[0].expiresAt) > Date.now());
       for (const method of ["GET", "HEAD", "GET"])
         assert.equal(
           (await fetch(base + `/join/${token}`, { method })).status,
@@ -177,6 +190,7 @@ for (const mode of ["cloud", "self-hosted"] as const) {
       ]);
       assert.deepEqual(joins.map((r) => r.status).sort(), [200, 400]);
       assert.equal((await fetch(base + `/join/${token}`)).status, 410);
+      assert.deepEqual((await catalog()).pendingInvites, []);
       assert.equal(
         (await post("/v2/invites", { projectId, email: "person@example.com" }))
           .status,
@@ -298,6 +312,114 @@ for (const mode of ["cloud", "self-hosted"] as const) {
         if (previous[key] === undefined) delete process.env[key];
         else process.env[key] = previous[key];
       }
+      await pool.end();
+    }
+  });
+
+  await test(`${mode} pending invitation catalogs exclude expired, duplicate, and accepted recipients and restrict visibility`, async () => {
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const store = new Store(pool, new Blobs("unused-pending-invite-test"));
+    const owner = randomUUID(),
+      admin = randomUUID(),
+      member = randomUUID(),
+      outsider = randomUUID();
+    const projects: string[] = [];
+    const server = createApi(
+      store,
+      async (token) => token,
+      undefined,
+      authSettings({ DEPLOYMENT_MODE: mode }),
+    );
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const catalog = async (projectId: string, user = owner) => {
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/v2/governance/action`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${user}`,
+            "Content-Type": "application/json",
+            "X-Orka-Governance": "1",
+          },
+          body: JSON.stringify({ action: "catalog", input: { projectId } }),
+        },
+      );
+      return { status: response.status, value: await response.json() };
+    };
+    try {
+      await pool.query(
+        "insert into orka.env_profiles(user_id,label,email) values($1,'Current member','MEMBER@example.com')",
+        [member],
+      );
+      for (const roles of [true, false]) {
+        const projectId = await store.createProject(
+          owner,
+          "Pending invitations",
+          true,
+          undefined,
+          undefined,
+          roles,
+        );
+        projects.push(projectId);
+        for (const [user, role] of [
+          [member, "member"],
+          [admin, "admin"],
+        ])
+          await pool.query("insert into orka.members values($1,$2,$3)", [
+            projectId,
+            user,
+            role,
+          ]);
+        for (const [email, expiry] of [
+          ["pending@example.com", "2100-01-01T00:00:00.000Z"],
+          ["pending@example.com", "2100-01-02T00:00:00.000Z"],
+          ["expired@example.com", "2000-01-01T00:00:00.000Z"],
+          ["member@example.com", "2100-01-01T00:00:00.000Z"],
+          [null, "2100-01-01T00:00:00.000Z"],
+        ])
+          await pool.query(
+            "insert into orka.invites(token_hash,project_id,email,expires_at) values($1,$2,$3,$4)",
+            [randomUUID(), projectId, email, expiry],
+          );
+        const expected = [
+          {
+            email: "pending@example.com",
+            expiresAt: "2100-01-02T00:00:00.000Z",
+          },
+        ];
+        const result = await catalog(projectId);
+        assert.equal(result.status, 200);
+        assert.deepEqual(result.value.pendingInvites, expected);
+        assert.deepEqual(
+          (await catalog(projectId, admin)).value.pendingInvites,
+          roles ? expected : [],
+        );
+        assert.deepEqual(
+          (await catalog(projectId, member)).value.pendingInvites,
+          [],
+        );
+        assert.equal((await catalog(projectId, outsider)).status, 403);
+        const unrelated = await store.createProject(owner, "Other project");
+        projects.push(unrelated);
+        assert.deepEqual((await catalog(unrelated)).value.pendingInvites, []);
+        await pool.query(
+          "update orka.projects set archived_at=now() where id=$1",
+          [projectId],
+        );
+        assert.equal((await catalog(projectId)).status, 403);
+      }
+    } finally {
+      for (const id of projects)
+        await pool.query("delete from orka.projects where id=$1", [id]);
+      await pool.query("delete from orka.env_profiles where user_id=$1", [
+        member,
+      ]);
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
       await pool.end();
     }
   });
