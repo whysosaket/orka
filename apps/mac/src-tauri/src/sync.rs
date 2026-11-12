@@ -945,7 +945,8 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
                     Some(&json!({"action":"catalog","input":{"projectId":id}})),
                 )
                 .await?;
-                db::set(db, &format!("governance:{id}"), &catalog)
+                db::set(db, &format!("governance:{id}"), &catalog)?;
+                crate::context_sharing::approve_own_pending(db, owner, &local, &catalog).await
             }
             .await;
             if result.as_ref().is_err_and(|e| service_error(e)) {
@@ -1024,8 +1025,10 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
                 )
                 .await?;
             }
-            if q["path"] == crate::global_skills::IMPORT_PATH {
-                return crate::global_skills::share(db, owner, q).await;
+            if q["path"] == crate::global_skills::IMPORT_PATH
+                || q["path"] == crate::context_sharing::QUEUE_PATH
+            {
+                return crate::context_sharing::share(db, owner, q).await;
             }
             api_as(
                 owner,
@@ -1041,8 +1044,10 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
                 let tx = db.transaction().map_err(|e| e.to_string())?;
                 if q["path"] == crate::selective_sharing::QUEUE_PATH {
                     crate::selective_sharing::complete(&tx, q, &receipt)?;
-                } else if q["path"] == crate::global_skills::IMPORT_PATH {
-                    crate::global_skills::complete_share(&tx, q, &receipt)?;
+                } else if q["path"] == crate::global_skills::IMPORT_PATH
+                    || q["path"] == crate::context_sharing::QUEUE_PATH
+                {
+                    crate::context_sharing::complete(&tx, q, &receipt)?;
                 } else {
                     apply_event(&tx, &receipt["event"])?;
                 }
@@ -1268,7 +1273,15 @@ pub(crate) fn service_error(error: &str) -> bool {
 // Match only the packaged backend's resource-local MemoryUnavailable contract.
 // General 503s, blob failures, auth failures and transport errors remain fatal.
 fn consolidation_pending(queued: &Value, error: &str) -> bool {
-    if queued["path"] != "/v2/sync/push" || queued["value"]["resource"]["kind"] != "memory" {
+    if !matches!(
+        queued["path"].as_str(),
+        Some(
+            "/v2/sync/push"
+                | crate::context_sharing::QUEUE_PATH
+                | crate::selective_sharing::QUEUE_PATH
+        )
+    ) || queued["value"]["resource"]["kind"] != "memory"
+    {
         return false;
     }
     let Some(reason) = error.strip_prefix("503: Memory consolidation pending: ") else {
@@ -1487,6 +1500,21 @@ mod queue_tests {
     #[test]
     fn only_known_memory_consolidation_failures_are_deferred() {
         let memory = queued(1, "memory");
+        for path in [
+            "/v2/sync/push",
+            crate::context_sharing::QUEUE_PATH,
+            crate::selective_sharing::QUEUE_PATH,
+        ] {
+            let mut shared = memory.clone();
+            shared["path"] = json!(path);
+            assert!(
+                consolidation_pending(
+                    &shared,
+                    "503: Memory consolidation pending: jev_missing_key"
+                ),
+                "{path}"
+            );
+        }
         for reason in [
             "jev_uncertain",
             "jev_http_503",

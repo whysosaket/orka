@@ -23,6 +23,7 @@ interface SuggestionDetail {
   draft: LocalDraft;
   files: Record<string, string>;
   related: { resource: Resource; duplicate: boolean }[];
+  canPublish?: boolean;
 }
 export function ProjectRequests({
   project,
@@ -49,7 +50,7 @@ export function ProjectRequests({
   const suggestions = (state.drafts ?? []).filter(
     (d) =>
       d.projectId === project.id &&
-      !["dismissed", "published"].includes(d.status) &&
+      !["dismissed", "published", "approved"].includes(d.status) &&
       !d.automaticSharing,
   );
   const updates = state.bindings.filter(
@@ -197,8 +198,8 @@ export function ProjectRequests({
         <section aria-label="Local changes">
           <h3>Changes on this Mac</h3>
           <p>
-            These changes are private until you review and send them for
-            approval. Personal memory continues to update normally.
+            Share selected changes here. Publishing permission lets you share
+            directly; suggested changes need a publisher’s approval.
           </p>
           {suggestions.map((d) => (
             <div className="governance-row" key={d.id}>
@@ -297,13 +298,20 @@ export function ProjectRequests({
                 disabled={busy || suggestion.draft.status !== "local"}
                 onClick={() =>
                   void run(async () => {
-                    await call("submit-draft", { id: suggestion.draft.id });
+                    await call("submit-draft", {
+                      id: suggestion.draft.id,
+                      reviewedFiles: suggestion.draft.resource.files,
+                    });
                     setSuggestion(null);
-                    setMessage("Suggestion submitted for publisher review.");
+                    setMessage(
+                      suggestion.canPublish
+                        ? "Change queued for sharing."
+                        : "Suggestion submitted for publisher review.",
+                    );
                   })
                 }
               >
-                Send for approval
+                {suggestion.canPublish ? "Publish update" : "Send for approval"}
               </Button>
             </section>
           )}

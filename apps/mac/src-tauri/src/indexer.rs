@@ -325,7 +325,8 @@ fn collect(
             if !files.is_empty()
                 && manifest_hash(&json!(files)) != manifest_hash(&existing["files"])
             {
-                crate::governance::capture(db, project, &local, &json!(paths))?;
+                let draft = crate::governance::capture(db, project, &local, &json!(paths))?;
+                crate::context_sharing::queue_automatic(db, project, &draft)?;
                 if !b.is_null() && b.is_object() {
                     b["installationState"] = json!("locally_modified");
                     db::upsert(db, "bindings", &id, project_id, &b)?;

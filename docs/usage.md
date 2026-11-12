@@ -96,8 +96,10 @@ active work, so you can close and reopen the panel without losing progress.
 
 Create and Join offer independent checkboxes for Memories, Sessions, Plans, Skills, and ENVs. Creating with nothing checked is supported. Choices are saved per project, per account, on this Mac before a folder is connected or sync is requested. Projects first discovered from another Mac also start private; existing local projects keep their prior sharing behavior until changed in **Settings → Project sharing**.
 
-Only selected ordinary categories are indexed. In governed projects, memory and
-skill discovery creates private drafts. Shared skills install automatically into
+Only selected ordinary categories are indexed. In governed projects, automatic
+memory and skill sharing publishes discovered changes for owners and publishers,
+or submits them for approval for suggesters. Read-only content remains local.
+Shared skills install automatically into
 both project skill folders when Skills sharing is enabled and the member has
 access. Clean skill updates apply automatically; conflicting local edits are
 preserved for resolution. Shared instructions still require explicit local

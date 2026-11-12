@@ -223,6 +223,7 @@ pub fn localize_outbox(db: &Connection, project: &Value) -> Result<()> {
         &[&id],
     )? {
         if q["path"] == crate::global_skills::IMPORT_PATH
+            || q["path"] == crate::context_sharing::QUEUE_PATH
             || q["path"] == crate::selective_sharing::QUEUE_PATH
         {
             continue;
@@ -454,10 +455,10 @@ pub fn reconcile_requests(db: &Connection, project: &str, requests: &Value) -> R
             .as_array()
             .and_then(|rows| rows.iter().find(|r| r["id"] == draft["requestId"]))
         {
-            draft["status"] = if request["status"] == "pending" {
-                json!("proposed")
-            } else {
-                request["status"].clone()
+            draft["status"] = match request["status"].as_str() {
+                Some("pending") => json!("proposed"),
+                Some("approved") => json!("published"),
+                _ => request["status"].clone(),
             };
             draft["request"] = request.clone();
             db::upsert(
@@ -693,7 +694,8 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
             if action=="draft" {
                 let related=related_knowledge(&db,project_id,&draft)?;
                 let (files,manifest)=preview_files(&draft["resource"]["files"])?;
-                return Ok(json!({"draft":draft,"files":files,"manifest":manifest,"related":related}));
+                let can_publish = crate::context_sharing::publication_mode(&db,project_id,&draft["resource"])? == "publish";
+                return Ok(json!({"draft":draft,"files":files,"manifest":manifest,"related":related,"canPublish":can_publish}));
             }
             if let Some(files) = input.get("reviewedFiles") {
                 if !files.is_array() || files != &draft["resource"]["files"]
@@ -716,16 +718,14 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
                     return Err("Local or shared files changed; review the update again".into());
                 }
             }
-            if input["publishIfAllowed"] == true {
-                return crate::global_skills::queue_share(&db, &p, id);
+            if input["publishIfAllowed"] == true || crate::context_sharing::publication_mode(&db, project_id, &draft["resource"])? == "publish" {
+                return crate::context_sharing::queue(&db, &p, id);
             }
             projects::require_sharing(&db,project_id,draft["resource"]["kind"].as_str().ok_or("Missing kind")?)?;
             let mut r=draft["resource"].clone();
             let managed=draft["paths"][0].as_str().is_some_and(|path|Path::new(path).starts_with(Path::new(p["path"].as_str().unwrap_or("")).join(".orka/memory/resources")));
             if r["kind"]=="memory" && r["source"]!="shared" && !managed {
-                let knowledge_id=Uuid::new_v5(&Uuid::NAMESPACE_URL,id.as_bytes()).to_string();
-                r["resourceId"]=json!(knowledge_id);r["logicalPath"]=json!(format!("knowledge/{knowledge_id}.md"));
-                r["memory"]=json!({"topic":r["title"],"scope":"","provider":r["source"],"supersedes":[]});r["source"]=json!("shared");
+                r=crate::context_sharing::publication_resource(&db,project_id,&r)?;
             }
             // Drafts store source metadata locally; only protocol fields cross the service boundary.
             let mut clean=json!({});
