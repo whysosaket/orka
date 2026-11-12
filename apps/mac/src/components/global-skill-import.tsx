@@ -408,8 +408,6 @@ function GlobalSkillsDialog({
               Retry usage
             </Button>
           </>
-        ) : usage?.partial ? (
-          "Usage covers available history; some records could not be read."
         ) : null}
       </div>
       <div className="global-skills-feedback">
