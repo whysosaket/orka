@@ -4,11 +4,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { createServer } from "node:http";
 import { createApi } from "./bridge/main.js";
-import { authSettings } from "./reference/auth.js";
+import { authSettings } from "./bridge/auth.js";
 import { Store } from "./bridge/store.js";
-import { Blobs } from "./reference/blobs.js";
+import { Blobs } from "./fixtures/blobs.js";
 
-for (const mode of ["cloud", "self-hosted"]) {
+for (const mode of ["cloud", "self-hosted"] as const) {
   await test(`${mode} email invites require the verified recipient and retain link fallback`, async () => {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
     const store = new Store(pool, new Blobs("unused-email-invite-test"));
@@ -85,19 +85,18 @@ for (const mode of ["cloud", "self-hosted"]) {
       RESEND_FROM: "Orka <invite@example.com>",
       RESEND_API_URL: providerUrl,
     });
-    const server = createApi(
-      store,
-      async (id) => id,
-      providerUrl,
-      authSettings({
+    const server = createApi(store, async (id) => id, providerUrl, {
+      // Exercise the mail adapter in both modes; final-image tests cover each edition's configuration.
+      ...authSettings({
         PUBLIC_URL: "https://team.example",
-        DEPLOYMENT_MODE: mode,
+        DEPLOYMENT_MODE: "cloud",
         EMAIL_PROVIDER: "resend",
         RESEND_API_KEY: "re_fixture",
         RESEND_FROM: "Orka <invite@example.com>",
         SEND_EMAIL_HOOK_SECRET: "fixture",
       }),
-    );
+      mode,
+    });
     await new Promise<void>((resolve) =>
       server.listen(0, "127.0.0.1", resolve),
     );

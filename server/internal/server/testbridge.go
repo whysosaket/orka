@@ -72,6 +72,33 @@ func (b bridgeBlobs) RemoveProject(project string) error {
 	return err
 }
 
+func RunTestCommand(method string) error {
+	var input struct{ Environment map[string]string }
+	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
+		return err
+	}
+	var result any
+	var err error
+	switch method {
+	case "auth-settings":
+		var settings AuthSettings
+		settings, err = SettingsFromEnv(input.Environment, false)
+		result = Object{"mode": settings.Mode, "password": settings.Password, "github": settings.GitHub, "magicLink": settings.MagicLink, "emailProvider": settings.EmailProvider, "publicUrl": settings.PublicURL, "trustProxy": settings.TrustProxy}
+	case "github-settings":
+		var settings GitHubSettings
+		settings, err = GitHubSettingsFromEnv(input.Environment)
+		result = Object{"enabled": settings.Enabled, "clientId": settings.ClientID, "clientSecret": settings.ClientSecret, "appSlug": settings.AppSlug, "encryptionKey": settings.EncryptionKey, "webhookSecret": settings.WebhookSecret}
+	case "migration-info":
+		result = Object{"initialMigration": InitialMigration, "legacyMigrationNames": LegacyMigrationNames}
+	default:
+		return fmt.Errorf("unknown test command: %s", method)
+	}
+	if err != nil {
+		return json.NewEncoder(os.Stdout).Encode(Object{"error": err.Error()})
+	}
+	return json.NewEncoder(os.Stdout).Encode(Object{"result": result})
+}
+
 func RunTestBridge() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -103,7 +130,14 @@ func RunTestBridge() error {
 		}
 		return field(value, "result"), nil
 	}
-	store.Resolver = bridgeResolver{callback}
+	if os.Getenv("ORKA_TEST_MEMORY_CALLBACK") == "true" {
+		store.Resolver = bridgeResolver{callback}
+	} else {
+		store.Resolver, err = memorySettings(processEnv())
+		if err != nil {
+			return err
+		}
+	}
 	store.Blobs = bridgeBlobs{&Blobs{Root: os.Getenv("BLOB_ROOT")}, callback}
 	api := NewAPI(store, AuthSettings{Mode: "self-hosted", Password: true}, "")
 	api.Authenticate = func(ctx context.Context, token string) (string, error) {
@@ -183,6 +217,8 @@ func RunTestBridge() error {
 			result, err = store.transaction(ctx, func(q *Queries) any {
 				return store.createProject(q, user, text(args["name"]), flag(args["governed"]), args["remoteKey"], args["requestId"], flag(args["roles"]))
 			})
+		case "addSources":
+			result, err = store.transaction(ctx, func(q *Queries) any { return store.addSources(q, user, object(args["input"])) })
 		case "mutate":
 			result, err = store.transaction(ctx, func(q *Queries) any { return store.change(q, user, object(args["input"]), ChangeOptions{}) })
 		case "resolve":

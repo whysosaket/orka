@@ -293,8 +293,8 @@ point in `cmd/orka-server/`. The unchanged SQL baseline stays in
 `packages/protocol/`. Generated contracts are embedded in Go and checked for drift.
 
 `tests/acceptance/` runs Docker and operator drills. PostgreSQL integration tests
-call Go through a test-only bridge. `tests/reference/` is the frozen TypeScript
-compatibility oracle and is excluded from runtime images and operator releases.
+call Go through a test-only bridge. `tests/fixtures/` provides synthetic data and
+native-client fixtures. Server unit tests run directly against the Go implementation.
 `scripts/managed/` and `scripts/release/` are maintainer tools.
 
 Production images contain a native Go executable and no Node/npm runtime. The

@@ -13,11 +13,11 @@ import type {
   ResourceInput,
 } from "@portable/protocol";
 import { Store } from "./bridge/store.js";
-import { Blobs, bytesHash } from "./reference/blobs.js";
+import { Blobs, bytesHash } from "./fixtures/blobs.js";
 import { createApi } from "./bridge/main.js";
-import { JevMemoryResolver } from "./reference/jev.js";
+import type { MemoryResolver } from "./fixtures/memory-fixtures.js";
 
-async function fixture(resolver: JevMemoryResolver) {
+async function fixture(resolver?: MemoryResolver) {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const directory = await mkdtemp(join(tmpdir(), "orka-memory-"));
   const blobs = new Blobs(directory);
@@ -100,37 +100,23 @@ await test("HTTP memory consolidation: all sources, JEV decisions, snapshots, re
   let choice: MemoryChoice = "accept_incoming",
     unavailable = false,
     calls = 0;
-  const resolver = new JevMemoryResolver(
-    { enabled: true, apiKey: "fixture" },
-    async (_url, request) => {
+  const resolver: MemoryResolver = {
+    resolve: async (state) => {
       calls++;
       if (unavailable)
-        return new Response("private provider body", {
-          status: 503,
-          headers: { "retry-after": "0" },
-        });
-      const { questions } = JSON.parse(request?.body as string);
-      return Response.json({
+        throw new Error("Memory consolidation pending: jev_http_503");
+      return state.conflicts.map(() => ({
         model: "jev-1.13.0",
-        usage: { input_tokens: 100, output_tokens: 20 },
-        answers: Object.fromEntries(
-          Object.keys(questions).map((id) => [
-            id,
-            {
-              type: "choice",
-              choice,
-              confidence: 1,
-              probabilities: {
-                keep_current: choice === "keep_current" ? 1 : 0,
-                accept_incoming: choice === "accept_incoming" ? 1 : 0,
-                keep_both: choice === "keep_both" ? 1 : 0,
-              },
-            },
-          ]),
-        ),
-      });
+        choice,
+        confidence: 1,
+        probabilities: {
+          keep_current: choice === "keep_current" ? 1 : 0,
+          accept_incoming: choice === "accept_incoming" ? 1 : 0,
+          keep_both: choice === "keep_both" ? 1 : 0,
+        },
+      }));
     },
-  );
+  };
   const f = await fixture(resolver);
   try {
     for (const source of ["shared", "claude", "codex"] as const) {
@@ -292,7 +278,7 @@ await test(
   { skip: process.env.ORKA_TEST_LIVE_JEV !== "true" },
   async () => {
     assert.ok(process.env.JEV_API_KEY || process.env.TYPESAFE_API_KEY);
-    const f = await fixture(new JevMemoryResolver());
+    const f = await fixture();
     try {
       for (const [name, baseText, currentText, incomingText, expected] of [
         [

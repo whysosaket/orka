@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "2a9f0e3c190b911a34e5c0cf38ca42898359a1d0",
+  "commit": "c340b831b49c927898907e0c5a4670ff566a1394",
   "candidate": false,
-  "sourceTreeSha256": "9874929ddc2f10574380b53ebe4ba7cd7ec90f892affefb9ca399810d439a6b7",
+  "sourceTreeSha256": "e0041563b56d7047a1143bc780a4f6e7edd060fb246248208d7488b56c26379c",
   "files": [
     {
       "path": ".dockerignore",
@@ -36,7 +36,7 @@
     },
     {
       "path": "cmd/orka-test-server/main.go",
-      "sha256": "9cda6868ac10cba8e0973827f63a2e2ec5bbce1c6587d39419854571812c97cf",
+      "sha256": "a85a598f867da1b1fa6f7c59491234f85b801df64604716c1ea12e195c47774c",
       "mode": 420
     },
     {
@@ -161,7 +161,7 @@
     },
     {
       "path": "docs/dependency-licenses.md",
-      "sha256": "2f3b036da9f58d8954b0c8df048c87feedde1894314ef2dea07f7bd52b4912b3",
+      "sha256": "6abc282cc24f296be46bd15455ee73246e42c10acc37f8cf4f45c90a45e26bb6",
       "mode": 420
     },
     {
@@ -220,6 +220,11 @@
       "mode": 420
     },
     {
+      "path": "internal/server/auth_test.go",
+      "sha256": "8aaae5839246285a1fcca09c7279f1cb7bfbdf36e66d5f66e7690058365c1fc6",
+      "mode": 420
+    },
+    {
       "path": "internal/server/auth.go",
       "sha256": "f7caad50ac69cafbe8ae758326a60108cd19c9f8cf911c08b4b65782b25fb29c",
       "mode": 420
@@ -252,6 +257,11 @@
     {
       "path": "internal/server/database.go",
       "sha256": "6f22ccafbcd4b611e341401b91b243c8b3df0680572ba6fc27839941c8248917",
+      "mode": 420
+    },
+    {
+      "path": "internal/server/env_test.go",
+      "sha256": "1733f8213cf72183e2e729ef11777e31dfe467c8ea2f1d20700bf4bed9cdaa6d",
       "mode": 420
     },
     {
@@ -305,6 +315,11 @@
       "mode": 420
     },
     {
+      "path": "internal/server/memory_test.go",
+      "sha256": "82e6776654e7850e97748cd37d4c71e4071f5ca2db87100ddaaaa7c60ada6a80",
+      "mode": 420
+    },
+    {
       "path": "internal/server/memory.go",
       "sha256": "5ea0da8dbfed1935984a1ef3d0124756ffa6be443377f75207a86a12a845b91b",
       "mode": 420
@@ -340,6 +355,11 @@
       "mode": 420
     },
     {
+      "path": "internal/server/profiles_test.go",
+      "sha256": "fe19e7d68e071f446a3e196df54b8adbe377b7b80f071092ccf815a4c7b9023d",
+      "mode": 420
+    },
+    {
       "path": "internal/server/profiles.go",
       "sha256": "bb94e820291114d5398bb19ca3c1940cb6df82335cdefdcd200bbbb3450884b2",
       "mode": 420
@@ -361,7 +381,12 @@
     },
     {
       "path": "internal/server/security_test.go",
-      "sha256": "77f0eebd2c671f162b3926ec782edd3d481bab1c9313fe9da517064cea5723ac",
+      "sha256": "df0bfeab06843ae8f03d27cb6e17690fefa68b97bf0fcc80d1d9d72308177ee0",
+      "mode": 420
+    },
+    {
+      "path": "internal/server/sessions_test.go",
+      "sha256": "89c5d79dec4d5322733746484f61e0b672f35d4ac10a800772cd7d85e1334663",
       "mode": 420
     },
     {
@@ -396,7 +421,7 @@
     },
     {
       "path": "internal/server/testbridge.go",
-      "sha256": "34f0581fd285328151ca2feee26f5d848a3e3974e725a7ca1190d5d6caefe9c8",
+      "sha256": "3aa0177779016c08fb53b72c848dbd0365b3c8b31b291c6902039f542c7b55d2",
       "mode": 420
     },
     {
@@ -446,12 +471,12 @@
     },
     {
       "path": "package-lock.json",
-      "sha256": "e2bebf4e27bc837a50e1ee52c1610bd342e78b5107ae082df334b7d9a6addc9b",
+      "sha256": "063ae31805eb0d175b050fc2048902880d072e30cb5afa65b6cf3138ab5dd83f",
       "mode": 420
     },
     {
       "path": "package.json",
-      "sha256": "b988308f0460b31a28941e97588226755692d50a6c6ea719761d852b175de325",
+      "sha256": "658a7e0f86ab923a706e8caa8a12dfbf9e2d0f5c22ab4da1c3b600696abaaac0",
       "mode": 420
     },
     {
@@ -531,7 +556,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "3cd945778d9e0c8ee6822bde6db7fcc7fe78c792a494f56e788d0a6597c35099",
+      "sha256": "7fec26426c7c3d73bedfc4ff1ca1f904bf4bd9ac7627153f25274e87acd514f7",
       "mode": 420
     },
     {
@@ -606,12 +631,12 @@
     },
     {
       "path": "tests/acceptance/github-auth-live-e2e.ts",
-      "sha256": "890b0c0172e82c5307f4d7725bd57b8626ed714be718be8e9b58eb66b5311296",
+      "sha256": "6a6b64e70201f607a89bbf172f261ff18f90a86e65ceb8a45fc53c1abcc08e14",
       "mode": 420
     },
     {
       "path": "tests/acceptance/github-live-e2e.ts",
-      "sha256": "dcc124dda5e074a1eed7e3679045ab1c273a3f7d428f2b977354e4d64dbf4e1d",
+      "sha256": "988023f455caf3d44630fa714f54e497b85b2d9f478047fe22c9e998bbc68fe1",
       "mode": 420
     },
     {
@@ -631,12 +656,12 @@
     },
     {
       "path": "tests/acceptance/mcp-preview.ts",
-      "sha256": "ddb2e37c2ecb65c05c0ead13d7e27ff7de369b647d3cd78dc3512a423205f3f4",
+      "sha256": "cdddd3ec2af56832e4a9cfe0e4a887480c5310e13c107a3b5383284b2fdf2ed0",
       "mode": 420
     },
     {
       "path": "tests/acceptance/onboarding-native-e2e.ts",
-      "sha256": "eb1a18878eb900102b78e36cd6cbf7d9afada888f44be9928e5c66e4de4b48c8",
+      "sha256": "c2bedaa0fd0328b7bc148b017f033cb3732684d130b751a809e4fb7ac1c19e18",
       "mode": 420
     },
     {
@@ -645,43 +670,58 @@
       "mode": 420
     },
     {
-      "path": "tests/auth.test.ts",
-      "sha256": "8b938ad5f9f8e2ba0c71cef595bb9919c29e2530f68704e7bb08dd8cd6a76ee3",
-      "mode": 420
-    },
-    {
       "path": "tests/backup_test.py",
       "sha256": "d4b856c6167682b44720f179be84ac7f6ab8be52858943d4e07902a709f99e58",
       "mode": 420
     },
     {
+      "path": "tests/bridge/auth.ts",
+      "sha256": "6b8c3cdf6f09fbd3f80095271ad9a51d9abf5a885df28717f0b707ba77a8dc2e",
+      "mode": 420
+    },
+    {
+      "path": "tests/bridge/command.ts",
+      "sha256": "2caf5603c1d065302e5ec0e0ccf92abad14a29cdb62e0b614df15fe5f6f5bcc7",
+      "mode": 420
+    },
+    {
+      "path": "tests/bridge/errors.ts",
+      "sha256": "b48fab694d05de1458c71b0b18a68c679832c5ae79b7c1a517826ded004c4736",
+      "mode": 420
+    },
+    {
       "path": "tests/bridge/github.ts",
-      "sha256": "ce37b8747c4276079f9d5d0f158e295de9f5d2bb77dc1e42d3acec8a0f17464a",
+      "sha256": "3b276b82df75f887e6be24cd2799094e503d54c9cc7090469a7aa7db346d8b2d",
       "mode": 420
     },
     {
       "path": "tests/bridge/main.ts",
-      "sha256": "fae3e577676421f8f64f6614ee5ebefacff47000f0e1351bd3256f7ea7e776e3",
+      "sha256": "cf7f22c468783473384891510c77db5907c40aaf305c56d519e895839d61960b",
       "mode": 420
     },
     {
       "path": "tests/bridge/mcp.ts",
-      "sha256": "56a0889b5256dde54879555ca254ac8e63d8616ea159a5903af0ee4811bd6deb",
+      "sha256": "2dabe9346030d15b599e8f929f2512280c0ad9033f66484458a848c841d1ec2d",
       "mode": 420
     },
     {
       "path": "tests/bridge/migrations.ts",
-      "sha256": "ee70e067e794b8f8905400db4253142dfbf0a555b81d9fab2beb156342344f0d",
+      "sha256": "5f2be630b61b4a022cccf6c098f414f2bd4e28a0423e7df23c549bf77d2da15f",
+      "mode": 420
+    },
+    {
+      "path": "tests/bridge/sources.ts",
+      "sha256": "5ae4aedd5323991a3f19c502101c24720abf49513e317ed80af4483833e16cbc",
       "mode": 420
     },
     {
       "path": "tests/bridge/store.ts",
-      "sha256": "a1a5dc2871db6b8d12cd5bb59210b1250087ec7b71496269321ea7963a54d1ed",
+      "sha256": "508b3b5a162ff0932ecbfb6ab8406aab0808589721c2560e8995ef94113e79b6",
       "mode": 420
     },
     {
       "path": "tests/cloud.integration.ts",
-      "sha256": "30524849fecfe204ac99b3223920671952f84a3ce59212998941ccf972180750",
+      "sha256": "733f1d634473f8a2fa19ccafdb722ea2fd41114e87b4bb16dacb39cf903b2587",
       "mode": 420
     },
     {
@@ -710,68 +750,73 @@
       "mode": 420
     },
     {
-      "path": "tests/deployment.test.ts",
-      "sha256": "eff252e6f8b7a5f1ae2fa85615b40ef1eff7ee65b10a5e3bc8e4171aef7e28b5",
-      "mode": 420
-    },
-    {
       "path": "tests/devices.integration.ts",
-      "sha256": "313ac7e027a33da3812437c3a5e758081f5bedfe175645d54795014fd3ddcf79",
+      "sha256": "4c56095e703cdf937efe001e7937743151689412762850ed540da310df94a47f",
       "mode": 420
     },
     {
       "path": "tests/env.integration.ts",
-      "sha256": "26c185b5d9c581039c7093fcfd82d082bc9ce0319884cb284cadc78218d21215",
+      "sha256": "310a00d78bd93e27f98bba1b8a61ba5a82cf72c262fedb02e4f28004492d0090",
       "mode": 420
     },
     {
       "path": "tests/env.test.ts",
-      "sha256": "4f0a7b22235807a06b1f4496599257e47f360dd9ea8000a1222fabaa5de9c213",
+      "sha256": "cf75289207770b6f097ad4c89a1ed9f3e302bde4dd916a7b97a24f1417c05e98",
+      "mode": 420
+    },
+    {
+      "path": "tests/fixtures/blobs.ts",
+      "sha256": "714da8cde2cf63cd80f1e448bc71606ffd34515f6d07b49ebdfff734dab6701e",
+      "mode": 420
+    },
+    {
+      "path": "tests/fixtures/env-fixtures.ts",
+      "sha256": "4458b43bc0cd4c403af0d7cb7ce55602d958cb0c6ce705536a91d52e9e8ddcda",
+      "mode": 420
+    },
+    {
+      "path": "tests/fixtures/env-native.ts",
+      "sha256": "c076ace2d62fa172257fdbf59a9903f37f8e0e6f35fce340cbe84f8a31bf0e87",
+      "mode": 420
+    },
+    {
+      "path": "tests/fixtures/memory-fixtures.ts",
+      "sha256": "a50a3d01b7afc62b2ea6e0e9045b337f7874b52c4a7c372fd8a3c092a6054a73",
       "mode": 420
     },
     {
       "path": "tests/github.integration.ts",
-      "sha256": "9941599e196bd3145219724aa5f0be7d924877db131d636bacfc6e7c8300d2c3",
+      "sha256": "b142bd75d8cf06142b613e5835e686c862551bf2de83f7d51a76e7bd1f34f78e",
       "mode": 420
     },
     {
       "path": "tests/github.test.ts",
-      "sha256": "4619e4d3c317c83ae058257109d6d2b75b9d7379a8c1739683340dd5f7cd9de3",
+      "sha256": "0696bb2ccfbec5a5a224bf25d6f3994d4574b9fb883e75ef7e83fea39c2f8260",
       "mode": 420
     },
     {
       "path": "tests/governance.integration.ts",
-      "sha256": "b99daf9df3c56c3ff125e714b08ce9cb82194304459afa507721429096363bea",
+      "sha256": "ea73ff1f90e44295f9f35d698e422af46489893da4397f0e2873d7d5e81b549a",
       "mode": 420
     },
     {
       "path": "tests/mcp-regression.integration.ts",
-      "sha256": "b9bc40deeda22416672d8f7ae180453778d0eb0be650da5e5b379514a5aa10f1",
+      "sha256": "73d92299a22e8e28dc65b7f825dbd14211437dfe3e5b84640114795e8ef2992b",
       "mode": 420
     },
     {
       "path": "tests/mcp.integration.ts",
-      "sha256": "7c0ff4b011b744c4ffb9dd89dd7462a026e51f66d56bcd88ebb5fbdc4cd49d71",
-      "mode": 420
-    },
-    {
-      "path": "tests/mcp.test.ts",
-      "sha256": "5695fef58e35e308e476f183015c324ee9a1bdaec56c560d65eca680599d2401",
+      "sha256": "7f3aa57e84e00edad402a97a23e7f5c74a1d16780fe508c1b9bd071f49f09d1e",
       "mode": 420
     },
     {
       "path": "tests/member-emails.integration.ts",
-      "sha256": "4196a11048bbbe0945e703d8ef2e76ab5f3c4c365f7aaceafeb88a157d202dbf",
+      "sha256": "203feb4fb37eef7c9d8ad04b76c8ebb0e48042aa0c99b7a0e778e365b9e8ccc5",
       "mode": 420
     },
     {
       "path": "tests/memory.integration.ts",
-      "sha256": "11404319adc7f5263813c7755ef1d6e4a8496494fdd5f4c5c6fc3f23439cf4c7",
-      "mode": 420
-    },
-    {
-      "path": "tests/memory.test.ts",
-      "sha256": "683693e8e51215f3c295d08f343a35ca9f4c6841baba886aaf5412be8af44ff6",
+      "sha256": "57d500099fca9e284d89cddf4a5471fe852049d383b46c598fc95e194f0cce9a",
       "mode": 420
     },
     {
@@ -781,7 +826,7 @@
     },
     {
       "path": "tests/onboarding.integration.ts",
-      "sha256": "2af80cd9af1804b7b29ef6a8ffb641c707809797ed24e788c36d765374eb8cb6",
+      "sha256": "d678a7569a35ea123dd6843c700dfe78fc81a90a03de6ae0fb3fc292ce4931fb",
       "mode": 420
     },
     {
@@ -790,18 +835,13 @@
       "mode": 420
     },
     {
-      "path": "tests/profiles.test.ts",
-      "sha256": "54d9d3544260a29364b6e8d6780cf9fa163fa941332b082b6b6fe83b0c7d8f06",
-      "mode": 420
-    },
-    {
       "path": "tests/project-invite.integration.ts",
-      "sha256": "2d6f9e35649272686068af143a864563e75031308974bb0e380f16270263724d",
+      "sha256": "210badcc17cb8bba182a52f0dcad161a8e0014a27282de18a827b7d5aff5f812",
       "mode": 420
     },
     {
       "path": "tests/projects.integration.ts",
-      "sha256": "8f5854c63c39921261118aa66fc513692950d376ce7c5282d0b337a3246dddfb",
+      "sha256": "6fae3726df793ca5dee548c738e6b5d79957a4a43fc0944e1ab967fbfe34fa2e",
       "mode": 420
     },
     {
@@ -810,173 +850,18 @@
       "mode": 420
     },
     {
-      "path": "tests/reference/auth.ts",
-      "sha256": "aefce9f8e04e2858d4e1b51af4762463013de22c38e0c01e48e7f4a43eedade8",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/blobs.ts",
-      "sha256": "6f926647033313243c822b0c2854b9c238b2b5eca20916af8a318f61d599ebc0",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/deployment.ts",
-      "sha256": "8f80701998c52c409b7350c21aa88e7a4cedaba392cb1ac6b991ac80a88ba88a",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/email-confirmation.ts",
-      "sha256": "ee84c51452460719b0e9bdcee409f3c93e39d32318bc0371445a7b7a4f5e22c7",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/env.ts",
-      "sha256": "adec81e2998808ac0ee3496396db1a0c40d1b148711daf8f82321adbbc178dd8",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/errors.ts",
-      "sha256": "b48fab694d05de1458c71b0b18a68c679832c5ae79b7c1a517826ded004c4736",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/github.ts",
-      "sha256": "4b01f3529b388b16851f28f63862f4823309b35e3efb820206db968a2ffdb167",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/governance.ts",
-      "sha256": "c19b714b81f95e14a55ef2d5231dd81a73c12918c9f134696f7a38334e696943",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/jev.ts",
-      "sha256": "b1f76121ba01dc296eeec09048f9ebbbe935d046b58bf96ceea2babb14884893",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/main.ts",
-      "sha256": "75985b7ee525a183fa35319c2982a21ee20d85740db64e5e49951399f31ce52c",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/management-log.ts",
-      "sha256": "c51342553574073b14905dba362dbace060c732cf899340de9ae527ee742286f",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/mcp/oauth.ts",
-      "sha256": "270161d62c9241733455737f18229e1f9eb36a7694d8a990cdbdf8d4e8a65faf",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/mcp/reader.ts",
-      "sha256": "d294a2c1dc75bf7eb6ff953845963023939683a29450f485ad24801d176a8747",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/mcp/server.ts",
-      "sha256": "e36598cf8be94ea4824e40ce27291b2a9ba1689dbd18053454ecf541d16ac349",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/mcp/sessions.ts",
-      "sha256": "4b0f30374342c11089976b8f3bef7cfa2189b2f71a2eb0f75c5addf3dc45f6d8",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/memory.ts",
-      "sha256": "972b56c0962ece24bacf6459b1d112381b4cc62e5a4bf256a1f363874fecc05b",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/migrate.ts",
-      "sha256": "d8ea0f5a258135bf1fd9430f996183c24fe5cac0fcea842210081e999dcc799d",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/migrations.ts",
-      "sha256": "fdb1602b740746cb061f71848afaf5033b5825c3f5b5073d2539d85bbbe0cb7e",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/permissions.ts",
-      "sha256": "6175ecb4122b19daee6f9d7d72c0ad90a8466753b954d90bb1fdd136e52e4236",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/profiles.ts",
-      "sha256": "86e47f5872be602e0824f7050375b206ca689b59ff31527accc7ae39b31b5ed9",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/project-invite.ts",
-      "sha256": "1373d060fd9f6469618b76e1e2ff138a1c1236490fe420960b84f470f837fa06",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/projects.ts",
-      "sha256": "e9c99b1aa275bf98f143b67f42157ca193faadc1e7530144f4aa68dab746c514",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/README.md",
-      "sha256": "fcf08388a3931a243ec253f2b3b89b9a8aab2da9e0af726c2970cd12a8f2572a",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/role-policies.ts",
-      "sha256": "6d7442d859b36271eb8ea6b0419fdbfc48bc2b2ee698b41fa4d2264675d1ec26",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/runtime.ts",
-      "sha256": "1d368689072f7fc7dbaa9be4673c4a100eef41fdc32b86c4682414f019d26d89",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/selected-sharing.ts",
-      "sha256": "19e0787012ea6046cec2fdb129bd71af4059a7f30bf500b46efbc12af22d2677",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/sources.ts",
-      "sha256": "687253a77cbd0121954bd78ccd3371c03c0bc31cfe6880a14fd9f685382a6f16",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/store.ts",
-      "sha256": "37d3e2dd658099e14ec9ee53be5575ef9c0e26784402f1e63006dca151db9c48",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/testing/env-fixtures.ts",
-      "sha256": "4458b43bc0cd4c403af0d7cb7ce55602d958cb0c6ce705536a91d52e9e8ddcda",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/testing/env-native.ts",
-      "sha256": "c076ace2d62fa172257fdbf59a9903f37f8e0e6f35fce340cbe84f8a31bf0e87",
-      "mode": 420
-    },
-    {
-      "path": "tests/reference/testing/memory-fixtures.ts",
-      "sha256": "357d21d62ac178aa3f37e6e1860c3373146f34422b60b371d98182669d3026fc",
-      "mode": 420
-    },
-    {
       "path": "tests/role-policies.integration.ts",
-      "sha256": "c102429f7e96e997cc93ae6efd4d5dcf20092d6f141ef041c3a8905bbc1fb50d",
+      "sha256": "b251653061c3d6df5ff14815e167e9eab06a6d37780a92201e919803dccb3945",
       "mode": 420
     },
     {
       "path": "tests/selected-sharing-native.integration.ts",
-      "sha256": "7dfd6237b1cb286474f0223367eecfb4aff3d9973dad8be7c064ea1cfee5a732",
+      "sha256": "282dae4fa047bd29a078d869d6620dfbee80ddd42deb1d938104eb191979e08d",
       "mode": 420
     },
     {
       "path": "tests/selected-sharing.integration.ts",
-      "sha256": "66cf60947a722daf5c2f08d391a79466dfdcd5098181ab8ffe029f5c7e9aedd5",
+      "sha256": "1679d80409fb2dbc9a94be9064634afa193984605afab33e5a67e3ec09009f47",
       "mode": 420
     },
     {
@@ -991,7 +876,7 @@
     },
     {
       "path": "tests/sources.integration.ts",
-      "sha256": "0dd81dc52ffec0288943463e01cf0a44c49b5a6de7cc0c9a2983deec351f6b29",
+      "sha256": "66f024d12e80fcb27e1d8a17117b112ce73b0f88adfb44b9d107432eaf1ae1ae",
       "mode": 420
     },
     {

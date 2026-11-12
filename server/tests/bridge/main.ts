@@ -5,20 +5,14 @@ import {
   type ServerResponse,
 } from "node:http";
 import { Store } from "./store.js";
-import {
-  authSettings,
-  type AuthSettings,
-  type EmailHook,
-} from "../reference/auth.js";
-import type { Authenticate } from "../reference/main.js";
+import { authSettings, type AuthSettings } from "./auth.js";
 import type { GitHubRepositories } from "./github.js";
 
 export function createApi(
   store: Store,
-  authenticate: Authenticate,
+  authenticate: (token: string) => Promise<string>,
   authUrl?: string,
   settings: AuthSettings = authSettings({}),
-  _emailHook?: EmailHook,
   mcpEnabled = false,
   repositories?: GitHubRepositories,
 ) {

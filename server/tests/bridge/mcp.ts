@@ -6,7 +6,7 @@ import type {
   OAuthTokenRevocationRequest,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import type { AuthSettings } from "../reference/auth.js";
+import type { AuthSettings } from "./auth.js";
 import { orkaTools as definitions } from "../../packages/protocol/src/mcp.js";
 import type { Store } from "./store.js";
 export const tokenHash = (token: string) =>
@@ -69,7 +69,7 @@ export class OrkaReader {
       ...(filter as object),
     }) as Promise<{
       sessions: { id: string }[];
-      nextCursor: import("../reference/mcp/reader.js").ResourceCursor | null;
+      nextCursor: number | { revision: number; resourceId: string } | null;
     }>;
   }
   run(name: string, input: unknown) {

@@ -8,10 +8,10 @@ import { join } from "node:path";
 import { Pool } from "pg";
 import { Store } from "./bridge/store.js";
 import { migrate } from "./bridge/migrations.js";
-import { Blobs } from "./reference/blobs.js";
+import { Blobs } from "./fixtures/blobs.js";
 import { createApi } from "./bridge/main.js";
 import { accountAuthenticator } from "./bridge/migrations.js";
-import { authSettings } from "./reference/auth.js";
+import { authSettings } from "./bridge/auth.js";
 
 async function listen(server: Server) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

@@ -8,10 +8,10 @@ import { parseEnv } from "node:util";
 import { createServer, type ServerResponse } from "node:http";
 import { Pool } from "pg";
 import { Store } from "../bridge/store.js";
-import { Blobs } from "../reference/blobs.js";
+import { Blobs } from "../fixtures/blobs.js";
 import { migrate } from "../bridge/migrations.js";
 import { createApi } from "../bridge/main.js";
-import { authSettings } from "../reference/auth.js";
+import { authSettings } from "../bridge/auth.js";
 
 const [environmentPath, nativePath, githubLogin = "whysosaket"] =
   process.argv.slice(2);
@@ -131,7 +131,11 @@ const api = createApi(
     return (await response.json()).id as string;
   },
   authOrigin,
-  authSettings({ PUBLIC_URL: origin, GITHUB_ENABLED: "true" }),
+  authSettings({
+    DEPLOYMENT_MODE: "cloud",
+    PUBLIC_URL: origin,
+    GITHUB_ENABLED: "true",
+  }),
 );
 // The acceptance harness captures the native deep link before the OS dispatches
 // it. Production still uses the unmodified proxy and native PKCE exchange.

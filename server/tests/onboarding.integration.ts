@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import { Store } from "./bridge/store.js";
-import { Blobs } from "./reference/blobs.js";
+import { Blobs } from "./fixtures/blobs.js";
 import { createApi } from "./bridge/main.js";
-import { authSettings } from "./reference/auth.js";
+import { authSettings } from "./bridge/auth.js";
 for (const mode of ["cloud", "self-hosted"])
   await test(`onboarding identity and remote keys are scoped in ${mode}`, async () => {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
