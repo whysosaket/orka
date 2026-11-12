@@ -146,6 +146,10 @@ func (s *Store) governance(q *Queries, user, action string, input Object) any {
 	case "catalog":
 		q.Parse(input, scopeShape(nil))
 		members := values(q.Rows(`select m.user_id as id,m.role,coalesce(profile.display_name,p.label,'Member ' || left(m.user_id::text,8)) as name,p.email,profile.display_name as "displayName",profile.avatar_url as "avatarUrl",profile.avatar_data as "avatarData" from orka.members m left join orka.env_profiles p on p.user_id=m.user_id left join orka.profiles profile on profile.user_id=m.user_id where m.project_id=$1 order by m.role,name,m.user_id`, project))
+		pendingInvites := []any{}
+		if flag(p["owner"]) || (text(p["role"]) == "admin" && p["rolePolicies"] != nil) {
+			pendingInvites = values(q.Rows(`select i.email,max(i.expires_at) as "expiresAt" from orka.invites i where i.project_id=$1 and i.email is not null and i.expires_at>now() and not exists(select 1 from orka.members m join orka.env_profiles p on p.user_id=m.user_id where m.project_id=i.project_id and lower(p.email)=i.email) group by i.email order by i.email`, project))
+		}
 		access := Object{}
 		for _, category := range policyClasses {
 			kind, path := category, ""
@@ -164,7 +168,7 @@ func (s *Store) governance(q *Queries, user, action string, input Object) any {
 		if flag(p["owner"]) || p["rolePolicies"] != nil {
 			resourceRules = values(q.Rows(`select resource_id as "resourceId",user_id as "userId",rule from orka.resource_access where project_id=$1 and (user_id=$2 or $3)`, project, user, p["owner"]))
 		}
-		return merge(p, Object{"access": access, "members": members, "memberRules": memberRules, "resourceRules": resourceRules, "resourceCount": count, "envSets": envSets, "requests": s.requestRows(q, user, project)})
+		return merge(p, Object{"access": access, "members": members, "pendingInvites": pendingInvites, "memberRules": memberRules, "resourceRules": resourceRules, "resourceCount": count, "envSets": envSets, "requests": s.requestRows(q, user, project)})
 	case "activate":
 		v := q.Parse(input, versionedShape(map[string]Field{"rules": contractField("projectRules")}))
 		if !owner() || !current(v["expectedPolicyRevision"]) {
