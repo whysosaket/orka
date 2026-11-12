@@ -637,6 +637,7 @@ function WorkspaceApp({
               busy={busy}
               actionError={error || refreshError}
               onDismissError={error ? () => setError("") : undefined}
+              skillUsagePartial={skillUsage.usage?.partial}
               onSync={() =>
                 void act(() => invoke("sync_now"), {
                   successTitle: "Sync requested",
