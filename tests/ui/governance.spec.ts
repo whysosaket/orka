@@ -41,6 +41,14 @@ async function fixture(
         files: [{ path: file, hash: "fixture", size: 16, executable: false }],
         deleted: removed,
       };
+      const localDraft = {
+        id: "local-memory",
+        projectId: "project",
+        resource: { ...resource, kind: "memory", title: "Saved learning" },
+        paths: [],
+        status: "local",
+        createdAt: "2026-10-18T00:00:00Z",
+      };
       const project = {
         id: "project",
         name: "Team \u2014 project",
@@ -190,7 +198,7 @@ async function fixture(
                 devices: [],
                 deviceId: "fixture",
                 background: true,
-                drafts: [],
+                drafts: mode.startsWith("draft-") ? [localDraft] : [],
                 reviewRequests: [...envRequests, request],
               };
             if (command === "sync_progress")
@@ -314,6 +322,17 @@ async function fixture(
                   return { policyRevision: catalog.policyRevision };
                 case "request-access":
                   return { status: "pending" };
+                case "draft":
+                  return {
+                    draft: localDraft,
+                    files: { "content.md": "Saved learning\n" },
+                    related: [],
+                    canPublish: mode === "draft-publisher",
+                  };
+                case "submit-draft":
+                  return {
+                    status: mode === "draft-publisher" ? "queued" : "pending",
+                  };
                 case "activate":
                   catalog.governed = true;
                   catalog.policy = args.input!.rules as ProjectRules;
@@ -503,6 +522,43 @@ async function openUpdates(page: Page, name = "Review local update") {
     .getByRole("button", { name: "Review update", exact: true })
     .click();
   return page.getByRole("dialog", { name, exact: true });
+}
+
+for (const publisher of [true, false]) {
+  test(`local memory ${publisher ? "publishes directly" : "requests publisher approval"}`, async ({
+    page,
+  }) => {
+    await fixture(
+      page,
+      true,
+      false,
+      publisher ? "draft-publisher" : "draft-suggester",
+    );
+    const local = management(page).getByRole("region", {
+      name: "Local changes",
+    });
+    await local
+      .getByRole("button", { name: "Review changes", exact: true })
+      .click();
+    await expect(local.getByLabel("File changes")).toContainText(
+      "Saved learning",
+    );
+    await local
+      .getByRole("button", {
+        name: publisher ? "Publish update" : "Send for approval",
+        exact: true,
+      })
+      .click();
+    expect(await calls(page, "submit-draft")).toEqual([
+      {
+        projectId: "project",
+        id: "local-memory",
+        reviewedFiles: [
+          { path: "SKILL.md", hash: "fixture", size: 16, executable: false },
+        ],
+      },
+    ]);
+  });
 }
 test("request approval sends the exact reviewed hash and reports stale proposals", async ({
   page,

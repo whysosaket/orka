@@ -6,6 +6,8 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 static SERIAL: Mutex<()> = Mutex::new(());
+#[path = "context_sharing_tests.rs"]
+mod context_sharing_tests;
 #[path = "global_skill_tests.rs"]
 mod global_skill_tests;
 #[path = "governance_tests.rs"]

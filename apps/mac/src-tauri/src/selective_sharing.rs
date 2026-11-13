@@ -65,21 +65,11 @@ pub fn preview(db: &Connection, project: &Value, input: &Value) -> Result<Value>
     let scoped = sources::for_resource(project, &resource)
         .ok_or("Connect this resource's repository on this Mac")?;
     sources::validate(&scoped)?;
-    if resource["kind"] == "memory" && resource["source"] != "shared" {
-        let id = Uuid::new_v5(
-            &Uuid::NAMESPACE_URL,
-            format!(
-                "selected-memory:{}:{}",
-                project["id"], resource["resourceId"]
-            )
-            .as_bytes(),
-        )
-        .to_string();
-        resource["memory"] = json!({"topic":resource["title"].as_str().unwrap_or("Shared memory").chars().take(160).collect::<String>(),"scope":"","provider":resource["source"],"supersedes":[]});
-        resource["resourceId"] = json!(id);
-        resource["source"] = json!("shared");
-        resource["logicalPath"] = json!(format!("knowledge/{id}.md"));
-    }
+    resource = crate::context_sharing::publication_resource(
+        db,
+        project["id"].as_str().ok_or("Missing project")?,
+        &resource,
+    )?;
     let base = db::rows(
         db,
         "SELECT value FROM resources WHERE id=? AND project=?",

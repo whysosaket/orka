@@ -379,7 +379,8 @@ fn collect(
             if !files.is_empty()
                 && manifest_hash(&json!(files)) != manifest_hash(&existing["files"])
             {
-                crate::governance::capture(db, project, &local, &json!(paths))?;
+                let draft = crate::governance::capture(db, project, &local, &json!(paths))?;
+                crate::context_sharing::queue_automatic(db, project, &draft)?;
                 if !b.is_null() && b.is_object() {
                     b["installationState"] = json!("locally_modified");
                     db::upsert(db, "bindings", &id, project_id, &b)?;
@@ -857,7 +858,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool
     )
     .map_err(|e| e.to_string())?;
     let mut seen = BTreeSet::new();
-    let drafts: Vec<_> = db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')='local' AND json_extract(value,'$.resource.kind')='memory'", &[&project_id])?.into_iter().filter(|_| project["catalogOnly"] != true).collect();
+    let drafts: Vec<_> = db::rows(db, "SELECT value FROM drafts WHERE project=?1 AND json_extract(value,'$.resource.kind')='memory' AND (json_extract(value,'$.status')='local' OR EXISTS (SELECT 1 FROM outbox WHERE path=?2 AND json_extract(outbox.value,'$.contextDraft')=drafts.id))", &[&project_id,&crate::context_sharing::QUEUE_PATH])?.into_iter().filter(|_| project["catalogOnly"] != true).collect();
     // Finish ignore discovery before retiring drafts or inferring deletions.
     let instructions = if crate::projects::sharing_allowed(project, "memory") || !drafts.is_empty()
     {
@@ -898,6 +899,11 @@ fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool
             project_id,
             &draft,
         )?;
+        db.execute(
+            "DELETE FROM outbox WHERE path=? AND json_extract(value,'$.contextDraft')=?",
+            params![crate::context_sharing::QUEUE_PATH, draft["id"].as_str()],
+        )
+        .map_err(|error| error.to_string())?;
     }
     let claude = native::claude_home()?;
     let codex = native::codex_home()?;

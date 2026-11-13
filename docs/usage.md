@@ -115,8 +115,11 @@ under either choice.
 
 Automatic publication indexes only selected ordinary categories. Browsing Sessions,
 Memories, and Plans also discovers local content in a separate private catalog,
-without enabling sharing, queuing uploads, or creating review requests. In governed projects, memory and
-skill discovery creates private drafts. Shared skills install automatically into
+without enabling sharing, queuing uploads, or creating review requests.
+In governed projects, automatic
+memory and skill sharing publishes discovered changes for owners and publishers,
+or submits them for approval for suggesters. Read-only content remains local.
+Shared skills install automatically into
 both project skill folders when Skills sharing is enabled and the member has
 access. Clean skill updates apply automatically; conflicting local edits are
 preserved for resolution. Shared instructions still require explicit local

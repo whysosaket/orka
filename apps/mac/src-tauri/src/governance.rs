@@ -149,6 +149,9 @@ pub fn project(db: &Connection, id: &str) -> Result<Value> {
         .next()
         .ok_or("Project unavailable".into())
 }
+pub fn latest_draft(db: &Connection, project: &str, resource: &str) -> Result<Option<Value>> {
+    Ok(db::rows(db,"SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.resource.resourceId')=? ORDER BY coalesce(json_extract(value,'$.updatedAt'),json_extract(value,'$.createdAt')) DESC,rowid DESC LIMIT 1", &[&project,&resource])?.into_iter().next())
+}
 pub fn capture(
     db: &Connection,
     project: &Value,
@@ -194,13 +197,56 @@ pub fn capture(
             resource["contextSources"] = json!(sources);
         }
     }
-    let draft = json!({"id":id,"projectId":project_id,"resource":resource,"paths":paths,"status":"local","createdAt":db::now()});
+    let latest = if matches!(resource["kind"].as_str(), Some("memory" | "skill")) {
+        latest_draft(
+            db,
+            project_id,
+            resource["resourceId"].as_str().ok_or("Missing resource")?,
+        )?
+    } else {
+        None
+    };
+    let prepared = crate::context_sharing::publication_resource(db, project_id, &resource)?;
+    let current = db::rows(
+        db,
+        "SELECT value FROM resources WHERE id=? AND project=?",
+        &[&prepared["resourceId"].as_str(), &project_id],
+    )?
+    .into_iter()
+    .next()
+    .unwrap_or(Value::Null);
+    let base = if protected(&resource) {
+        indexer::binding(
+            db,
+            resource["resourceId"].as_str().ok_or("Missing resource")?,
+        )?["base"]["revision"]
+            .as_i64()
+            .unwrap_or(0)
+    } else {
+        current["revision"].as_i64().unwrap_or(0)
+    };
+    let preceding = latest
+        .as_ref()
+        .map(|latest| {
+            if latest["submission"].is_object() {
+                latest["id"].clone()
+            } else {
+                latest["precedingDraft"].clone()
+            }
+        })
+        .unwrap_or(Value::Null);
+    let draft = json!({"id":id,"projectId":project_id,"resource":resource,"paths":paths,"status":"local","createdAt":db::now(),"baseRevision":base,"precedingDraft":preceding});
     db.execute(
         "INSERT OR IGNORE INTO drafts VALUES(?,?,?)",
         params![id, project_id, draft.to_string()],
     )
     .map_err(|e| e.to_string())?;
-    if resource["kind"] == "skill" {
+    if matches!(resource["kind"].as_str(), Some("memory" | "skill"))
+        && latest.as_ref().is_some_and(|latest| latest["id"] != id)
+    {
+        db.execute("UPDATE drafts SET value=json_remove(json_set(value,'$.status','local','$.resource',json(?),'$.baseRevision',?,'$.precedingDraft',json(?)),'$.submission','$.requestId','$.request','$.dismissalReason','$.conflictReview') WHERE id=? AND project=? AND (json_extract(value,'$.status') IN ('published','approved') OR json_extract(value,'$.dismissalReason')='source_replaced')",params![resource.to_string(),base,preceding.to_string(),id,project_id]).map_err(|error|error.to_string())?;
+    }
+    if resource["kind"] == "skill" || resource["kind"] == "memory" {
         db.execute(
             "UPDATE drafts SET value=json_set(value,'$.updatedAt',?) WHERE id=? AND project=?",
             params![db::now(), id, project_id],
@@ -223,6 +269,7 @@ pub fn localize_outbox(db: &Connection, project: &Value) -> Result<()> {
         &[&id],
     )? {
         if q["path"] == crate::global_skills::IMPORT_PATH
+            || q["path"] == crate::context_sharing::QUEUE_PATH
             || q["path"] == crate::selective_sharing::QUEUE_PATH
         {
             continue;
@@ -464,10 +511,10 @@ pub fn reconcile_requests(db: &Connection, project: &str, requests: &Value) -> R
             .as_array()
             .and_then(|rows| rows.iter().find(|r| r["id"] == draft["requestId"]))
         {
-            draft["status"] = if request["status"] == "pending" {
-                json!("proposed")
-            } else {
-                request["status"].clone()
+            draft["status"] = match request["status"].as_str() {
+                Some("pending") => json!("proposed"),
+                Some("approved") => json!("published"),
+                _ => request["status"].clone(),
             };
             draft["request"] = request.clone();
             db::upsert(
@@ -703,7 +750,10 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
             if action=="draft" {
                 let related=related_knowledge(&db,project_id,&draft)?;
                 let (files,manifest)=preview_files(&draft["resource"]["files"])?;
-                return Ok(json!({"draft":draft,"files":files,"manifest":manifest,"related":related}));
+                let can_publish = matches!(draft["resource"]["kind"].as_str(), Some("memory" | "skill")) && crate::context_sharing::publication_mode(&db,project_id,&draft["resource"])? == "publish";
+                let prepared=crate::context_sharing::publication_resource(&db,project_id,&draft["resource"])?;
+                let current=db::rows(&db,"SELECT value FROM resources WHERE id=? AND project=?", &[&prepared["resourceId"].as_str(),&project_id])?.into_iter().next().unwrap_or(Value::Null);
+                return Ok(json!({"draft":draft,"files":files,"manifest":manifest,"related":related,"canPublish":can_publish,"baseRevision":current["revision"].as_u64().unwrap_or(0),"before":if current["files"].is_array(){texts(&current["files"])?}else{json!({})}}));
             }
             if let Some(files) = input.get("reviewedFiles") {
                 if !files.is_array() || files != &draft["resource"]["files"]
@@ -711,31 +761,39 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
                     return Err("Local or shared files changed; review the update again".into());
                 }
                 if draft["resource"]["kind"] == "skill" {
-                    let latest = db::rows(&db,"SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.resource.resourceId')=? ORDER BY coalesce(json_extract(value,'$.updatedAt'),json_extract(value,'$.createdAt')) DESC, rowid DESC LIMIT 1", &[&project_id, &draft["resource"]["resourceId"].as_str().ok_or("Missing resource")?])?;
-                    if latest.first().is_none_or(|current| current["id"] != draft["id"]) {
+                    let latest = latest_draft(&db,project_id,draft["resource"]["resourceId"].as_str().ok_or("Missing resource")?)?;
+                    if latest.as_ref().is_none_or(|current| current["id"] != draft["id"]) {
                         return Err("Local or shared files changed; review the update again".into());
                     }
                 }
             }
             if let Some(revision) = input.get("reviewedRevision") {
-                let resource_id = draft["resource"]["resourceId"].as_str().ok_or("Missing resource")?;
+                let prepared=crate::context_sharing::publication_resource(&db,project_id,&draft["resource"])?;
+                let resource_id = prepared["resourceId"].as_str().ok_or("Missing resource")?;
                 let current = db::rows(&db, "SELECT value FROM resources WHERE id=? AND project=?", &[&resource_id, &project_id])?
                     .first().and_then(|resource| resource["revision"].as_u64()).unwrap_or(0);
                 if revision.as_u64() != Some(current)
                     || (!draft["submission"].is_null() && revision != &draft["submission"]["baseRevision"]) {
                     return Err("Local or shared files changed; review the update again".into());
                 }
+                draft["baseRevision"]=revision.clone();
+                draft["conflictReview"]=json!(false);
+                db::upsert(&db,"drafts",id,project_id,&draft)?;
             }
-            if input["publishIfAllowed"] == true {
-                return crate::global_skills::queue_share(&db, &p, id);
+            if matches!(draft["resource"]["kind"].as_str(), Some("memory" | "skill")) && (input["publishIfAllowed"] == true || crate::context_sharing::publication_mode(&db, project_id, &draft["resource"])? == "publish") {
+                if input["publishIfAllowed"]==true && input["reviewedRevision"].is_null() {
+                    let prepared=crate::context_sharing::publication_resource(&db,project_id,&draft["resource"])?;
+                    draft["baseRevision"]=db::rows(&db,"SELECT value FROM resources WHERE id=? AND project=?", &[&prepared["resourceId"].as_str(),&project_id])?.first().map(|resource|resource["revision"].clone()).unwrap_or(json!(0));
+                    draft["conflictReview"]=json!(false);
+                    db::upsert(&db,"drafts",id,project_id,&draft)?;
+                }
+                return crate::context_sharing::queue(&db, &p, id);
             }
             projects::require_sharing(&db,project_id,draft["resource"]["kind"].as_str().ok_or("Missing kind")?)?;
             let mut r=draft["resource"].clone();
             let managed=draft["paths"][0].as_str().is_some_and(|path|Path::new(path).starts_with(Path::new(p["path"].as_str().unwrap_or("")).join(".orka/memory/resources")));
             if r["kind"]=="memory" && r["source"]!="shared" && !managed {
-                let knowledge_id=Uuid::new_v5(&Uuid::NAMESPACE_URL,id.as_bytes()).to_string();
-                r["resourceId"]=json!(knowledge_id);r["logicalPath"]=json!(format!("knowledge/{knowledge_id}.md"));
-                r["memory"]=json!({"topic":r["title"],"scope":"","provider":r["source"],"supersedes":[]});r["source"]=json!("shared");
+                r=crate::context_sharing::publication_resource(&db,project_id,&r)?;
             }
             // Drafts store source metadata locally; only protocol fields cross the service boundary.
             let mut clean=json!({});

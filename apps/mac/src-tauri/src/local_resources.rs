@@ -1,4 +1,5 @@
 use crate::{
+    context_sharing,
     db::{self, Result},
     governance, indexer, projects, sources,
 };
@@ -6,18 +7,6 @@ use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, path::Path};
 use uuid::Uuid;
-
-fn selected_memory_id(project: &Value, resource: &Value) -> String {
-    Uuid::new_v5(
-        &Uuid::NAMESPACE_URL,
-        format!(
-            "selected-memory:{}:{}",
-            project["id"], resource["resourceId"]
-        )
-        .as_bytes(),
-    )
-    .to_string()
-}
 
 fn shared(db: &Connection, id: &str) -> Result<Option<Value>> {
     Ok(
@@ -120,17 +109,24 @@ fn normalize(db: &Connection, project: &Value, entry: &Value) -> Result<Option<V
         return Ok(None);
     }
     let id = input["resourceId"].as_str().ok_or("Missing resource")?;
-    let published = match shared(db, id)? {
-        Some(resource) => Some(resource),
-        None if input["kind"] == "memory" && input["source"] != "shared" => {
-            shared(db, &selected_memory_id(project, input))?
-        }
-        None => None,
-    };
     let user = db::get(db, "user")?;
     if !user.is_string() {
         return Err("Sign in required".into());
     }
+    let published = match shared(db, id)? {
+        Some(resource) => Some(resource),
+        // A teammate's promotion never owns this Mac's independently learned memory.
+        None if input["kind"] == "memory" && input["source"] != "shared" => shared(
+            db,
+            &context_sharing::publication_id(
+                db,
+                project["id"].as_str().ok_or("Missing project")?,
+                input,
+            )?,
+        )?
+        .filter(|resource| resource["owner"] == user),
+        None => None,
+    };
     let mut resource = if let Some(resource) = published.filter(|r| r["deleted"] != true) {
         // A downloaded teammate copy remains the authorized shared version.
         if resource["owner"] != user || resource["files"] == input["files"] {
@@ -301,12 +297,17 @@ fn local_entry(db: &Connection, id: &str) -> Result<Option<(Value, Value)>> {
         None => db::rows(db,"SELECT json_object('projectId',project) FROM local_resources WHERE id=? UNION ALL SELECT json_object('projectId',project) FROM drafts WHERE json_extract(value,'$.resource.resourceId')=? LIMIT 1",&[&id,&id])?.first().and_then(|entry| entry["projectId"].as_str()).ok_or("Resource unavailable")?.to_owned(),
     };
     let project = governance::project(db, &project_id)?;
+    let user = db::get(db, "user")?;
+    let owns_publication = published
+        .as_ref()
+        .is_some_and(|resource| resource["owner"] == user);
     for kind in ["memory", "session", "plan"] {
         for entry in entries(db, &project, kind)? {
             if entry["resource"]["resourceId"] == id
                 || (entry["resource"]["kind"] == "memory"
                     && entry["resource"]["source"] != "shared"
-                    && selected_memory_id(&project, &entry["resource"]) == id)
+                    && owns_publication
+                    && context_sharing::publication_id(db, &project_id, &entry["resource"])? == id)
             {
                 return Ok(Some((project, entry)));
             }
