@@ -1035,7 +1035,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [sync_wrapper](https://crates.io/crates/sync_wrapper/1.0.2) | 1.0.2 | Apache-2.0 |
 | [synstructure](https://crates.io/crates/synstructure/0.14.0) | 0.14.0 | MIT |
 | [system-deps](https://crates.io/crates/system-deps/6.2.2) | 6.2.2 | MIT OR Apache-2.0 |
-| [tao](https://crates.io/crates/tao/0.37.1) | 0.37.1 | Apache-2.0 |
+| [tao](https://crates.io/crates/tao/0.37.2) | 0.37.2 | Apache-2.0 |
 | [tao-macros](https://crates.io/crates/tao-macros/0.1.4) | 0.1.4 | MIT OR Apache-2.0 |
 | [target-lexicon](https://crates.io/crates/target-lexicon/0.12.16) | 0.12.16 | Apache-2.0 WITH LLVM-exception |
 | [tauri](https://crates.io/crates/tauri/2.12.2) | 2.12.2 | Apache-2.0 OR MIT |
