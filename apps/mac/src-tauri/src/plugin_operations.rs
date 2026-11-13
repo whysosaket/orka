@@ -64,6 +64,21 @@ pub(crate) fn status(db: &Connection, project: &Value, input: &Value) -> Result<
     let queued = db::rows(db, "SELECT json_object('requestId',id,'operation',path,'resourceId',coalesce(json_extract(value,'$.resource.resourceId'),json_extract(value,'$.resourceId')),'error',error) FROM outbox WHERE project=? ORDER BY rowid", &[&id])?;
     let conflicts = db::rows(db, "SELECT json_object('conflictId',id,'resourceId',json_extract(value,'$.resourceId'),'createdAt',json_extract(value,'$.createdAt')) FROM conflicts WHERE project=? ORDER BY rowid", &[&id])?;
     let errors = db::rows(db, "SELECT json_object('source',source,'error',error) FROM errors WHERE source=? OR substr(source,1,length(?)+1)=?||':' OR source IN (SELECT id FROM resources WHERE project=?) ORDER BY source", &[&id,&id,&id,&id])?;
+    let mut recoveries = db::rows(db, "SELECT json_object('kind','source_removal','reason','source_removed','status','needs_review','draftId',id,'resourceId',json_extract(value,'$.resource.resourceId'),'requestId',json_extract(value,'$.sourceRemoval.queued.id'),'sourceId',json_extract(value,'$.sourceRemoval.sourceId'),'removedAt',json_extract(value,'$.sourceRemoval.removedAt'),'operation',json_extract(value,'$.sourceRemoval.queued.path')) FROM drafts WHERE project=? AND json_type(value,'$.sourceRemoval')='object' AND json_extract(value,'$.status') IN ('local','proposed') ORDER BY rowid", &[&id])?;
+    let removed_count = recoveries.len();
+    for recovery in &mut recoveries {
+        if let Some(request) = recovery["requestId"].as_str() {
+            let receipt = db::get(db, &format!("selected-share:{request}"))?;
+            if receipt["projectId"] == id && receipt["result"]["reason"] == "source_removed" {
+                recovery["selectedStatus"] = receipt["status"].clone();
+                recovery["selectedReason"] = json!("source_removed");
+            }
+        }
+    }
+    let installations = db::rows(db, "SELECT json_object('kind','installation','reason','installation_recovery','status','needs_review','installationKey',key,'resourceId',json_extract(value,'$.resourceId'),'sourceId',json_extract(value,'$.project.sourceId')) FROM meta WHERE key LIKE 'installation:%' AND value!='null' AND json_extract(value,'$.project.id')=? ORDER BY key", &[&id])?;
+    let installation_count = installations.len();
+    recoveries.extend(installations);
+    let recovery_count = recoveries.len();
     let pending = queued.len();
     let blocked = queued
         .iter()
@@ -84,7 +99,9 @@ pub(crate) fn status(db: &Connection, project: &Value, input: &Value) -> Result<
     } else {
         (&last, "account")
     };
-    let health = if !conflicts.is_empty() {
+    let health = if recovery_count > 0 {
+        "needs_review"
+    } else if !conflicts.is_empty() {
         "conflict"
     } else if !errors.is_empty() || blocked > 0 {
         "error"
@@ -101,7 +118,7 @@ pub(crate) fn status(db: &Connection, project: &Value, input: &Value) -> Result<
         .map(|source| json!({"sourceId":source["sourceId"],"state":sources::folder_state(source)}))
         .collect();
     Ok(
-        json!({"projectId":id,"health":health,"accountSync":last,"projectSync":project_sync,"lastAttemptScope":latest_scope,"progress":sync::current_progress(db,running)?,"progressScope":"account","workerRunning":running,"queuedCount":pending,"blockedCount":blocked,"conflictCount":conflicts.len(),"errorCount":errors.len(),"queued":queued.iter().skip(offset).take(50).collect::<Vec<_>>(),"conflicts":conflicts.iter().skip(offset).take(50).collect::<Vec<_>>(),"errors":errors.iter().skip(offset).take(50).collect::<Vec<_>>(),"nextOffset":if offset.saturating_add(50)<pending.max(conflicts.len()).max(errors.len()){Some(offset+50)}else{None},"folders":folders}),
+        json!({"projectId":id,"health":health,"accountSync":last,"projectSync":project_sync,"lastAttemptScope":latest_scope,"progress":sync::current_progress(db,running)?,"progressScope":"account","workerRunning":running,"queuedCount":pending,"blockedCount":blocked,"conflictCount":conflicts.len(),"errorCount":errors.len(),"recoveryCount":recovery_count,"sourceRemovalCount":removed_count,"installationRecoveryCount":installation_count,"recoveries":recoveries.iter().skip(offset).take(50).collect::<Vec<_>>(),"queued":queued.iter().skip(offset).take(50).collect::<Vec<_>>(),"conflicts":conflicts.iter().skip(offset).take(50).collect::<Vec<_>>(),"errors":errors.iter().skip(offset).take(50).collect::<Vec<_>>(),"nextOffset":if offset.saturating_add(50)<pending.max(conflicts.len()).max(errors.len()).max(recovery_count){Some(offset+50)}else{None},"folders":folders}),
     )
 }
 
@@ -344,6 +361,7 @@ pub(crate) async fn command(action: &str, input: &Value) -> Result<Value> {
             result["status"] = json!(
                 if result["after"]["conflictCount"].as_u64().unwrap_or(0) > 0
                     || result["after"]["blockedCount"].as_u64().unwrap_or(0) > 0
+                    || result["after"]["recoveryCount"].as_u64().unwrap_or(0) > 0
                 {
                     "needs_review"
                 } else if attempted.is_err()

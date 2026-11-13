@@ -587,3 +587,162 @@ fn incoming_unbound_identical_skill_is_adopted_without_a_false_collision() {
     );
     assert!(f.outbox().is_empty());
 }
+
+fn removed_and_active_sources(f: &mut Fixture) -> (Value, Value) {
+    let healthy_root = f._home.path().join("active-source");
+    fs::create_dir(&healthy_root).unwrap();
+    let removed = json!({"id":uuid::Uuid::new_v4().to_string(),"name":"Removed source","path":f.root,"folderIdentity":indexer::folder_identity(&f.root).unwrap(),"removedAt":"2026-11-13T00:00:00Z"});
+    let active = json!({"id":uuid::Uuid::new_v4().to_string(),"name":"Active source","path":healthy_root,"folderIdentity":indexer::folder_identity(&healthy_root).unwrap()});
+    f.project["sources"] = json!([removed, active]);
+    f.project["sourceModel"] = json!(1);
+    f.project.as_object_mut().unwrap().remove("path");
+    f.project.as_object_mut().unwrap().remove("folderIdentity");
+    db::upsert(
+        &f.db,
+        "projects",
+        f.project["id"].as_str().unwrap(),
+        "",
+        &f.project,
+    )
+    .unwrap();
+    (removed, active)
+}
+
+#[test]
+fn removed_source_recovery_status_exposes_references_without_private_content_or_false_completion() {
+    let mut f = Fixture::new();
+    db::set(&f.db, "config", &json!({"apiUrl":"invalid-fixture-origin"})).unwrap();
+    let (removed, _) = removed_and_active_sources(&mut f);
+    let project = f.project["id"].as_str().unwrap();
+    let secret = "Private preserved source content must not appear in metadata";
+    let mut queued = Vec::new();
+    for path in ["/v2/sync/push", selective_sharing::QUEUE_PATH] {
+        let id = uuid::Uuid::new_v4().to_string();
+        let change = json!({"version":2,"id":id,"projectId":project,"deviceId":uuid::Uuid::new_v4().to_string(),"baseRevision":0,"resource":{"resourceId":uuid::Uuid::new_v4().to_string(),"sourceId":removed["id"],"kind":"memory","source":"shared","logicalPath":"knowledge/preserved.md","title":secret,"files":[{"path":"content.md","hash":db::blob(secret.as_bytes()).unwrap(),"size":secret.len(),"executable":false}],"deleted":false}});
+        f.db.execute(
+            "INSERT INTO outbox VALUES(?,?,?,?,NULL)",
+            params![id, project, path, change.to_string()],
+        )
+        .unwrap();
+        if path == selective_sharing::QUEUE_PATH {
+            db::set(&f.db,&format!("selected-share:{id}"),&json!({"requestId":id,"projectId":project,"accountId":db::get(&f.db,"user").unwrap(),"serviceOrigin":"invalid-fixture-origin","status":"queued","paths":[],"payloadHash":db::digest(change.to_string().as_bytes())})).unwrap();
+        }
+        queued.push(change);
+    }
+    crate::sources::preserve_removed_queue(&f.db, project, &removed).unwrap();
+    assert!(f.outbox().is_empty());
+    let request = json!({"accountId":db::get(&f.db,"user").unwrap(),"serviceOrigin":"invalid-fixture-origin","projectId":project});
+    let status = operations::status(&f.db, &f.project, &request).unwrap();
+    assert_eq!(status["health"], "needs_review");
+    assert_eq!(status["recoveryCount"], 2);
+    assert_eq!(status["sourceRemovalCount"], 2);
+    assert!(!status.to_string().contains(secret));
+    for change in &queued {
+        let recovery = status["recoveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["requestId"] == change["id"])
+            .unwrap();
+        assert_eq!(recovery["sourceId"], removed["id"]);
+        assert_eq!(recovery["resourceId"], change["resource"]["resourceId"]);
+        let draft = db::rows(
+            &f.db,
+            "SELECT value FROM drafts WHERE id=?",
+            &[&recovery["draftId"].as_str().unwrap()],
+        )
+        .unwrap()
+        .remove(0);
+        assert_eq!(draft["sourceRemoval"]["queued"]["value"], *change);
+    }
+    let selected = status["recoveries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["selectedReason"] == "source_removed")
+        .unwrap();
+    assert_eq!(selected["selectedStatus"], "conflict");
+    let receipt = db::get(
+        &f.db,
+        &format!("selected-share:{}", selected["requestId"].as_str().unwrap()),
+    )
+    .unwrap();
+    assert_eq!(selected["draftId"], receipt["result"]["draftId"]);
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    for tool in ["retry_sync", "repair_sync"] {
+        let result = runtime
+            .block_on(crate::plugin_mcp::call(tool, &request))
+            .unwrap();
+        assert_eq!(result["status"], "needs_review");
+        assert_eq!(result["after"]["recoveryCount"], 2);
+        assert_eq!(result["after"]["queuedCount"], 0);
+        assert!(!result.to_string().contains(secret));
+    }
+}
+
+#[test]
+fn installation_recovery_keeps_removed_journals_and_files_while_repairing_active_sources() {
+    let mut f = Fixture::new();
+    db::set(&f.db, "config", &json!({"apiUrl":"invalid-fixture-origin"})).unwrap();
+    let (removed, active) = removed_and_active_sources(&mut f);
+    let original = b"Original installed skill\n";
+    let desired = b"Private interrupted installation\n";
+    let original_files = json!([{"path":"SKILL.md","hash":db::blob(original).unwrap(),"size":original.len(),"executable":false}]);
+    let desired_files = json!([{"path":"SKILL.md","hash":db::blob(desired).unwrap(),"size":desired.len(),"executable":false}]);
+    let mut journals = Vec::new();
+    for source in [&removed, &active] {
+        let id = uuid::Uuid::new_v4().to_string();
+        let path = PathBuf::from(source["path"].as_str().unwrap()).join(".agents/skills/recovery");
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join("SKILL.md"), desired).unwrap();
+        let mut scope = f.project.clone();
+        scope["sourceId"] = source["id"].clone();
+        scope["path"] = source["path"].clone();
+        scope["folderIdentity"] = source["folderIdentity"].clone();
+        let journal = json!({"project":scope,"resourceId":id,"originals":[{"path":path,"files":original_files}],"desired":desired_files});
+        let key = format!("installation:{id}");
+        db::set(&f.db, &key, &journal).unwrap();
+        journals.push((key, journal, path));
+    }
+    packages::recover_project_installations(&f.db, &f.project).unwrap();
+    assert_eq!(db::get(&f.db, &journals[0].0).unwrap(), journals[0].1);
+    assert_eq!(fs::read(journals[0].2.join("SKILL.md")).unwrap(), desired);
+    assert!(db::get(&f.db, &journals[1].0).unwrap().is_null());
+    assert_eq!(fs::read(journals[1].2.join("SKILL.md")).unwrap(), original);
+    // Ordinary background recovery must apply the same current-source checks.
+    fs::write(journals[1].2.join("SKILL.md"), desired).unwrap();
+    db::set(&f.db, &journals[1].0, &journals[1].1).unwrap();
+    packages::recover_installations(&f.db).unwrap();
+    assert_eq!(db::get(&f.db, &journals[0].0).unwrap(), journals[0].1);
+    assert_eq!(fs::read(journals[0].2.join("SKILL.md")).unwrap(), desired);
+    assert!(db::get(&f.db, &journals[1].0).unwrap().is_null());
+    assert_eq!(fs::read(journals[1].2.join("SKILL.md")).unwrap(), original);
+    let project = f.project["id"].as_str().unwrap();
+    let pending = json!({"id":"active-pending","resource":{"resourceId":uuid::Uuid::new_v4().to_string(),"sourceId":active["id"],"kind":"plan"},"private":"original queued bytes"});
+    f.db.execute(
+        "INSERT INTO outbox VALUES(?,?,?,?,NULL)",
+        params![
+            "active-pending",
+            project,
+            "/v2/sync/push",
+            pending.to_string()
+        ],
+    )
+    .unwrap();
+    let request = json!({"accountId":db::get(&f.db,"user").unwrap(),"serviceOrigin":"invalid-fixture-origin","projectId":project});
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    for tool in ["retry_sync", "repair_sync"] {
+        let result = runtime
+            .block_on(crate::plugin_mcp::call(tool, &request))
+            .unwrap();
+        assert_eq!(result["status"], "needs_review");
+        assert_eq!(result["after"]["installationRecoveryCount"], 1);
+        assert_eq!(
+            result["after"]["projectSync"]["online"], false,
+            "healthy sources reach a sync attempt instead of aborting on the removed journal"
+        );
+        assert_eq!(f.outbox(), vec![pending.clone()]);
+        assert_eq!(db::get(&f.db, &journals[0].0).unwrap(), journals[0].1);
+        assert_eq!(fs::read(journals[0].2.join("SKILL.md")).unwrap(), desired);
+    }
+}
