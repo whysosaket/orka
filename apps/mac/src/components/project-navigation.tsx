@@ -3,7 +3,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   CheckIcon,
-  ChevronDownIcon,
+  ChevronUpIcon,
   CommentDiscussionIcon,
   FileDirectoryIcon,
   FileIcon,
@@ -75,7 +75,7 @@ function ProjectOption({
   );
 }
 
-function ProjectPicker({
+export function ProjectPicker({
   projects,
   projectId,
   collapsed,
@@ -180,7 +180,7 @@ function ProjectPicker({
             animate={{ rotate: open ? 180 : 0 }}
             transition={reduced || keyboard ? { duration: 0 } : spring.fast}
           >
-            <ChevronDownIcon size={16} aria-hidden="true" />
+            <ChevronUpIcon size={16} aria-hidden="true" />
           </motion.span>
         </button>
       </Popover.Trigger>
@@ -190,7 +190,7 @@ function ProjectPicker({
             <Popover.Content
               forceMount
               asChild
-              side="bottom"
+              side="top"
               align="start"
               sideOffset={6}
               collisionPadding={12}
@@ -302,7 +302,6 @@ export function ProjectNavigation({
   projectId,
   activeKind,
   resources,
-  onProjectChange,
   onNavigate,
   collapsed,
 }: {
@@ -310,7 +309,6 @@ export function ProjectNavigation({
   projectId: string;
   activeKind: ProjectPage | null;
   resources: Resource[];
-  onProjectChange: (id: string) => void;
   onNavigate: (kind: ProjectPage) => void;
   collapsed: boolean;
 }) {
@@ -336,59 +334,46 @@ export function ProjectNavigation({
     return result;
   }, [resources, projectId]);
   return (
-    <>
-      <div className="project-navigation-header" data-tauri-drag-region>
-        <ProjectPicker
-          projects={projects}
-          projectId={projectId}
+    <nav
+      ref={listRef}
+      className="project-sections"
+      aria-label={
+        selected ? projectLabel(selected) + " resources" : "Project resources"
+      }
+      style={
+        { "--active-index": Math.max(0, activeIndex) } as React.CSSProperties
+      }
+      {...hover.handlers}
+    >
+      <motion.div
+        className="project-section-highlight"
+        layout="position"
+        layoutDependency={activeIndex}
+        transition={reduced || instant ? { duration: 0 } : spring.moderate}
+        aria-hidden="true"
+        hidden={!selected || activeIndex < 0}
+      />
+      <FluidHoverHighlight hover={hover} className="project-hover-highlight" />
+      {visibleSections.map((item, index) => (
+        <Section
+          key={item.kind}
+          item={item}
+          index={index}
+          count={
+            item.kind === "home" || item.kind === "env"
+              ? undefined
+              : (counts[item.kind] ?? 0)
+          }
+          selected={Boolean(selected && activeKind === item.kind)}
           collapsed={collapsed}
-          onProjectChange={onProjectChange}
+          disabled={!selected}
+          registerItem={hover.registerItem}
+          onNavigate={(kind, keyboard) => {
+            setInstant(keyboard);
+            onNavigate(kind);
+          }}
         />
-      </div>
-      <nav
-        ref={listRef}
-        className="project-sections"
-        aria-label={
-          selected ? projectLabel(selected) + " resources" : "Project resources"
-        }
-        style={
-          { "--active-index": Math.max(0, activeIndex) } as React.CSSProperties
-        }
-        {...hover.handlers}
-      >
-        <motion.div
-          className="project-section-highlight"
-          layout="position"
-          layoutDependency={activeIndex}
-          transition={reduced || instant ? { duration: 0 } : spring.moderate}
-          aria-hidden="true"
-          hidden={!selected || activeIndex < 0}
-        />
-        <FluidHoverHighlight
-          hover={hover}
-          className="project-hover-highlight"
-        />
-        {visibleSections.map((item, index) => (
-          <Section
-            key={item.kind}
-            item={item}
-            index={index}
-            count={
-              item.kind === "home" || item.kind === "env"
-                ? undefined
-                : (counts[item.kind] ?? 0)
-            }
-            selected={Boolean(selected && activeKind === item.kind)}
-            collapsed={collapsed}
-            disabled={!selected}
-            registerItem={hover.registerItem}
-            onNavigate={(kind, keyboard) => {
-              setInstant(keyboard);
-              onNavigate(kind);
-            }}
-          />
-        ))}
-      </nav>
-    </>
+      ))}
+    </nav>
   );
 }

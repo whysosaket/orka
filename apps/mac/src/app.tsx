@@ -31,6 +31,7 @@ import { Button } from "./components/button.js";
 import { ProjectHome } from "./components/project-home.js";
 import {
   ProjectNavigation,
+  ProjectPicker,
   projectLabel,
 } from "./components/project-navigation.js";
 import {
@@ -500,7 +501,7 @@ function WorkspaceApp({
     >
       <motion.aside
         initial={false}
-        animate={{ width: sidebarCollapsed ? 64 : 240 }}
+        animate={{ width: sidebarCollapsed ? 80 : 240 }}
         transition={
           sidebarInstant || reducedMotion
             ? { duration: 0 }
@@ -511,23 +512,17 @@ function WorkspaceApp({
         className={`sidebar${sidebarCollapsed ? " sidebar-collapsed" : ""}`}
         data-motion={sidebarInstant ? "instant" : undefined}
       >
+        <div
+          className="sidebar-window-controls"
+          data-tauri-drag-region
+          aria-hidden="true"
+        />
         <ProjectNavigation
           collapsed={sidebarCollapsed}
           projects={state.projects}
           projectId={project}
           activeKind={settings ? null : tab}
           resources={catalogResources}
-          onProjectChange={(id) => {
-            const change = () => {
-              setEnvSet("");
-              setProject(id);
-              setResource("");
-              setGovernance(null);
-            };
-            if (settings && settingsNavigation.current)
-              settingsNavigation.current.requestProject(id, change);
-            else change();
-          }}
           onNavigate={(kind) =>
             leaveSettings(() => {
               setEnvSet("");
@@ -551,6 +546,22 @@ function WorkspaceApp({
             onSettings={() => openSettings("general")}
             onCreate={() => leaveSettings(() => setup.show("create"))}
             onJoin={() => leaveSettings(() => setup.show("join"))}
+          />
+          <ProjectPicker
+            projects={state.projects}
+            projectId={project}
+            collapsed={sidebarCollapsed}
+            onProjectChange={(id) => {
+              const change = () => {
+                setEnvSet("");
+                setProject(id);
+                setResource("");
+                setGovernance(null);
+              };
+              if (settings && settingsNavigation.current)
+                settingsNavigation.current.requestProject(id, change);
+              else change();
+            }}
           />
         </div>
       </motion.aside>
