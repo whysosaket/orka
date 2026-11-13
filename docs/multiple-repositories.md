@@ -12,7 +12,15 @@ does not follow directory symlinks, and does not recursively include unrelated
 repositories. Ordinary folders can be added through the folder picker.
 
 Use **Settings → General → Source Folder** to attach more repositories, locate a shared
-source on this Mac, or disconnect one source. Owners register shared sources;
+source on this Mac, or disconnect one source. In the source’s options menu,
+**Disconnect folder on this Mac** preserves the checkout and shared source.
+Owners can choose **Remove source folder** on updated services to stop syncing
+that source for everyone. Existing local files and previously shared content are
+retained; the removed source cannot be reconnected or accept new uploads. Adding
+the repository again creates a new source identity. If another Mac still has
+queued changes for a source when it is removed, Orka keeps those snapshots in
+**Changes on this Mac** instead of leaving a permanently blocked upload queue.
+Queued changes for other sources continue normally. Owners register shared sources;
 members connect their checkout using Locate folder. Paths can differ between Macs.
 Two source folders cannot cover the same or overlapping local directories.
 

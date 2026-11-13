@@ -44,6 +44,8 @@ function description(entry: ManagementLog) {
       return `${actor} joined the project`;
     case "project.created":
       return `${actor} created the project`;
+    case "project.source_removed":
+      return `${actor} removed a source folder from the project`;
     case "invite.created":
       return `${actor} created a member invitation`;
     case "access.granted":

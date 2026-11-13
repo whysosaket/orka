@@ -28,6 +28,7 @@ async function fixture(
     baseRevision?: number;
     beforeManifest?: FileManifestEntry[];
     manifest?: FileManifestEntry[];
+    sourceUnavailable?: boolean;
   } = {},
 ) {
   await page.addInitScript(
@@ -350,6 +351,7 @@ async function fixture(
                     baseRevision: review.baseRevision,
                     beforeManifest: review.beforeManifest,
                     manifest: review.manifest,
+                    sourceUnavailable: review.sourceUnavailable,
                     related: [],
                     canPublish: mode === "draft-publisher",
                   };
@@ -731,6 +733,38 @@ test("local review includes executable-only changes and distinguishes binary ass
   await expect(
     dialog.getByText("No file changes.", { exact: true }),
   ).toHaveCount(0);
+});
+
+test("a removed source keeps its saved preview readable and private", async ({
+  page,
+}) => {
+  await fixture(page, true, false, "draft-publisher", false, {
+    sourceUnavailable: true,
+    baseRevision: 2,
+    before: { "content.md": "Earlier learning\n" },
+  });
+  await management(page)
+    .getByRole("button", { name: "Review changes", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review changes",
+    exact: true,
+  });
+  await expect(
+    dialog.getByRole("status").filter({
+      hasText: "This source is no longer available in this project.",
+    }),
+  ).toContainText("The saved changes remain private on this Mac.");
+  await expect(
+    dialog.getByRole("group", { name: "File changes", exact: true }),
+  ).toContainText("Saved learning");
+  await expect(
+    dialog.getByRole("button", { name: "Publish update", exact: true }),
+  ).toBeDisabled();
+  expect(await calls(page, "submit-draft")).toEqual([]);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await calls(page, "dismiss")).toEqual([]);
 });
 
 test("closing local review restores focus without dismissing or publishing private changes", async ({

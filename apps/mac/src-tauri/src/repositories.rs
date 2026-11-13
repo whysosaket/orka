@@ -67,6 +67,23 @@ pub(crate) fn verify_remote(root: &Path, expected: &str) -> Result<()> {
     }
     Ok(())
 }
+fn matching_source(project: &Value, clone_url: &str) -> Result<Value> {
+    let matches: Vec<_> = sources::views(project)
+        .into_iter()
+        .filter(|source| !source["repository"].is_object())
+        .filter(|source| {
+            source["path"].as_str().is_some_and(|path| {
+                sources::validate(source).is_ok()
+                    && verify_remote(Path::new(path), clone_url).is_ok()
+            })
+        })
+        .collect();
+    match matches.as_slice() {
+        [] => Ok(Value::Null),
+        [source] => Ok(json!({"sourceId":source["sourceId"]})),
+        _ => Err("Several connected folders match this repository. Use Link GitHub repository beside the intended folder.".into()),
+    }
+}
 fn clone_url(value: &str) -> Result<()> {
     let url = reqwest::Url::parse(value).map_err(|_| "Invalid clone URL")?;
     let parts: Vec<_> = url.path().trim_start_matches('/').split('/').collect();
@@ -97,7 +114,11 @@ fn source(context: &Context, project: &str, id: &str) -> Result<Value> {
     let project = crate::governance::project(&db, project)?;
     project["sources"]
         .as_array()
-        .and_then(|items| items.iter().find(|item| item["id"] == id))
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item["id"] == id && item["removedAt"].is_null())
+        })
         .cloned()
         .ok_or("Source no longer belongs to this project".into())
 }
@@ -306,8 +327,14 @@ async fn attach(context: &Context, job: &Value) -> Result<()> {
                 .into(),
         );
     }
-    let catalog =
-        sync::api_at(&context.user, &context.service, "GET", "/v2/projects", None).await?;
+    let catalog = sync::api_at(
+        &context.user,
+        &context.service,
+        "GET",
+        "/v2/projects?includeArchived=true",
+        None,
+    )
+    .await?;
     {
         let _lock = projects::lock()?;
         context.check()?;
@@ -408,6 +435,21 @@ pub async fn repository_command(action: String, input: Value, context: Context) 
         return Ok(json!(dirs::home_dir()
             .ok_or("Cannot locate your home folder")?
             .join("Orka")));
+    }
+    if action == "matching-source" {
+        let project_id = input["projectId"].as_str().ok_or("Missing project")?;
+        let repository = context
+            .api("repository", json!({"repositoryId":input["repositoryId"]}))
+            .await?;
+        let _lock = projects::lock()?;
+        context.check()?;
+        let project = crate::governance::project(&context.database()?, project_id)?;
+        return matching_source(
+            &project,
+            repository["cloneUrl"]
+                .as_str()
+                .ok_or("Invalid repository")?,
+        );
     }
     if action == "open-github" {
         let raw = input["url"].as_str().ok_or("Missing GitHub URL")?;
@@ -580,8 +622,14 @@ pub async fn repository_command(action: String, input: Value, context: Context) 
         db::set(&db, "repository-auth-revision", &json!(revision + 1))?;
     }
     if action == "bind" || action == "unlink" || action == "add-source" {
-        let catalog =
-            sync::api_at(&context.user, &context.service, "GET", "/v2/projects", None).await?;
+        let catalog = sync::api_at(
+            &context.user,
+            &context.service,
+            "GET",
+            "/v2/projects?includeArchived=true",
+            None,
+        )
+        .await?;
         let _lock = projects::lock()?;
         context.check()?;
         projects::merge_catalog(&context.database()?, &catalog)?;
@@ -592,6 +640,48 @@ pub async fn repository_command(action: String, input: Value, context: Context) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn matching_connected_checkout_reuses_its_source_and_rejects_ambiguity() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("renamed-checkout");
+        fs::create_dir(&root).unwrap();
+        for args in [
+            vec!["init", "--quiet"],
+            vec!["remote", "add", "origin", "git@github.com:team/repo.git"],
+        ] {
+            assert!(std::process::Command::new("/usr/bin/git")
+                .current_dir(&root)
+                .args(args)
+                .status()
+                .unwrap()
+                .success());
+        }
+        let source = json!({"id":"local-source","name":"renamed-checkout","path":root,"folderIdentity":crate::indexer::folder_identity(&root).unwrap()});
+        let mut project = json!({"id":"project","sources":[source.clone()]});
+        let url = "https://github.com/team/repo.git";
+        assert_eq!(
+            matching_source(&project, url).unwrap(),
+            json!({"sourceId":"local-source"})
+        );
+        assert!(
+            matching_source(&project, "https://github.com/team/other.git")
+                .unwrap()
+                .is_null()
+        );
+        project["sources"][0]["removedAt"] = json!("2026-11-13T00:00:00Z");
+        assert!(matching_source(&project, url).unwrap().is_null());
+        project["sources"] = json!([source.clone(), source]);
+        assert!(matching_source(&project, url)
+            .unwrap_err()
+            .contains("Several connected folders"));
+        project["sources"][0]["repository"] = json!({"id":"123"});
+        assert_eq!(
+            matching_source(&project, url).unwrap()["sourceId"],
+            "local-source"
+        );
+        project["sources"][1]["folderIdentity"] = json!("replaced");
+        assert!(matching_source(&project, url).unwrap().is_null());
+    }
     #[tokio::test]
     async fn cancellation_works_during_continuous_progress_and_after_stderr_closes() {
         for script in [

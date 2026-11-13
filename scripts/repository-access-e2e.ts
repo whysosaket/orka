@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -15,14 +15,48 @@ const binary =
 let state = "ready",
   checks = 0,
   credentials = 0;
+let removalCatalog:
+  | {
+      id: string;
+      name: string;
+      role: string;
+      governed?: boolean;
+      archivedAt?: string;
+      sources: { id: string; name: string; removedAt?: string }[];
+    }[]
+  | null = null;
+const catalogRequests: string[] = [];
 const server = createServer((req, res) => {
   void (async () => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
-    const input = JSON.parse(Buffer.concat(chunks).toString()) as {
+    const input = JSON.parse(Buffer.concat(chunks).toString() || "{}") as {
       action: string;
     };
     res.setHeader("Content-Type", "application/json");
+    if (removalCatalog && req.url === "/v2/projects/capabilities") {
+      res.end(JSON.stringify({ sourcesRemoval: 1 }));
+      return;
+    }
+    if (removalCatalog && req.url === "/v2/projects/sources/remove") {
+      const source = removalCatalog[0].sources[0];
+      source.removedAt = "2026-11-13T00:00:00Z";
+      res.end(
+        JSON.stringify({ sourceId: source.id, removedAt: source.removedAt }),
+      );
+      return;
+    }
+    if (removalCatalog && req.url?.startsWith("/v2/projects")) {
+      catalogRequests.push(req.url);
+      res.end(
+        JSON.stringify(
+          req.url.includes("includeArchived=true")
+            ? removalCatalog
+            : removalCatalog.filter((project) => !project.archivedAt),
+        ),
+      );
+      return;
+    }
     if (input.action === "access") {
       checks++;
       if (state === "offline") {
@@ -256,8 +290,109 @@ try {
     "ready",
     "A failed refresh must never revive an older green status",
   );
+  await setup();
+  const archivedId = randomUUID(),
+    archivedSourceId = randomUUID(),
+    archivedResourceId = randomUUID();
+  const archivedRoot = join(home, "archived-project");
+  const archivedFile = join(archivedRoot, "AGENTS.md");
+  await mkdir(archivedRoot);
+  await writeFile(archivedFile, "Preserve archived project instructions\n");
+  const connection = database();
+  const local = JSON.parse(
+    String(
+      connection.prepare("SELECT value FROM projects WHERE id=?").get(projectId)
+        ?.value,
+    ),
+  ) as { role: string };
+  local.role = "owner";
+  connection
+    .prepare("UPDATE projects SET value=? WHERE id=?")
+    .run(JSON.stringify(local), projectId);
+  const archived = {
+    id: archivedId,
+    name: "Archived project",
+    role: "owner",
+    governed: true,
+    archivedAt: "2026-11-01T00:00:00Z",
+    sources: [{ id: archivedSourceId, name: "archive", path: archivedRoot }],
+  };
+  const resource = {
+    resourceId: archivedResourceId,
+    projectId: archivedId,
+    sourceId: archivedSourceId,
+    kind: "memory",
+    source: "shared",
+    logicalPath: "instructions/AGENTS.md",
+    title: "Archived instructions",
+    revision: 1,
+    deleted: false,
+    files: [],
+  };
+  connection
+    .prepare("INSERT INTO projects VALUES(?,?)")
+    .run(archivedId, JSON.stringify(archived));
+  connection
+    .prepare("INSERT INTO resources VALUES(?,?,?)")
+    .run(archivedResourceId, archivedId, JSON.stringify(resource));
+  const binding = { base: resource, managed: true, paths: [archivedFile] };
+  connection
+    .prepare("INSERT INTO bindings VALUES(?,?,?)")
+    .run(archivedResourceId, archivedId, JSON.stringify(binding));
+  removalCatalog = [
+    {
+      id: projectId,
+      name: "Repository test",
+      role: "owner",
+      sources: [{ id: sourceId, name: "private-repo" }],
+    },
+    { ...archived, sources: [{ id: archivedSourceId, name: "archive" }] },
+  ];
+  await mac.request({
+    action: "project",
+    operation: "remove-source",
+    input: { projectId, sourceId },
+  });
+  assert.deepEqual(catalogRequests, ["/v2/projects?includeArchived=true"]);
+  const savedArchived = JSON.parse(
+    String(
+      connection
+        .prepare("SELECT value FROM projects WHERE id=?")
+        .get(archivedId)?.value,
+    ),
+  ) as { revoked?: boolean };
+  assert.notEqual(
+    savedArchived.revoked,
+    true,
+    "Removing another source must not revoke an archived project",
+  );
+  assert.deepEqual(
+    JSON.parse(
+      String(
+        connection
+          .prepare("SELECT value FROM resources WHERE id=?")
+          .get(archivedResourceId)?.value,
+      ),
+    ),
+    resource,
+  );
+  assert.deepEqual(
+    JSON.parse(
+      String(
+        connection
+          .prepare("SELECT value FROM bindings WHERE id=?")
+          .get(archivedResourceId)?.value,
+      ),
+    ),
+    binding,
+  );
+  assert.equal(
+    await readFile(archivedFile, "utf8"),
+    "Preserve archived project instructions\n",
+  );
+  connection.close();
   console.log(
-    "Passed native repository access: daily cache, launch refresh, authorization/binding invalidation, account/service isolation and live clone authorization.",
+    "Passed native repository access: daily cache, launch refresh, authorization/binding invalidation, account/service isolation, live clone authorization and archived project preservation during source removal.",
   );
 } finally {
   await mac.close();

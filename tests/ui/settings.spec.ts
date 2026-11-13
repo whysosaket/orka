@@ -150,7 +150,10 @@ test("source picker cancellation and disconnect confirmation preserve unrelated 
     multiple: false,
     defaultPath: "/Projects/orka",
   });
-  await button(settings, "Disconnect orka folder").click();
+  await button(settings, "Options for orka").click();
+  await page
+    .getByRole("button", { name: "Disconnect folder on this Mac", exact: true })
+    .click();
   await page
     .getByRole("dialog", { name: "Disconnect folder?" })
     .getByRole("button", { name: "Stay", exact: true })
@@ -170,7 +173,14 @@ test("queued writes block disconnect while reconnect remains usable", async ({
     queued: true,
     folderState: "reconnect",
   });
-  await expect(button(settings, "Disconnect orka folder")).toBeDisabled();
+  await button(settings, "Options for orka").click();
+  await expect(
+    page.getByRole("button", {
+      name: "Disconnect folder on this Mac",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
   await expect(button(settings, "Reconnect orka folder")).toBeEnabled();
   expect(
     (await settingsCalls(page)).some(
@@ -231,9 +241,14 @@ test("folder recovery states expose paths in name tooltips and reconnect the sel
     "border-top-width",
     "1px",
   );
+  await button(folders, "Options for documentation").click();
   await expect(
-    button(folders, "Disconnect documentation folder"),
+    page.getByRole("button", {
+      name: "Disconnect folder on this Mac",
+      exact: true,
+    }),
   ).toBeDisabled();
+  await page.keyboard.press("Escape");
   for (const width of [1160, 900]) {
     await page.setViewportSize({ width, height: width === 900 ? 640 : 800 });
     await folders.scrollIntoViewIfNeeded();
@@ -244,9 +259,14 @@ test("folder recovery states expose paths in name tooltips and reconnect the sel
   await button(folders, "Reconnect orka-website folder").click();
   await expect(button(folders, "Reconnect orka-website folder")).toHaveCount(0);
   await button(folders, "Locate Folder for documentation").click();
+  await button(folders, "Options for documentation").click();
   await expect(
-    button(folders, "Disconnect documentation folder"),
+    page.getByRole("button", {
+      name: "Disconnect folder on this Mac",
+      exact: true,
+    }),
   ).toBeEnabled();
+  await page.keyboard.press("Escape");
   const connections = (await settingsCalls(page)).filter(
     (call) => call.command === "connect_project_sources",
   );

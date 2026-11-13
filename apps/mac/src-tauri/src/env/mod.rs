@@ -24,6 +24,8 @@ use std::{
 use zeroize::Zeroizing;
 
 static SESSION_EPOCH: AtomicU64 = AtomicU64::new(0);
+const ENV_CONFLICT: &str =
+    "ENV changed or a retry is stale. Pull the latest version and review before publishing again";
 
 pub fn enabled() -> bool {
     serde_json::from_str::<Value>(include_str!("../../../src/features.json"))
@@ -181,6 +183,46 @@ fn with_draft<T>(ctx: &Context, id: &str, f: impl FnOnce(&mut Draft) -> Result<T
         .ok_or("ENV draft expired; import or pull it again")?;
     f(draft)
 }
+fn new_source_id(local: &Value, requested: Option<&str>) -> Result<Option<String>> {
+    let Some(sources) = local["sources"].as_array() else {
+        return Ok(requested.map(str::to_owned));
+    };
+    let active: Vec<_> = sources
+        .iter()
+        .filter(|source| source["removedAt"].is_null())
+        .collect();
+    let source = if let Some(id) = requested {
+        active
+            .into_iter()
+            .find(|source| source["id"] == id)
+            .ok_or("ENV repository was removed or no longer belongs to this project")?
+    } else {
+        match active.as_slice() {
+            [source] => *source,
+            _ => return Err("Choose a repository for this ENV set".into()),
+        }
+    };
+    Ok(source["id"].as_str().map(str::to_owned))
+}
+
+#[cfg(test)]
+mod source_selection_tests {
+    use super::*;
+    #[test]
+    fn new_env_sets_reject_removed_sources_and_default_to_the_active_repository() {
+        let project = json!({"sources":[{"id":"removed","removedAt":"2026-11-13T00:00:00Z"},{"id":"active"}]});
+        assert!(new_source_id(&project, Some("removed")).is_err());
+        assert_eq!(
+            new_source_id(&project, None).unwrap().as_deref(),
+            Some("active")
+        );
+        assert_eq!(
+            new_source_id(&project, Some("active")).unwrap().as_deref(),
+            Some("active")
+        );
+    }
+}
+
 fn add_draft(
     ctx: &Context,
     project: &str,
@@ -192,15 +234,9 @@ fn add_draft(
     let id = uuid::Uuid::new_v4().to_string();
     let source_id = if let Some(base) = &base {
         Some(base.manifest.source_id.clone().unwrap_or(project.into()))
-    } else if let Some(source) = &ctx.source_id {
-        Some(source.clone())
     } else {
         let local = crate::governance::project(&ctx.connection()?, project)?;
-        match local["sources"].as_array().map(Vec::as_slice) {
-            Some([source]) => source["id"].as_str().map(str::to_string),
-            Some(_) => return Err("Choose a repository for this ENV set".into()),
-            None => None,
-        }
+        new_source_id(&local, ctx.source_id.as_deref())?
     };
     if let Some(source_id) = &source_id {
         let local = crate::governance::project(&ctx.connection()?, project)?;
@@ -298,7 +334,7 @@ async fn api(ctx: &Context, keys: &Keys, operation: &str, input: Value) -> Resul
     if !status.is_success() {
         // Do not relay arbitrary server text into an error: it could contain a secret.
         return Err(match status.as_u16() {
-            409 => "ENV changed or a retry is stale. Pull the latest version and review before publishing again",
+            409 => ENV_CONFLICT,
             401 => "Sign in again to use ENVs",
             403 => "ENV permission denied. Check publishing access, recipients, device approval or set replacement",
             404 => "ENV sharing is unavailable or the set was deleted",
@@ -385,7 +421,11 @@ async fn send_pending(ctx: &Context, keys: &Keys, id: &str) -> Result<Value> {
     if pending.is_null() {
         return Err("No pending ENV publication".into());
     }
-    let result = api(ctx, keys, "mutate", pending["mutation"].clone()).await?;
+    let result = api(ctx, keys, "mutate", pending["mutation"].clone()).await.map_err(|error| {
+            if !pending["sourceRemoval"].is_null() && error == ENV_CONFLICT {
+            format!("{error} The encrypted ENV publication is preserved on this Mac after its source folder was removed.")
+        } else { error }
+    })?;
     let header: Header = serde_json::from_value(pending["header"].clone())
         .map_err(|_| "Invalid pending ENV publication")?;
     if result["revision"] != header.manifest.revision || result["hash"] != crypto::hash(&header)? {

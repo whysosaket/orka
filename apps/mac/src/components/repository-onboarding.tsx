@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { activeSources } from "./project-sources.js";
 import { invoke } from "@tauri-apps/api/core";
 import type { Snapshot } from "../types.js";
 import { Button } from "./button.js";
@@ -26,7 +27,7 @@ export function RepositoryOnboarding({
     [error, setError] = useState("");
   const project = state.projects.find((item) => item.id === projectId);
   const unconnectedSources =
-    project?.sources?.filter(
+    activeSources(project?.sources).filter(
       (source) =>
         source.repository &&
         (!source.path || source.folderState === "reconnect"),

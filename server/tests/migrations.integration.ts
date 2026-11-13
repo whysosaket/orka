@@ -47,6 +47,8 @@ await test("a fresh server installs the baseline and GitHub migration atomically
       "001_initial.sql",
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "005_source_removal.sql",
+      "006_github_authorization_completion.sql",
     ],
   );
   await database(async (pool) => {
@@ -55,6 +57,8 @@ await test("a fresh server installs the baseline and GitHub migration atomically
       initialMigration,
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "005_source_removal.sql",
+      "006_github_authorization_completion.sql",
     ]);
     assert.equal(
       (
@@ -83,6 +87,8 @@ await test("a fresh server installs the baseline and GitHub migration atomically
       initialMigration,
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "005_source_removal.sql",
+      "006_github_authorization_completion.sql",
     ]);
   });
 });
@@ -123,6 +129,8 @@ await test("an existing baseline upgrades GitHub tables without replacing projec
       initialMigration,
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "005_source_removal.sql",
+      "006_github_authorization_completion.sql",
     ]);
     assert.equal(
       (
@@ -172,6 +180,8 @@ await test("baseline failure rolls back its DDL and ledger without touching pre-
       initialMigration,
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "005_source_removal.sql",
+      "006_github_authorization_completion.sql",
     ]);
   });
 });
@@ -197,6 +207,8 @@ await test("resetting a completed historical ledger is explicit and preserves ap
       initialMigration,
       "002_github_repositories.sql",
       "003_email_invitations.sql",
+      "005_source_removal.sql",
+      "006_github_authorization_completion.sql",
     ]);
     assert.equal(
       (

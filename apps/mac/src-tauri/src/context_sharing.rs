@@ -8,6 +8,48 @@ use uuid::Uuid;
 
 pub const QUEUE_PATH: &str = "/local/context-share";
 
+pub fn require_active_source(project: &Value, draft: &Value) -> Result<()> {
+    if draft["sourceRemoval"].is_object() || !project["removedAt"].is_null() {
+        return Err(
+            "Source folder removed. These saved changes remain private on this Mac.".into(),
+        );
+    }
+    if let Some(id) = draft["resource"]["sourceId"].as_str() {
+        crate::sources::registered(project, Some(id))?;
+    }
+    Ok(())
+}
+
+fn preserve_removed_draft(db: &Connection, project: &Value, draft: &mut Value) -> Result<bool> {
+    if let Some(source) = project["sources"].as_array().and_then(|sources| {
+        sources.iter().find(|source| {
+            source["id"] == draft["resource"]["sourceId"] && !source["removedAt"].is_null()
+        })
+    }) {
+        if draft["sourceRemoval"]["sourceId"] == source["id"]
+            && draft["sourceRemoval"]["removedAt"] == source["removedAt"]
+            && draft["automaticSharing"] == false
+        {
+            return Ok(true);
+        }
+        if !draft["sourceRemoval"].is_object() {
+            draft["sourceRemoval"] = json!({});
+        }
+        draft["sourceRemoval"]["sourceId"] = source["id"].clone();
+        draft["sourceRemoval"]["removedAt"] = source["removedAt"].clone();
+        draft["automaticSharing"] = json!(false);
+        db::upsert(
+            db,
+            "drafts",
+            draft["id"].as_str().ok_or("Missing draft")?,
+            project["id"].as_str().ok_or("Missing project")?,
+            draft,
+        )?;
+        return Ok(true);
+    }
+    Ok(draft["sourceRemoval"].is_object())
+}
+
 pub fn publication_id(db: &Connection, project: &str, resource: &Value) -> Result<String> {
     let original = resource["resourceId"].as_str().ok_or("Missing resource")?;
     if resource["kind"] == "memory" && resource["source"] != "shared" {
@@ -80,7 +122,7 @@ pub fn publication_mode(db: &Connection, project: &str, resource: &Value) -> Res
 
 pub fn queue_automatic(db: &Connection, project: &Value, draft_id: &str) -> Result<()> {
     let project_id = project["id"].as_str().ok_or("Missing project")?;
-    let draft = db::rows(
+    let mut draft = db::rows(
         db,
         "SELECT value FROM drafts WHERE id=? AND project=?",
         &[&draft_id, &project_id],
@@ -88,6 +130,11 @@ pub fn queue_automatic(db: &Connection, project: &Value, draft_id: &str) -> Resu
     .into_iter()
     .next()
     .ok_or("Draft unavailable")?;
+    if preserve_removed_draft(db, project, &mut draft)?
+        || require_active_source(project, &draft).is_err()
+    {
+        return Ok(());
+    }
     if matches!(draft["resource"]["kind"].as_str(), Some("memory" | "skill"))
         && draft["status"] == "local"
         && draft["conflictReview"] != true
@@ -109,7 +156,8 @@ pub fn queue_automatic(db: &Connection, project: &Value, draft_id: &str) -> Resu
 
 pub fn queue_waiting(db: &Connection, project: &Value) -> Result<()> {
     let project_id = project["id"].as_str().ok_or("Missing project")?;
-    for draft in db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')='local' AND json_extract(value,'$.automaticSharing')=1 AND json_extract(value,'$.submission') IS NULL ORDER BY rowid", &[&project_id])? {
+    for mut draft in db::rows(db, "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')='local' AND json_extract(value,'$.automaticSharing')=1 AND json_extract(value,'$.submission') IS NULL ORDER BY rowid", &[&project_id])? {
+        if preserve_removed_draft(db, project, &mut draft)? { continue; }
         let latest = governance::latest_draft(db,project_id,draft["resource"]["resourceId"].as_str().ok_or("Missing resource")?)?;
         if latest.as_ref().is_none_or(|latest|latest["id"]!=draft["id"]) { continue; }
         if projects::sharing_allowed(project, draft["resource"]["kind"].as_str().unwrap_or("")) {
@@ -172,11 +220,16 @@ pub(crate) fn pending_publications(
 ) -> Result<Vec<Value>> {
     let project_id = project["id"].as_str().ok_or("Missing project")?;
     let mut pending = Vec::new();
-    for draft in db::rows(
+    for mut draft in db::rows(
         db,
         "SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')='proposed'",
         &[&project_id],
     )? {
+        if preserve_removed_draft(db, project, &mut draft)?
+            || require_active_source(project, &draft).is_err()
+        {
+            continue;
+        }
         let kind = draft["resource"]["kind"].as_str().unwrap_or("");
         if !matches!(kind, "memory" | "skill") || !projects::sharing_allowed(project, kind) {
             continue;
@@ -209,6 +262,7 @@ pub fn queue(db: &Connection, project: &Value, draft_id: &str) -> Result<Value> 
     .into_iter()
     .next()
     .ok_or("Draft unavailable")?;
+    require_active_source(project, &draft)?;
     let kind = draft["resource"]["kind"]
         .as_str()
         .ok_or("Missing resource category")?;

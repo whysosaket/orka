@@ -1,5 +1,6 @@
 use super::*;
 use crate::sources;
+use uuid::Uuid;
 
 fn multi_source(f: &Fixture) -> Value {
     let backend = f.root.parent().unwrap().join("backend");
@@ -207,6 +208,231 @@ fn source_catalog_refresh_preserves_each_macs_bindings_by_id() {
         .unwrap()
         .remove(0);
     assert_eq!(saved["sources"], project["sources"]);
+}
+
+#[test]
+fn removed_sources_disconnect_without_deleting_files_or_shared_history() {
+    let f = Fixture::new();
+    let project = multi_source(&f);
+    let project_id = project["id"].as_str().unwrap();
+    let source_id = project["sources"][0]["id"].as_str().unwrap();
+    fs::write(f.root.join("AGENTS.md"), "Keep local instructions\n").unwrap();
+    let resource = json!({"resourceId":uuid::Uuid::new_v4().to_string(),"sourceId":source_id,"projectId":project_id,"kind":"memory","source":"shared","logicalPath":"instructions/AGENTS.md","title":"Instructions","revision":1,"deleted":false,"files":[]});
+    let resource_id = resource["resourceId"].as_str().unwrap();
+    db::upsert(&f.db, "projects", project_id, project_id, &project).unwrap();
+    db::upsert(&f.db, "resources", resource_id, project_id, &resource).unwrap();
+    db::upsert(
+        &f.db,
+        "bindings",
+        resource_id,
+        project_id,
+        &json!({"base":resource,"paths":[f.root.join("AGENTS.md")]}),
+    )
+    .unwrap();
+    let mut remote = project.clone();
+    remote["sources"][0]["removedAt"] = json!("2026-11-13T00:00:00Z");
+    crate::projects::merge_catalog(&f.db, &json!([remote])).unwrap();
+    let saved = db::rows(
+        &f.db,
+        "SELECT value FROM projects WHERE id=?",
+        &[&project_id],
+    )
+    .unwrap()
+    .remove(0);
+    assert!(saved["sources"][0]["path"].is_null());
+    assert!(saved["sources"][0]["folderIdentity"].is_null());
+    assert_eq!(saved["sources"][0]["name"], "desktop");
+    assert_eq!(saved["sources"][1]["path"], project["sources"][1]["path"]);
+    assert_eq!(sources::views(&saved).len(), 1);
+    assert!(sources::select(&saved, Some(source_id)).is_err());
+    assert!(sources::validate(&saved["sources"][0]).is_err());
+    assert!(db::rows(
+        &f.db,
+        "SELECT value FROM bindings WHERE id=?",
+        &[&resource_id]
+    )
+    .unwrap()
+    .is_empty());
+    assert_eq!(f.resources(), vec![resource]);
+    assert_eq!(
+        fs::read_to_string(f.root.join("AGENTS.md")).unwrap(),
+        "Keep local instructions\n"
+    );
+    indexer::scan(&f.db, &saved).unwrap();
+    assert!(f.outbox().is_empty());
+    crate::projects::merge_catalog(&f.db, &json!([project])).unwrap();
+    let stale_refresh = db::rows(
+        &f.db,
+        "SELECT value FROM projects WHERE id=?",
+        &[&project_id],
+    )
+    .unwrap()
+    .remove(0);
+    assert!(stale_refresh["sources"][0]["removedAt"].is_string());
+    assert!(stale_refresh["sources"][0]["path"].is_null());
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let result = runtime.block_on(sources::connect_sources(
+        project_id.into(),
+        vec![f.root.to_string_lossy().into()],
+        Some(source_id.into()),
+        None,
+        None,
+    ));
+    assert!(result.unwrap_err().contains("removed from the project"));
+}
+
+#[test]
+fn source_removal_keeps_queued_changes_until_they_are_synced() {
+    let f = Fixture::new();
+    let mut project = multi_source(&f);
+    project["role"] = json!("owner");
+    let id = project["id"].as_str().unwrap();
+    db::upsert(&f.db, "projects", id, id, &project).unwrap();
+    fs::write(f.root.join("AGENTS.md"), "Queued local instructions\n").unwrap();
+    indexer::scan(&f.db, &project).unwrap();
+    let before = f.outbox();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let result = runtime.block_on(crate::projects::project_command(
+        "remove-source".into(),
+        json!({"projectId":id,"sourceId":project["sources"][0]["id"]}),
+    ));
+    assert!(result.unwrap_err().contains("Sync queued changes"));
+    assert_eq!(f.outbox(), before);
+    assert_eq!(
+        fs::read_to_string(f.root.join("AGENTS.md")).unwrap(),
+        "Queued local instructions\n"
+    );
+}
+
+#[test]
+fn remote_source_removal_preserves_unsent_snapshots_and_releases_only_its_queue() {
+    let f = Fixture::new();
+    let project = multi_source(&f);
+    let id = project["id"].as_str().unwrap();
+    let removed = project["sources"][0]["id"].as_str().unwrap();
+    let other = project["sources"][1]["id"].as_str().unwrap();
+    db::upsert(&f.db, "projects", id, id, &project).unwrap();
+    let text = "Frozen unsent session snapshot\n";
+    let hash = db::blob(text.as_bytes()).unwrap();
+    let session = json!({"resourceId":Uuid::new_v4().to_string(),"sourceId":removed,"projectId":id,"kind":"session","source":"codex","logicalPath":"codex/frozen","title":"Unsent session","files":[{"path":"session.jsonl","hash":hash,"size":text.len(),"executable":false}],"revision":1,"deleted":false});
+    let selected = json!({"resourceId":Uuid::new_v4().to_string(),"sourceId":removed,"projectId":id,"kind":"memory","source":"shared","logicalPath":"knowledge/frozen.md","title":"Selected memory","files":[{"path":"content.md","hash":hash,"size":text.len(),"executable":false}],"deleted":false});
+    let path = f.root.join("unsent-session.jsonl");
+    fs::write(&path, text).unwrap();
+    db::upsert(
+        &f.db,
+        "resources",
+        session["resourceId"].as_str().unwrap(),
+        id,
+        &session,
+    )
+    .unwrap();
+    db::upsert(
+        &f.db,
+        "bindings",
+        session["resourceId"].as_str().unwrap(),
+        id,
+        &json!({"base":session,"paths":[path]}),
+    )
+    .unwrap();
+    let push = json!({"id":Uuid::new_v4().to_string(),"projectId":id,"resource":session});
+    let share = json!({"id":Uuid::new_v4().to_string(),"projectId":id,"resource":selected});
+    let copy = json!({"id":Uuid::new_v4().to_string(),"projectId":id,"resourceId":session["resourceId"],"expectedRevision":1});
+    let active = json!({"id":Uuid::new_v4().to_string(),"projectId":id,"resource":{"resourceId":Uuid::new_v4().to_string(),"sourceId":other,"kind":"session","files":[]}});
+    for (endpoint, value) in [
+        ("/v2/sync/push", &push),
+        (crate::selective_sharing::QUEUE_PATH, &share),
+        ("/v2/sessions/copy", &copy),
+        ("/v2/sync/push", &active),
+    ] {
+        f.db.execute(
+            "INSERT INTO outbox VALUES(?,?,?,?,NULL)",
+            rusqlite::params![value["id"].as_str(), id, endpoint, value.to_string()],
+        )
+        .unwrap();
+    }
+    f.db.execute(
+        "UPDATE outbox SET error='409: Source folder was removed' WHERE id=?",
+        [push["id"].as_str().unwrap()],
+    )
+    .unwrap();
+    db::set(
+        &f.db,
+        &format!("selected-share:{}", share["id"].as_str().unwrap()),
+        &json!({"status":"queued","paths":[path]}),
+    )
+    .unwrap();
+    let pending = json!({"header":{"manifest":{"projectId":id,"sourceId":removed}},"mutation":{"version":{"ciphertext":"retained-encrypted-ENV"}}});
+    let active_pending = json!({"header":{"manifest":{"projectId":id,"sourceId":other}},"mutation":{"version":{"ciphertext":"other-encrypted-ENV"}}});
+    db::set(&f.db, "env:test:pending:removed", &pending).unwrap();
+    db::set(&f.db, "env:test:pending:other", &active_pending).unwrap();
+    let mut remote = project.clone();
+    remote["sources"][0]["removedAt"] = json!("2026-11-13T00:00:00Z");
+    crate::projects::merge_catalog(&f.db, &json!([remote.clone()])).unwrap();
+    assert_eq!(f.outbox(), vec![active]);
+    let drafts = db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap();
+    assert_eq!(drafts.len(), 3);
+    for queued in [&push, &share, &copy] {
+        let draft = drafts
+            .iter()
+            .find(|draft| draft["sourceRemoval"]["queued"]["value"]["id"] == queued["id"])
+            .unwrap();
+        assert_eq!(draft["sourceRemoval"]["queued"]["value"], *queued);
+        assert_eq!(draft["status"], "local");
+        let bytes = db::blob_read(draft["resource"]["files"][0]["hash"].as_str().unwrap()).unwrap();
+        assert_eq!(bytes, text.as_bytes());
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let preview = runtime
+            .block_on(crate::governance::governance_command(
+                "draft".into(),
+                json!({"projectId":id,"id":draft["id"]}),
+            ))
+            .unwrap();
+        assert_eq!(preview["draft"]["resource"], draft["resource"]);
+    }
+    assert_eq!(fs::read_to_string(&path).unwrap(), text);
+    assert_eq!(
+        db::get(
+            &f.db,
+            &format!("selected-share:{}", share["id"].as_str().unwrap())
+        )
+        .unwrap()["status"],
+        "conflict"
+    );
+    let preserved = db::get(&f.db, "env:test:pending:removed").unwrap();
+    assert_eq!(preserved["mutation"], pending["mutation"]);
+    assert_eq!(preserved["header"], pending["header"]);
+    assert_eq!(preserved["sourceRemoval"]["sourceId"], removed);
+    assert_eq!(
+        db::get(&f.db, "env:test:pending:other").unwrap(),
+        active_pending
+    );
+    crate::projects::merge_catalog(&f.db, &json!([remote])).unwrap();
+    assert_eq!(
+        db::rows(&f.db, "SELECT value FROM drafts", &[])
+            .unwrap()
+            .len(),
+        3
+    );
+}
+
+#[test]
+fn pending_env_publications_block_local_source_removal_without_discarding_ciphertext() {
+    let f = Fixture::new();
+    let mut project = multi_source(&f);
+    project["role"] = json!("owner");
+    let id = project["id"].as_str().unwrap();
+    db::upsert(&f.db, "projects", id, id, &project).unwrap();
+    let pending = json!({"header":{"manifest":{"projectId":id,"sourceId":project["sources"][0]["id"]}},"mutation":{"version":{"ciphertext":"encrypted-pending-value"}}});
+    db::set(&f.db, "env:test:pending:value", &pending).unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let error = runtime
+        .block_on(crate::projects::project_command(
+            "remove-source".into(),
+            json!({"projectId":id,"sourceId":project["sources"][0]["id"]}),
+        ))
+        .unwrap_err();
+    assert!(error.contains("pending ENV publications"));
+    assert_eq!(db::get(&f.db, "env:test:pending:value").unwrap(), pending);
 }
 
 #[test]

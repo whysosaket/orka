@@ -1,16 +1,22 @@
 import type { Project } from "../types.js";
 
+export function activeSources<T extends { removedAt?: string | null }>(
+  sources: T[] | undefined,
+) {
+  return (sources ?? []).filter((source) => !source.removedAt);
+}
+
 export function sourcePath(project: Project, sourceId?: string | null) {
   if (!project.sources) return project.path;
-  if (sourceId)
-    return project.sources.find((source) => source.id === sourceId)?.path;
-  return project.sources.length === 1 ? project.sources[0].path : undefined;
+  const sources = activeSources(project.sources);
+  if (sourceId) return sources.find((source) => source.id === sourceId)?.path;
+  return sources.length === 1 ? sources[0].path : undefined;
 }
 
 export function hasConnectedSource(project: Project) {
-  return Boolean(
-    project.sources?.some((source) => source.path) || project.path,
-  );
+  return project.sources
+    ? activeSources(project.sources).some((source) => source.path)
+    : Boolean(project.path);
 }
 
 export function repositoryLabel(

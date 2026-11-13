@@ -1,4 +1,5 @@
 import {
+  activeSources,
   hasConnectedSource,
   repositoryLabel,
 } from "./components/project-sources.js";
@@ -250,19 +251,20 @@ function WorkspaceApp({
     (item) => item.id === repositorySetup,
   );
   const unconnectedRepositories =
-    repositorySetupProject?.sources?.filter(
+    activeSources(repositorySetupProject?.sources).filter(
       (source) =>
         source.repository &&
         (!source.path || source.folderState === "reconnect"),
     ) ?? [];
   const alreadyConnectedRepositories = Boolean(
-    repositorySetupProject?.sources?.some((source) => source.repository) &&
-    unconnectedRepositories.length === 0,
+    activeSources(repositorySetupProject?.sources).some(
+      (source) => source.repository,
+    ) && unconnectedRepositories.length === 0,
   );
   useEffect(() => {
     if (alreadyConnectedRepositories) setRepositorySetup("");
   }, [alreadyConnectedRepositories]);
-  const repositories = selectedProject?.sources ?? [];
+  const repositories = activeSources(selectedProject?.sources);
   const repository = repositories.some(
     (source) => source.id === index.repository,
   )
@@ -739,11 +741,13 @@ function WorkspaceApp({
                 <FolderConnectionPrompt
                   projectName={projectLabel(selectedProject)}
                   busy={busy}
-                  repositories={selectedProject.sources?.some(
+                  repositories={activeSources(selectedProject.sources).some(
                     (source) => source.repository,
                   )}
                   onConnect={() =>
-                    selectedProject.sources?.some((source) => source.repository)
+                    activeSources(selectedProject.sources).some(
+                      (source) => source.repository,
+                    )
                       ? openSettings("general")
                       : void act(() => connectProject(project))
                   }

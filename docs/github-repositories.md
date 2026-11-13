@@ -9,14 +9,25 @@ uses the same picker. You can also add a repository later from **Settings → Ge
 If GitHub is not connected, Orka asks you to authorize it first. Enter the code
 on GitHub and confirm the account. Email/password Orka accounts can connect GitHub
 too. Each environment uses one GitHub App for sign-in and repository access, with
-separate user consent and repository-installation steps.
+separate user consent and repository-installation steps. If no repository access
+is configured after authorization, Orka opens GitHub’s installation setup. Choose
+the repositories and return to Orka to refresh the list; **I’ve configured access**
+also refreshes it. Organization owners may need to approve access. Temporary connection
+failures keep the same authorization code and retry until it expires. Use
+**I’ve authorized GitHub** to check after returning from the browser.
+
+The username dropdown contains **Manage GitHub access**, **Connect another
+GitHub account**, and **Disconnect GitHub**. Account and repository selectors
+use the same keyboard-accessible controls as other Orka settings. When a selected
+repository matches a connected local folder, Orka links that source without
+cloning another copy. A repository can be linked only once within a project.
 
 The picker normally asks only for the account and repository. It shows the clone
 destination, defaulting to `~/Orka/<repository>`. Open **Change location** only if
 you want another directory or checkout name. A folder already connected on this
 Mac stays connected and has no clone action. Existing local source folders can
-use **⋯ → Link GitHub repository** without cloning again. **Use a local folder
-instead** keeps ordinary folder setup available.
+use **⋯ → Link GitHub repository** without cloning again. **Use Local Folder**
+keeps ordinary folder setup available.
 
 Source rows check GitHub access automatically and show a status icon. Checks run
 in the background when the app opens and daily while it remains open. Results are
@@ -54,3 +65,11 @@ Older/unconfigured services retain local folder setup. Operators should follow
 the [shared server configuration and migration guide](../server/docs/github-repositories.md).
 Both hosting modes share authorization, bindings and requests. Repository metadata
 is shared with the Orka project; local paths remain on each Mac.
+
+Source menus offer **Disconnect folder on this Mac** for local detachment.
+Project owners can also **Remove source folder** when the service supports source
+removal. Confirmation explains that existing files and shared history are kept;
+removal stops future syncing for that source across the project. Removed sources
+remain available as historical labels but disappear from connection and new
+content destinations. This requires the matching updated backend; older services
+keep the existing connection and disconnect behavior.

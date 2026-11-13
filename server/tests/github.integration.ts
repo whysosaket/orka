@@ -22,6 +22,7 @@ for (const mode of ["cloud", "self-hosted"] as const)
     const allowed = new Set(["fixture-owner"]);
     let beforeRepository: (() => Promise<void>) | undefined;
     let deviceCounter = 0,
+      deviceExchanges = 0,
       refreshes = 0;
     const tokens = new Map<string, string>();
     const repo = {
@@ -50,6 +51,7 @@ for (const mode of ["cloud", "self-hosted"] as const)
           interval: 5,
         });
       if (url.pathname === "/login/oauth/access_token") {
+        if (data.grant_type !== "refresh_token") deviceExchanges++;
         const identity =
           data.grant_type === "refresh_token"
             ? tokens.get(data.refresh_token)
@@ -158,6 +160,25 @@ for (const mode of ["cloud", "self-hosted"] as const)
       assert.equal(result.status, 200);
       assert.equal(result.value.connected, true);
       assert.ok(!JSON.stringify(result.value).includes("fixture-access"));
+      const exchanges = deviceExchanges;
+      const retried = await api("poll", { id: started.value.id }, user);
+      assert.equal(retried.status, 200);
+      assert.deepEqual(
+        retried.value,
+        result.value,
+        "retrying a lost completion response must retain this attempt's identity",
+      );
+      assert.equal(
+        deviceExchanges,
+        exchanges,
+        "completed attempts must not consume the device code again",
+      );
+      assert.equal(
+        (await api("poll", { id: started.value.id }, outsider)).status,
+        410,
+        "completion responses must remain bound to the initiating Orka account",
+      );
+      return started.value.id as string;
     };
     try {
       const projectId = await store.createProject(
@@ -194,8 +215,18 @@ for (const mode of ["cloud", "self-hosted"] as const)
         ).status,
         403,
       );
-      await connect(owner);
+      const ownerAuthorization = await connect(owner);
       await connect(member);
+      await pool.query(
+        "update orka.github_authorizations set expires_at=now()-interval '1 second' where id=$1",
+        [ownerAuthorization],
+      );
+      assert.equal(
+        (await api("poll", { id: ownerAuthorization })).status,
+        410,
+        "completed attempts must expire without disconnecting the account",
+      );
+      assert.equal((await api("status")).value.connected, true);
       const encrypted = (
         await pool.query(
           "select credentials from orka.github_connections where user_id=$1",
@@ -223,6 +254,32 @@ for (const mode of ["cloud", "self-hosted"] as const)
       assert.equal(
         (await api("add-source", { projectId, repositoryId: "4242" })).status,
         409,
+      );
+      const localSourceId = randomUUID();
+      const localSource = await fetch(`${base}/v2/projects/sources`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${owner}`,
+          "Content-Type": "application/json",
+          "X-Orka-Governance": "1",
+        },
+        body: JSON.stringify({
+          projectId,
+          sources: [{ id: localSourceId, name: "Existing local checkout" }],
+        }),
+      });
+      assert.equal(localSource.status, 200);
+      assert.equal(
+        (
+          await api("bind", {
+            projectId,
+            sourceId: localSourceId,
+            repositoryId: "4242",
+            expectedRevision: 0,
+          })
+        ).status,
+        409,
+        "the same repository cannot be bound to another source in the project",
       );
       const source = { projectId, sourceId };
       assert.equal(
@@ -375,13 +432,12 @@ for (const mode of ["cloud", "self-hosted"] as const)
       const catalog = await fetch(`${base}/v2/projects`, {
         headers: { Authorization: `Bearer ${owner}`, "X-Orka-Governance": "1" },
       }).then((r) => r.json());
-      assert.equal(
-        catalog.find((p: { id: string }) => p.id === projectId).sources[0]
-          .repository.id,
-        "4242",
-      );
-      const renamed = catalog.find((p: { id: string }) => p.id === projectId)
-        .sources[0].repository;
+      const renamed = catalog
+        .find((p: { id: string }) => p.id === projectId)
+        .sources.find(
+          (item: { id: string }) => item.id === sourceId,
+        ).repository;
+      assert.equal(renamed.id, "4242");
       assert.equal(renamed.fullName, "fixtures/renamed-private-repo");
       assert.deepEqual(renamed.previousCloneUrls, [
         "https://github.com/fixtures/private-repo.git",
@@ -437,6 +493,42 @@ for (const mode of ["cloud", "self-hosted"] as const)
       assert.equal(
         (await api("access", source, member)).value.state,
         "not_connected",
+      );
+      const removed = await fetch(`${base}/v2/projects/sources/remove`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${owner}`,
+          "Content-Type": "application/json",
+          "X-Orka-Governance": "1",
+        },
+        body: JSON.stringify(source),
+      });
+      assert.equal(removed.status, 200);
+      assert.equal(
+        (await api("clone-credentials", source)).status,
+        409,
+        "a removed source must not issue clone credentials",
+      );
+      assert.equal(
+        (
+          await api("bind", {
+            ...source,
+            expectedRevision: 4,
+            repositoryId: "4242",
+          })
+        ).status,
+        409,
+        "a removed source cannot be linked again",
+      );
+      const replacement = await api("add-source", {
+        projectId,
+        repositoryId: "4242",
+      });
+      assert.equal(replacement.status, 200);
+      assert.notEqual(
+        replacement.value.sourceId,
+        sourceId,
+        "removing a source releases the repository for a fresh connection",
       );
       assert.equal((await api("disconnect")).status, 200);
       assert.equal((await api("status")).value.connected, false);

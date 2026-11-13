@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { KebabHorizontalIcon, XIcon } from "@primer/octicons-react";
+import { ChevronDownIcon, MarkGithubIcon, XIcon } from "@primer/octicons-react";
 import type { GitHubRepository } from "@portable/protocol";
 import type { Project } from "../types.js";
 import type { RepositoryController } from "./use-repositories.js";
@@ -10,6 +10,7 @@ import { IconButton } from "./icon-button.js";
 import { TextField } from "./text-field.js";
 import { connectProject } from "./use-project-setup.js";
 import { ActionPopover } from "./resource-actions.js";
+import { PermissionSelect } from "./permission-select.js";
 
 export type RepositorySource = NonNullable<Project["sources"]>[number];
 export function RepositoryPicker({
@@ -29,21 +30,41 @@ export function RepositoryPicker({
   onLocalFolder?: () => Promise<unknown>;
   onRequestAccess: (source: RepositorySource) => void;
 }) {
-  const { call, status, authorization, busy, error, run, openGitHub } =
-    controller;
+  const {
+    call,
+    status,
+    authorization,
+    busy,
+    error,
+    run,
+    openGitHub,
+    authorizationConnectedVersion,
+    authorizationError,
+  } = controller;
   const [accounts, setAccounts] = useState<{ id: string; name: string }[]>([]);
   const [account, setAccount] = useState("");
   const [accountPage, setAccountPage] = useState<number | null>(null);
   const [repositories, setRepositories] = useState<GitHubRepository[]>([]);
   const [repositoryId, setRepositoryId] = useState("");
   const [nextPage, setNextPage] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false),
-    [loadError, setLoadError] = useState("");
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [loadingRepositories, setLoadingRepositories] = useState(false);
+  const loading = loadingAccounts || loadingRepositories;
+  const [loadError, setLoadError] = useState("");
   const [directory, setDirectory] = useState("");
   const [folderName, setFolderName] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [awaitingGitHubAccess, setAwaitingGitHubAccess] = useState(false);
+  const [guidedVersion, setGuidedVersion] = useState(0);
+  const [accountsLoadedFor, setAccountsLoadedFor] = useState("");
+  const accountScope = `${status?.identity?.id}:${authorizationConnectedVersion}:${refreshVersion}`;
+  const [matchingFolder, setMatchingFolder] = useState<{
+    repositoryId: string;
+    sourceId: string | null;
+  } | null>(null);
+  const [matchingError, setMatchingError] = useState("");
+  const [checkingFolder, setCheckingFolder] = useState(false);
   const needsAuth =
     Boolean(authorization) ||
     !status?.connected ||
@@ -56,18 +77,33 @@ export function RepositoryPicker({
   const canConnectSource = !linked || sourceAccess?.state === "ready";
   const selected =
     linked ?? repositories.find((repository) => repository.id === repositoryId);
+  const boundSource = selected
+    ? project.sources?.find(
+        (item) => !item.removedAt && item.repository?.id === selected.id,
+      )
+    : undefined;
+  const duplicateBinding =
+    source && boundSource && source.id !== boundSource.id;
   const existing =
     source ??
-    project.sources?.find((item) => item.repository?.id === selected?.id);
+    (selected
+      ? project.sources?.find(
+          (item) =>
+            !item.removedAt &&
+            (item.repository?.id === selected.id ||
+              (matchingFolder?.repositoryId === selected.id &&
+                item.id === matchingFolder.sourceId)),
+        )
+      : undefined);
   const connected = Boolean(
     existing?.path &&
     existing.repository?.id === selected?.id &&
     existing.folderState !== "reconnect",
   );
   useEffect(() => {
-    if (needsAuth || linked) return;
+    if (needsAuth) return;
     let canceled = false;
-    setLoading(true);
+    setLoadingAccounts(true);
     setLoadError("");
     void call<{
       items: { id: string; name: string }[];
@@ -77,23 +113,34 @@ export function RepositoryPicker({
         if (!canceled) {
           setAccounts(value.items);
           setAccountPage(value.nextPage);
-          if (value.items.length === 1) setAccount(value.items[0].id);
+          setAccountsLoadedFor(accountScope);
+          setAccount((previous) =>
+            value.items.some((item) => item.id === previous)
+              ? previous
+              : (value.items[0]?.id ?? ""),
+          );
         }
       })
       .catch((e) => {
         if (!canceled) setLoadError(String(e));
       })
       .finally(() => {
-        if (!canceled) setLoading(false);
+        if (!canceled) setLoadingAccounts(false);
       });
     return () => {
       canceled = true;
     };
-  }, [call, needsAuth, linked, refreshVersion]);
+  }, [call, needsAuth, accountScope]);
   useEffect(() => {
-    if (!account || needsAuth || linked) return;
+    if (!account || needsAuth || linked) {
+      setRepositories([]);
+      setRepositoryId("");
+      setNextPage(null);
+      setLoadingRepositories(false);
+      return;
+    }
     let canceled = false;
-    setLoading(true);
+    setLoadingRepositories(true);
     setLoadError("");
     setRepositories([]);
     setRepositoryId("");
@@ -111,7 +158,7 @@ export function RepositoryPicker({
         if (!canceled) setLoadError(String(e));
       })
       .finally(() => {
-        if (!canceled) setLoading(false);
+        if (!canceled) setLoadingRepositories(false);
       });
     return () => {
       canceled = true;
@@ -139,6 +186,62 @@ export function RepositoryPicker({
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [awaitingGitHubAccess]);
+  useEffect(() => {
+    if (
+      !authorizationConnectedVersion ||
+      guidedVersion === authorizationConnectedVersion ||
+      needsAuth ||
+      accountsLoadedFor !== accountScope ||
+      loading ||
+      loadError ||
+      accounts.length ||
+      !status
+    )
+      return;
+    setGuidedVersion(authorizationConnectedVersion);
+    setAwaitingGitHubAccess(true);
+    void run(() => openGitHub(status.installationUrl));
+  }, [
+    authorizationConnectedVersion,
+    guidedVersion,
+    needsAuth,
+    accountsLoadedFor,
+    accountScope,
+    loading,
+    loadError,
+    accounts.length,
+    status,
+    run,
+    openGitHub,
+  ]);
+  useEffect(() => {
+    setMatchingFolder(null);
+    setMatchingError("");
+    setCheckingFolder(false);
+    if (!selected || source || existing?.repository) return;
+    let canceled = false;
+    setCheckingFolder(true);
+    void call<{ sourceId: string } | null>("matching-source", {
+      projectId: project.id,
+      repositoryId: selected.id,
+    })
+      .then((match) => {
+        if (!canceled)
+          setMatchingFolder({
+            repositoryId: selected.id,
+            sourceId: match?.sourceId ?? null,
+          });
+      })
+      .catch((error) => {
+        if (!canceled) setMatchingError(String(error));
+      })
+      .finally(() => {
+        if (!canceled) setCheckingFolder(false);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [call, project.id, selected, source, existing?.repository]);
   const manageAccess = () => {
     setAwaitingGitHubAccess(true);
     return openGitHub(status!.installationUrl);
@@ -149,12 +252,12 @@ export function RepositoryPicker({
     run(async () => {
       if (!selected) return;
       let sourceId = existing?.id;
-      if (source && !linked) {
+      if (existing && !existing.repository) {
         await call("bind", {
           projectId: project.id,
-          sourceId: source.id,
+          sourceId: existing.id,
           repositoryId: selected.id,
-          expectedRevision: source.repositoryRevision ?? 0,
+          expectedRevision: existing.repositoryRevision ?? 0,
         });
       } else if (!sourceId) {
         sourceId = (
@@ -220,18 +323,29 @@ export function RepositoryPicker({
         </>
       ) : needsAuth ? (
         <>
-          <p>Connect GitHub to choose a repository for {project.name}.</p>
+          <p>
+            Authorize your GitHub account, then choose which repositories Orka
+            can access.
+          </p>
           {authorization ? (
             <div className="repository-authorization" role="status">
               <p>Enter this code on GitHub:</p>
               <strong>{authorization.userCode}</strong>
-              <p>Waiting for authorization…</p>
+              <p>Waiting for GitHub authorization…</p>
+              <p>After authorization, continue with repository access.</p>
+              {authorizationError && <p role="alert">{authorizationError}</p>}
               <Button
                 onClick={() =>
                   void run(() => openGitHub(authorization.verificationUrl))
                 }
               >
                 Open GitHub
+              </Button>
+              <Button
+                disabled={busy}
+                onClick={() => void run(controller.checkAuthorization)}
+              >
+                I’ve authorized GitHub
               </Button>
             </div>
           ) : (
@@ -246,29 +360,77 @@ export function RepositoryPicker({
         </>
       ) : (
         <>
+          <div className="repository-account-row">
+            <span>GitHub connected</span>
+            <ActionPopover
+              label="GitHub account options"
+              trigger={
+                <Button
+                  className="repository-account-trigger"
+                  aria-label={`GitHub account options for @${status?.identity?.login}`}
+                  disabled={busy}
+                >
+                  <MarkGithubIcon size={16} aria-hidden="true" />
+                  <span>@{status?.identity?.login}</span>
+                  <ChevronDownIcon size={14} aria-hidden="true" />
+                </Button>
+              }
+            >
+              <Button size="sm" onClick={() => void run(manageAccess)}>
+                Manage GitHub access
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void run(controller.connectGitHub)}
+              >
+                Connect another GitHub account
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void run(controller.disconnectGitHub)}
+              >
+                Disconnect GitHub
+              </Button>
+            </ActionPopover>
+          </div>
+          {awaitingGitHubAccess && (
+            <div className="repository-access-setup" role="status">
+              <p>Choose repository access on GitHub, then return to Orka.</p>
+              <Button
+                size="sm"
+                disabled={busy || loading}
+                onClick={() => {
+                  setAwaitingGitHubAccess(false);
+                  setRefreshVersion((value) => value + 1);
+                }}
+              >
+                I’ve configured access
+              </Button>
+            </div>
+          )}
           {linked ? (
             <p className="repository-selection-name">{linked.fullName}</p>
           ) : (
             <div className="repository-picker-fields">
-              <label>
-                GitHub account
-                <select
-                  aria-label="GitHub account"
+              <div className="repository-picker-field">
+                <span>GitHub account</span>
+                <PermissionSelect
+                  label="GitHub account"
+                  placeholder={
+                    loading ? "Loading accounts…" : "Choose an account"
+                  }
                   value={account}
-                  disabled={busy || loading}
-                  onChange={(event) => {
-                    setAccount(event.target.value);
+                  disabled={busy || loading || !accounts.length}
+                  onChange={(value) => {
+                    setAccount(value);
                     setQuery("");
                   }}
-                >
-                  <option value="">Choose an account</option>
-                  {accounts.map((item) => (
-                    <option value={item.id} key={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  options={accounts.map((item) => ({
+                    value: item.id,
+                    label: item.name,
+                  }))}
+                />
+              </div>
               {accountPage && (
                 <Button
                   size="sm"
@@ -294,32 +456,31 @@ export function RepositoryPicker({
                   onChange={(event) => setQuery(event.target.value)}
                 />
               )}
-              <label>
-                Repository
-                <select
-                  aria-label="Repository"
+              <div className="repository-picker-field">
+                <span>Repository</span>
+                <PermissionSelect
+                  label="Repository"
+                  placeholder={
+                    loading ? "Loading repositories…" : "Choose a repository"
+                  }
                   value={repositoryId}
                   disabled={busy || loading || !account}
-                  onChange={(event) => {
-                    setRepositoryId(event.target.value);
+                  onChange={(value) => {
+                    setRepositoryId(value);
                     setFolderName(null);
                   }}
-                >
-                  <option value="">Choose a repository</option>
-                  {repositories
+                  options={repositories
                     .filter((repository) =>
                       repository.fullName
                         .toLowerCase()
                         .includes(query.toLowerCase()),
                     )
-                    .map((repository) => (
-                      <option key={repository.id} value={repository.id}>
-                        {repository.fullName}
-                        {repository.private ? " · Private" : ""}
-                      </option>
-                    ))}
-                </select>
-              </label>
+                    .map((repository) => ({
+                      value: repository.id,
+                      label: `${repository.fullName}${repository.private ? " · Private" : ""}`,
+                    }))}
+                />
+              </div>
               {nextPage && (
                 <Button
                   size="sm"
@@ -418,101 +579,85 @@ export function RepositoryPicker({
               </details>
             </div>
           )}
-          {selected && existing?.path && (
+          {duplicateBinding && (
+            <p role="status">
+              This repository is already linked to {boundSource.name}. Choose
+              another repository.
+            </p>
+          )}
+          {selected && existing?.path && !duplicateBinding && (
             <p>
               {connected
                 ? "Already connected on this Mac."
                 : existing?.folderState === "reconnect"
                   ? "Confirm the existing folder to reconnect it on this Mac."
-                  : "This folder will be linked to GitHub."}
+                  : "Your existing folder will be linked to GitHub. No clone is needed."}
             </p>
           )}
-          <div className="repository-dialog-footer">
-            <span className="repository-account">
-              @{status?.identity?.login}
-              <ActionPopover
-                label="GitHub account options"
-                trigger={
-                  <IconButton
-                    icon={KebabHorizontalIcon}
-                    size="sm"
-                    variant="tertiary"
-                    aria-label="GitHub account options"
-                    disabled={busy}
-                  />
-                }
-              >
-                <Button size="sm" onClick={() => void run(manageAccess)}>
-                  Manage GitHub access
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => void run(controller.connectGitHub)}
-                >
-                  Use another GitHub account
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => void run(controller.disconnectGitHub)}
-                >
-                  Disconnect GitHub
-                </Button>
-              </ActionPopover>
-            </span>
-            {!connected &&
-              (sourceAccess?.state === "access_unavailable" ? (
-                <Button
-                  variant="primary"
-                  disabled={busy}
-                  onClick={() => source && onRequestAccess(source)}
-                >
-                  Request access
-                </Button>
-              ) : sourceAccess?.state === "unavailable" ? (
-                <Button
-                  disabled={busy}
-                  onClick={() => void run(() => controller.recheck(source!.id))}
-                >
-                  Retry access check
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  disabled={
-                    busy ||
-                    loading ||
-                    !selected ||
-                    !canConnectSource ||
-                    (!existing?.path && (!directory || !name))
-                  }
-                  onClick={() => void connect()}
-                >
-                  {busy
-                    ? "Connecting…"
-                    : !canConnectSource
-                      ? "Checking access…"
-                      : "Connect repository"}
-                </Button>
-              ))}
-          </div>
         </>
       )}
-      {onLocalFolder && !source && !authorization && (
-        <Button
-          className="repository-local-option"
-          variant="tertiary"
-          size="sm"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              if (await onLocalFolder()) onConnected();
-            })
-          }
-        >
-          Use a local folder instead
-        </Button>
+      {((onLocalFolder && !source && !authorization) ||
+        (status && !needsAuth && !connected)) && (
+        <div className="repository-dialog-footer">
+          {onLocalFolder && !source && !authorization && (
+            <Button
+              className="repository-local-option"
+              variant="secondary"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  if (await onLocalFolder()) onConnected();
+                })
+              }
+            >
+              Use Local Folder
+            </Button>
+          )}
+          {status &&
+            !needsAuth &&
+            !connected &&
+            (sourceAccess?.state === "access_unavailable" ? (
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() => source && onRequestAccess(source)}
+              >
+                Request access
+              </Button>
+            ) : sourceAccess?.state === "unavailable" ? (
+              <Button
+                disabled={busy}
+                onClick={() => void run(() => controller.recheck(source!.id))}
+              >
+                Retry access check
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                disabled={
+                  busy ||
+                  loading ||
+                  checkingFolder ||
+                  Boolean(duplicateBinding) ||
+                  Boolean(loadError || matchingError) ||
+                  !selected ||
+                  !canConnectSource ||
+                  (!existing?.path && (!directory || !name))
+                }
+                onClick={() => void connect()}
+              >
+                {busy
+                  ? "Connecting…"
+                  : !canConnectSource
+                    ? "Checking access…"
+                    : "Connect repository"}
+              </Button>
+            ))}
+        </div>
       )}
-      {(error || loadError) && <p role="alert">{error || loadError}</p>}
+      {(error || loadError || matchingError) && (
+        <p role="alert">{error || loadError || matchingError}</p>
+      )}
     </Overlay>
   );
 }
