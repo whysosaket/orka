@@ -74,11 +74,12 @@ test("expanded retained restrictions remain reachable in compact Settings", asyn
   const panel = settings.locator(".settings-panel");
   const bounds = await panel.boundingBox();
   await page.mouse.move(bounds!.x + 10, bounds!.y + 40);
-  await expect
-    .poll(async () => {
-      await page.mouse.wheel(0, 1800);
-      return panel.evaluate((element) => element.scrollTop);
-    })
-    .toBeGreaterThan(0);
+  await expect(async () => {
+    await page.mouse.wheel(0, 900);
+    await expect(last).toBeInViewport({ ratio: 1, timeout: 100 });
+  }).toPass({ timeout: 10000 });
+  expect(await panel.evaluate((element) => element.scrollTop)).toBeGreaterThan(
+    0,
+  );
   await expect(last).toBeInViewport({ ratio: 1 });
 });
