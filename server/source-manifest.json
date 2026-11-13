@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "280f601ad951a1f543f6249048af7b9500061ce3",
+  "commit": "27218ded8e7411a011072bcb5628d792f877e6b0",
   "candidate": false,
-  "sourceTreeSha256": "4d6e67ca2d71efc0d473b0677ffdcab8f783fd5199bc0cfe6b0d1aa7dd21f8e0",
+  "sourceTreeSha256": "8ac0f08d9c9ea577bf19429be85b176a377e2dad54a5e9ad8d165a2fbb6cac62",
   "files": [
     {
       "path": ".dockerignore",
@@ -156,7 +156,7 @@
     },
     {
       "path": "docs/continuous-deployment.md",
-      "sha256": "dca3730d7fcc3581c5e5cc01d6d5d01f48854cdb346697f78a2ccf5a30c405b3",
+      "sha256": "f7e52f59e2fa67e630d2008fff7490ad190e0f73dcbafac06aab4777bb7e45c7",
       "mode": 420
     },
     {
@@ -641,7 +641,7 @@
     },
     {
       "path": "scripts/managed/deploy-managed.sh",
-      "sha256": "d6bf52345d231fd94190b5e6aae6ff2d43366c1e458ad724b6e6f36158bcc21a",
+      "sha256": "56cfcfa7584beda07926ff4e0423065374279ef8d0f376da045cf98c2fc08150",
       "mode": 420
     },
     {
@@ -781,7 +781,7 @@
     },
     {
       "path": "tests/deploy-host.sh",
-      "sha256": "13895ca703581ca4b506cc0ce00863cf3c55f5eac34049c25aee0a63abe013e5",
+      "sha256": "9d5f87f6184dd9e8ba0d304efe88810c12a1ffdaeaf1acf50c346c45f284c4b2",
       "mode": 420
     },
     {

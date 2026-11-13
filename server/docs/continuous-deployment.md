@@ -91,7 +91,25 @@ export ORKA_IMAGE=$(cat /opt/orka-api/active/image)
 docker compose ps
 ```
 
-Correct the failure and redeploy. A manual older release is appropriate only after verifying database compatibility; destructive migrations require the [tested restore procedure](../deploy/ec2/README.md#backups-and-restore). CI keeps backups and release directories until an operator deliberately prunes them. Monitor disk capacity, encrypt/copy backups off the instance, and preserve `.env` and JWT secrets separately. CI performs health checks, not continuous availability monitoring or automatic disaster recovery.
+Correct the failure and redeploy. A manual older release is appropriate only after verifying database compatibility; destructive migrations require the [tested restore procedure](../deploy/ec2/README.md#backups-and-restore).
+
+After an upgrade's backup restore check and deployment health checks succeed, CI
+keeps that upgrade's backup and deletes older automatically named deployment
+backups from `/opt/orka-api/backups` (including when it points to a separate data
+directory). Preflight, backup, restore and deployment-health failures preserve
+existing backups; the next successful upgrade removes older complete and
+incomplete attempts. First-time deployments
+do not prune backups. Only directories named `<40-character-commit>.<8-character-suffix>`
+are pruned; manual backup directories, symlinks and unrelated files are preserved.
+Release directories are retained until an operator deliberately prunes them.
+Pruning runs through the pinned image as root so private backups from root-run
+deployments can be removed without changing ownership of hard-linked live blobs.
+
+Retention keeps the verified pre-upgrade recovery point, rather than taking a new
+post-upgrade snapshot. Allow space for the previous and new backup during upgrades.
+Monitor disk capacity, encrypt/copy backups off the instance before they expire,
+and preserve `.env` and JWT secrets separately. CI performs health checks, not
+continuous availability monitoring or automatic disaster recovery.
 
 Deployment tests cover provenance rejection, public-health failures, first deploy, successive upgrades, preflight/backup/restore failure, unhealthy releases, private configuration permissions and missing data mounts. The lifecycle test simulates Docker failures on Linux; the existing final-image tests cover the real database/auth/image and backup/restore behavior. A live SSH deployment requires the configured host and credentials.
 
