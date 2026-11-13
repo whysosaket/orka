@@ -26,7 +26,10 @@ type MenuWindow = LibraryWindow & {
   };
 };
 
-async function menuFixture(page: Page, options: { emptyLocal?: boolean } = {}) {
+async function menuFixture(
+  page: Page,
+  options: Parameters<typeof resourceLibraryFixture>[1] = {},
+) {
   await resourceLibraryFixture(page, options);
   await page.evaluate(() => {
     const host = window as unknown as MenuWindow;
@@ -113,7 +116,10 @@ function resourceRow(page: Page, name: string) {
 }
 
 async function resourceMenu(page: Page, name: string, action?: string) {
-  await resourceRow(page, name).click({ button: "right" });
+  await resourceRow(page, name).click({
+    button: "right",
+    position: { x: 8, y: 8 },
+  });
   const menu = page.getByRole("menu");
   await expect(menu).toBeVisible();
   if (action)
@@ -167,12 +173,70 @@ test("resource row right-click and ellipsis share actions without opening, with 
   await expect(opener).toBeFocused();
 });
 
-test("Home inherits each resource menu and fits a compact accessible window", async ({
+for (const width of [1160, 900]) {
+  for (const withoutRepositories of [false, true]) {
+    test(`collection action buttons fit padded rows at ${width}px ${withoutRepositories ? "without" : "with"} repositories`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 800 });
+      await menuFixture(page, { emptyLocal: true, withoutRepositories });
+      for (const label of ["Sessions", "Memories", "Plans"] as const) {
+        await collection(page, label);
+        const table = page.getByRole("table");
+        await expect(
+          table.getByRole("columnheader", { name: "Repository", exact: true }),
+        ).toHaveCount(withoutRepositories ? 0 : 1);
+        const buttons = table.getByRole("button", { name: /^Actions for / });
+        await expect(buttons).toHaveCount(2);
+        if (label === "Sessions")
+          await page.screenshot({ path: testInfo.outputPath("sessions.png") });
+        const bounds = await buttons.evaluateAll((buttons) =>
+          buttons.map((button) => {
+            const cell = button.closest("td")!;
+            const box = button.getBoundingClientRect();
+            const cellBox = cell.getBoundingClientRect();
+            const style = getComputedStyle(cell);
+            return {
+              leftGap: box.left - cellBox.left,
+              rightGap: cellBox.right - box.right,
+              paddingLeft: parseFloat(style.paddingLeft),
+              paddingRight: parseFloat(style.paddingRight),
+              centerOffset: Math.abs(
+                box.top + box.height / 2 - cellBox.top - cellBox.height / 2,
+              ),
+            };
+          }),
+        );
+        for (const box of bounds) {
+          expect(box.leftGap).toBeGreaterThanOrEqual(box.paddingLeft - 1);
+          expect(box.rightGap).toBeGreaterThanOrEqual(box.paddingRight - 1);
+          expect(box.centerOffset).toBeLessThanOrEqual(1);
+        }
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth,
+          ),
+        ).toBe(true);
+        await buttons.first().click();
+        await expect(page.getByRole("menu")).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(buttons.first()).toBeFocused();
+      }
+    });
+  }
+}
+
+test("Home keeps resource context menus without separate action buttons in a compact accessible window", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.setViewportSize({ width: 900, height: 640 });
   await menuFixture(page, { emptyLocal: true });
   const home = page.getByRole("list", { name: "Recently updated resources" });
+  await page.screenshot({ path: testInfo.outputPath("home.png") });
+  await expect(home.getByRole("button", { name: /^Actions for / })).toHaveCount(
+    0,
+  );
+  await expect(home.getByRole("button")).toHaveCount(6);
   await home
     .locator('[data-resource-id="memory-own"]')
     .click({ button: "right" });
@@ -188,6 +252,14 @@ test("Home inherits each resource menu and fits a compact accessible window", as
   expect(menuBounds!.x).toBeGreaterThanOrEqual(0);
   expect(menuBounds!.y + menuBounds!.height).toBeLessThanOrEqual(640);
   await page.keyboard.press("Escape");
+  const memory = home.locator('[data-resource-id="memory-own"]');
+  await memory.focus();
+  await memory.press("Shift+F10");
+  expect(
+    await page.getByRole("menu").getByRole("menuitem").allTextContents(),
+  ).toEqual(memoryActions);
+  await page.keyboard.press("Escape");
+  await expect(memory).toBeFocused();
   await home
     .locator('[data-resource-id="session-own"]')
     .click({ button: "right" });

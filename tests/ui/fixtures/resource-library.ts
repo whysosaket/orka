@@ -22,6 +22,7 @@ export async function resourceLibraryFixture(
     emptyLocal?: boolean;
     defer?: boolean;
     restricted?: boolean;
+    withoutRepositories?: boolean;
   } = {},
 ) {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -135,20 +136,25 @@ export async function resourceLibraryFixture(
                     skill: false,
                     env: false,
                   },
-                  sources: [
-                    {
-                      id: "desktop",
-                      name: "desktop",
-                      path: "/synthetic/library/desktop",
-                      folderState: "connected",
-                    },
-                    {
-                      id: "backend",
-                      name: "backend",
-                      path: "/synthetic/library/backend",
-                      folderState: "connected",
-                    },
-                  ],
+                  path: options.withoutRepositories
+                    ? "/synthetic/library/desktop"
+                    : undefined,
+                  sources: options.withoutRepositories
+                    ? undefined
+                    : [
+                        {
+                          id: "desktop",
+                          name: "desktop",
+                          path: "/synthetic/library/desktop",
+                          folderState: "connected",
+                        },
+                        {
+                          id: "backend",
+                          name: "backend",
+                          path: "/synthetic/library/backend",
+                          folderState: "connected",
+                        },
+                      ],
                 },
               ],
               resources: shared,

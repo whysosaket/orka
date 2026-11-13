@@ -66,19 +66,7 @@
 }
 
 .resource-table-actions {
-  width: 44px;
   text-align: right;
-}
-
-.home-update-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.home-update-row > .home-update {
-  flex: 1;
-  min-width: 0;
 }
 
 .resource-command-dialog h2 {
@@ -111,8 +99,4 @@
   color: var(--text-tertiary);
   font-size: 11px;
   overflow-wrap: anywhere;
-}
-
-.resource-table-col-chevron {
-  width: 44px;
 }

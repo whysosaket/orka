@@ -123,7 +123,7 @@ export function ResourceTable({
         <col className="resource-table-col-source" />
         <col className="resource-table-col-author" />
         <col className="resource-table-col-updated" />
-        <col className="resource-table-col-chevron" />
+        <col className="resource-table-col-actions" />
       </colgroup>
       <thead className="sr-only">
         <tr>

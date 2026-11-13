@@ -8,7 +8,6 @@ import {
 } from "@primer/octicons-react";
 import type { Project, ProjectResource as Resource } from "../types.js";
 import { ResourceItemMenu } from "./resource-menu.js";
-import { ItemMenuButton } from "./item-menu.js";
 import {
   resourceDisplayTitle,
   sessionFallbackTitle,
@@ -156,72 +155,64 @@ export function ProjectHome({
               return (
                 <li key={item.resourceId}>
                   <ResourceItemMenu resource={item}>
-                    {(actions) => (
-                      <div className="home-update-row">
-                        <button
-                          type="button"
-                          className="home-update"
-                          data-resource-id={item.resourceId}
-                          onClick={() => onOpen(item)}
+                    {() => (
+                      <button
+                        type="button"
+                        className="home-update"
+                        data-resource-id={item.resourceId}
+                        onClick={() => onOpen(item)}
+                      >
+                        <span
+                          className={`home-update-icon home-overview-kind--${item.kind}`}
+                          aria-hidden="true"
                         >
-                          <span
-                            className={`home-update-icon home-overview-kind--${item.kind}`}
-                            aria-hidden="true"
-                          >
-                            <collection.icon size={16} focusable="false" />
-                          </span>
-                          <span className="home-update-description">
-                            <span className="home-update-title" title={title}>
-                              {pendingTitles.has(item.resourceId) ? (
-                                <>
-                                  <span className="sr-only">{title}</span>
-                                  <span
-                                    className="home-update-title-skeleton"
-                                    aria-hidden="true"
-                                    style={{ opacity: 1 - index * 0.12 }}
-                                  >
-                                    <span className="loading-fade" />
-                                  </span>
-                                </>
-                              ) : (
-                                title
-                              )}
-                              <span className="sr-only">
-                                {" "}
-                                ({collection.noun})
-                              </span>
-                            </span>
-                            <span className="home-update-metadata">
-                              Updated by {actor === "You" ? "you" : actor}
-                              {time && (
-                                <>
-                                  <span aria-hidden="true"> · </span>
-                                  <time
-                                    dateTime={item.updatedAt}
-                                    title={new Date(
-                                      item.updatedAt,
-                                    ).toLocaleString()}
-                                  >
-                                    {time}
-                                  </time>
-                                </>
-                              )}
+                          <collection.icon size={16} focusable="false" />
+                        </span>
+                        <span className="home-update-description">
+                          <span className="home-update-title" title={title}>
+                            {pendingTitles.has(item.resourceId) ? (
+                              <>
+                                <span className="sr-only">{title}</span>
+                                <span
+                                  className="home-update-title-skeleton"
+                                  aria-hidden="true"
+                                  style={{ opacity: 1 - index * 0.12 }}
+                                >
+                                  <span className="loading-fade" />
+                                </span>
+                              </>
+                            ) : (
+                              title
+                            )}
+                            <span className="sr-only">
+                              {" "}
+                              ({collection.noun})
                             </span>
                           </span>
-                          <span
-                            className="home-update-chevron"
-                            aria-hidden="true"
-                          >
-                            <ChevronRightIcon size={16} focusable="false" />
+                          <span className="home-update-metadata">
+                            Updated by {actor === "You" ? "you" : actor}
+                            {time && (
+                              <>
+                                <span aria-hidden="true"> · </span>
+                                <time
+                                  dateTime={item.updatedAt}
+                                  title={new Date(
+                                    item.updatedAt,
+                                  ).toLocaleString()}
+                                >
+                                  {time}
+                                </time>
+                              </>
+                            )}
                           </span>
-                        </button>
-                        {actions.length > 0 && (
-                          <ItemMenuButton
-                            actions={actions}
-                            label={`Actions for ${title}`}
-                          />
-                        )}
-                      </div>
+                        </span>
+                        <span
+                          className="home-update-chevron"
+                          aria-hidden="true"
+                        >
+                          <ChevronRightIcon size={16} focusable="false" />
+                        </span>
+                      </button>
                     )}
                   </ResourceItemMenu>
                 </li>
