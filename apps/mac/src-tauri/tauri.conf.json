@@ -15,7 +15,6 @@
         "title": "Orka",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "trafficLightPosition": { "x": 6, "y": 30 },
         "width": 1160,
         "height": 800,
         "minWidth": 900,

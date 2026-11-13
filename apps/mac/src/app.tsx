@@ -20,7 +20,7 @@ import {
   type ItemMenuAction,
 } from "./components/item-menu.js";
 import { ENV_ENABLED } from "./lib/features.js";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { Resource } from "@portable/protocol";
 import type { ProjectPage, ProjectResource } from "./types.js";
 import {
@@ -192,6 +192,18 @@ function WorkspaceApp({
     (id) => setRepositorySetup(id),
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const compactWindowControls =
+    sidebarCollapsed &&
+    Boolean(state.user) &&
+    !(state.onboarding?.active && setup.dialog !== "join");
+  useEffect(() => {
+    if (!isTauri()) return;
+    void invoke("set_sidebar_collapsed", {
+      collapsed: compactWindowControls,
+    }).catch((error) =>
+      console.error("Unable to position window controls", error),
+    );
+  }, [compactWindowControls]);
   const reducedMotion = useReducedMotion();
   const [sidebarInstant, setSidebarInstant] = useState(false);
   const [tab, setTab] = useState<ProjectPage>("home");

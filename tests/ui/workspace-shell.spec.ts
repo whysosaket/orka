@@ -280,6 +280,16 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
   await toggle.focus();
   await toggle.press("Enter");
   await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).invokeCalls
+            .filter((call: any) => call.name === "set_sidebar_collapsed")
+            .at(-1)?.args?.collapsed,
+      ),
+    )
+    .toBe(true);
   await expect(
     page.getByRole("button", { name: "Settings", exact: true }),
   ).toBeVisible();
@@ -316,6 +326,16 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
   await expand.focus();
   await expand.press("Enter");
   await expect(page.locator(".sidebar")).toHaveCSS("width", "240px");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).invokeCalls
+            .filter((call: any) => call.name === "set_sidebar_collapsed")
+            .at(-1)?.args?.collapsed,
+      ),
+    )
+    .toBe(false);
 });
 
 test("project menu keeps project selection, keyboard navigation and focus intact", async ({
