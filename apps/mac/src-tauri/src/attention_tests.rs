@@ -371,6 +371,8 @@ fn attention_retry_is_scoped_to_the_selected_active_project() {
     let f = fixture();
     let runtime = tokio::runtime::Runtime::new().unwrap();
     db::set(&f.db, "config", &json!({"apiUrl":"invalid-fixture-origin"})).unwrap();
+    let offline = json!({"online":false,"error":"503: unavailable","lastSync":"older account success","updatedAt":"previous attempt"});
+    db::set(&f.db, "sync", &offline).unwrap();
     db::set(&f.db, "syncRequest", &json!("unrelated account request")).unwrap();
     db::set(
         &f.db,
@@ -444,6 +446,7 @@ fn attention_retry_is_scoped_to_the_selected_active_project() {
         db::get(&f.db, "syncHandledRequest").unwrap(),
         "previous account request"
     );
+    assert_eq!(db::get(&f.db, "sync").unwrap(), offline);
     assert_eq!(db::rows(&f.db,"SELECT json_object('id',id,'value',value,'error',error) FROM outbox WHERE project=? ORDER BY id",&[&other]).unwrap(),foreign_before);
     assert_eq!(db::rows(&f.db,"SELECT json_object('id',id,'value',value,'error',error) FROM outbox WHERE project=? AND error LIKE '409:%' ORDER BY id",&[&f.project["id"].as_str()]).unwrap(),terminal_before);
     let rows = db::rows(
@@ -487,4 +490,59 @@ fn attention_retry_is_scoped_to_the_selected_active_project() {
         db::get(&f.db, "syncHandledRequest").unwrap(),
         "previous account request"
     );
+}
+
+#[test]
+fn attention_successful_retry_settles_only_its_unchanged_account_error() {
+    for case in [
+        "resolved",
+        "unrelated",
+        "newer",
+        "account",
+        "service",
+        "healthy",
+    ] {
+        let f = fixture();
+        let owner = db::get(&f.db, "user")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string();
+        let origin = "https://fixture.invalid";
+        db::set(&f.db, "config", &json!({"apiUrl":origin})).unwrap();
+        let mut previous = json!({"online":false,"error":"503: selected project unavailable","lastSync":"older account success","updatedAt":"old attempt","retained":{"scope":"account"}});
+        let errors = vec!["503: selected project unavailable".to_string()];
+        if case == "unrelated" {
+            previous["error"] = json!("503: unrelated project unavailable");
+        } else if case == "healthy" {
+            previous.as_object_mut().unwrap().remove("error");
+            previous["online"] = json!(true);
+        }
+        let mut current = previous.clone();
+        if case == "newer" {
+            current["updatedAt"] = json!("newer attempt");
+        } else if case == "account" {
+            db::set(&f.db, "user", &json!(uuid::Uuid::new_v4().to_string())).unwrap();
+        } else if case == "service" {
+            db::set(
+                &f.db,
+                "config",
+                &json!({"apiUrl":"https://another.invalid"}),
+            )
+            .unwrap();
+        }
+        db::set(&f.db, "sync", &current).unwrap();
+        db::set(&f.db, "syncRequest", &json!("unrelated account request")).unwrap();
+        let settled = sync::settle_retry_error(&f.db, &owner, origin, &previous, &errors).unwrap();
+        assert_eq!(settled, case == "resolved", "{case}");
+        if settled {
+            current["online"] = json!(true);
+            current.as_object_mut().unwrap().remove("error");
+        }
+        assert_eq!(db::get(&f.db, "sync").unwrap(), current, "{case}");
+        assert_eq!(
+            db::get(&f.db, "syncRequest").unwrap(),
+            "unrelated account request"
+        );
+    }
 }

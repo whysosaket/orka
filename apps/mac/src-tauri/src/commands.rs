@@ -769,6 +769,11 @@ pub async fn retry_uploads(project_id: Option<String>) -> Result<()> {
                     .ok_or("Configure the service")?
                     .to_string(),
                 project.clone(),
+                db::get(&db, "sync")?,
+                db::rows(&db,"SELECT json_object('error',error) FROM outbox WHERE project=? AND error IS NOT NULL AND (error NOT GLOB '4[0-9][0-9]:*' OR substr(error,1,3) IN ('401','408','429'))", &[&project])?
+                    .into_iter()
+                    .filter_map(|item| item["error"].as_str().map(str::to_string))
+                    .collect::<Vec<_>>(),
             ))
         } else {
             None
@@ -784,11 +789,20 @@ pub async fn retry_uploads(project_id: Option<String>) -> Result<()> {
             .map_err(|e| e.to_string())?;
         scope
     };
-    if let Some((owner, origin, project)) = scope {
+    if let Some((owner, origin, project, previous_sync, retried_errors)) = scope {
         tauri::async_runtime::spawn_blocking(move || {
             tokio::runtime::Runtime::new()
                 .map_err(|error| error.to_string())?
-                .block_on(sync::plugin_once(&owner, &origin, &project))
+                .block_on(sync::plugin_once(&owner, &origin, &project))?;
+            let _lock = projects::wait_for_lock(std::time::Duration::from_secs(5))?;
+            sync::settle_retry_error(
+                &db::open()?,
+                &owner,
+                &origin,
+                &previous_sync,
+                &retried_errors,
+            )
+            .map(|_| ())
         })
         .await
         .map_err(|error| error.to_string())?

@@ -883,6 +883,37 @@ pub(crate) async fn plugin_once(owner: &str, origin: &str, project: &str) -> Res
     }
 }
 
+/// A project retry can settle its old connection error without claiming an account-wide sync.
+pub(crate) fn settle_retry_error(
+    db: &rusqlite::Connection,
+    owner: &str,
+    origin: &str,
+    previous: &Value,
+    retried_errors: &[String],
+) -> Result<bool> {
+    let Some(error) = previous["error"].as_str() else {
+        return Ok(false);
+    };
+    if !retried_errors.iter().any(|retried| retried == error)
+        || db::get(db, "user")? != owner
+        || db::get(db, "config")?["apiUrl"] != origin
+    {
+        return Ok(false);
+    }
+    let mut current = previous.clone();
+    current["online"] = json!(true);
+    current
+        .as_object_mut()
+        .ok_or("Invalid sync status")?
+        .remove("error");
+    db.execute(
+        "UPDATE meta SET value=?1 WHERE key='sync' AND value=?2",
+        params![current.to_string(), previous.to_string()],
+    )
+    .map(|changed| changed > 0)
+    .map_err(|error| error.to_string())
+}
+
 fn preflight_project(db: &rusqlite::Connection, project: &Value, retry_only: bool) -> Result<()> {
     if !retry_only {
         let mut discovery = project.clone();

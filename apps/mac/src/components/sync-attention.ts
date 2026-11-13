@@ -135,18 +135,25 @@ export function projectAttention(
             return (
               resource.kind === "memory" && resource.logicalPath === target
             );
-          if (target.startsWith("plan:"))
+          if (target.startsWith("plan:")) {
+            const embedded =
+              /^plan:(codex|claude)\/([^/]+)\/(plan|progress)\.md$/.exec(
+                target,
+              );
             return (
+              embedded !== null &&
               resource.kind === "plan" &&
-              resource.logicalPath === target.slice("plan:".length)
+              resource.source === embedded[1] &&
+              resource.logicalPath ===
+                `${embedded[1]}/sessions/${embedded[2]}/${embedded[3]}.md`
             );
+          }
           if (resource.resourceId === target) return true;
           const path =
-            target.startsWith("plans:") && resource.kind === "plan"
-              ? target.slice("plans:".length)
-              : target.startsWith("/") && resource.kind === "session"
-                ? target
-                : undefined;
+            target.startsWith("/") &&
+            ["session", "plan"].includes(resource.kind)
+              ? target
+              : undefined;
           return (
             path !== undefined &&
             state.bindings.some(

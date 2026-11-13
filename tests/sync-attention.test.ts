@@ -463,6 +463,7 @@ await test("exact scanner binding paths and resource deletion IDs retain source 
     ...session,
     resourceId: "plan",
     kind: "plan" as const,
+    source: "codex" as const,
     logicalPath: "codex/sessions/native/plan.md",
   };
   const selected = projectAttention(
@@ -485,11 +486,11 @@ await test("exact scanner binding paths and resource deletion IDs retain source 
         { source: "one:source-a:scan:session", error: "Session differs" },
         { source: "plan", error: "Plan differs" },
         {
-          source: "one:source-a:scan:plans:/synthetic/plan.md",
+          source: "one:source-a:scan:/synthetic/plan.md",
           error: "Plan differs",
         },
         {
-          source: "one:source-a:scan:plan:codex/sessions/native/plan.md",
+          source: "one:source-a:scan:plan:codex/native/plan.md",
           error: "Plan differs",
         },
         {
@@ -515,4 +516,172 @@ await test("exact scanner binding paths and resource deletion IDs retain source 
       ?.resourceId,
     undefined,
   );
+});
+
+await test("embedded plan diagnostics use native provider/session/name spellings", () => {
+  for (const [provider, name] of [
+    ["codex", "plan.md"],
+    ["codex", "progress.md"],
+    ["claude", "plan.md"],
+  ] as const) {
+    const plan = {
+      ...resource,
+      resourceId: "plan",
+      kind: "plan" as const,
+      source: provider,
+      sourceId: "source-a",
+      logicalPath: `${provider}/sessions/native-session/${name}`,
+    };
+    const selected = projectAttention(
+      snapshot({
+        resources: [plan],
+        errors: [
+          { source: "plan", error: "Plan differs" },
+          {
+            source: `one:source-a:scan:plan:${provider}/native-session/${name}`,
+            error: "Plan differs",
+          },
+        ],
+      }),
+      "one",
+    );
+    assert.equal(selected.items.length, 1);
+    assert.equal(selected.items[0].resourceId, "plan");
+    assert.deepEqual(selected.items[0].messages, ["Plan differs"]);
+  }
+});
+
+await test("project, configured Claude and external native plan files resolve only their exact bound paths", () => {
+  for (const [provider, logicalPath, path] of [
+    [
+      "codex",
+      "codex/files/nested/release.md",
+      "/synthetic/project/.codex/plans/nested/release.md",
+    ],
+    [
+      "claude",
+      "claude/files/release.md",
+      "/synthetic/project/.claude/plans/release.md",
+    ],
+    [
+      "claude",
+      "claude/files/custom.md",
+      "/synthetic/project/review-plans/custom.md",
+    ],
+    [
+      "codex",
+      "codex/native/release.md",
+      "/synthetic/codex-home/plans/release.md",
+    ],
+    [
+      "claude",
+      "claude/native/release.md",
+      "/synthetic/claude-home/plans/release.md",
+    ],
+  ] as const) {
+    const plan = {
+      ...resource,
+      resourceId: "plan",
+      kind: "plan" as const,
+      source: provider,
+      sourceId: "source-a",
+      logicalPath,
+    };
+    const selected = projectAttention(
+      snapshot({
+        resources: [plan],
+        bindings: [{ resourceId: "plan", projectId: "one", paths: [path] }],
+        errors: [
+          { source: "plan", error: "Plan file unavailable" },
+          {
+            source: `one:source-a:scan:${path}`,
+            error: "Plan file unavailable",
+          },
+        ],
+      }),
+      "one",
+    );
+    assert.equal(selected.items.length, 1);
+    assert.equal(selected.items[0].resourceId, "plan");
+  }
+});
+
+await test("plan aliases preserve unknown providers, mismatched scopes, reference failures and ambiguous paths", () => {
+  const plan = {
+    ...resource,
+    resourceId: "plan",
+    kind: "plan" as const,
+    source: "codex" as const,
+    sourceId: "source-a",
+    logicalPath: "codex/sessions/native/plan.md",
+  };
+  const session = { ...plan, resourceId: "session", kind: "session" as const };
+  const errors = [
+    {
+      source: "one:source-a:scan:plan:codex/sessions/native/plan.md",
+      error: "Non-native alias spelling",
+    },
+    {
+      source: "one:source-a:scan:plan:unknown/native/plan.md",
+      error: "Unknown provider",
+    },
+    {
+      source: "one:source-b:scan:plan:codex/native/plan.md",
+      error: "Wrong repository",
+    },
+    {
+      source: "one:source-a:scan:plan:claude/native/plan.md",
+      error: "Wrong provider",
+    },
+    {
+      source: "one:source-a:scan:plans:/synthetic/transcript.jsonl",
+      error: "Cannot discover plan references",
+    },
+    {
+      source: "one:source-a:scan:/synthetic/other/plan.md",
+      error: "Different plan path",
+    },
+  ];
+  const selected = projectAttention(
+    snapshot({
+      resources: [plan, session],
+      bindings: [
+        { resourceId: "plan", projectId: "one", paths: ["/synthetic/plan.md"] },
+        {
+          resourceId: "session",
+          projectId: "one",
+          paths: ["/synthetic/transcript.jsonl"],
+        },
+      ],
+      errors,
+    }),
+    "one",
+  );
+  assert.equal(selected.items.length, errors.length);
+  assert.equal(
+    selected.items.every((item) => item.resourceId === undefined),
+    true,
+  );
+  const ambiguous = projectAttention(
+    snapshot({
+      resources: [plan, { ...plan, resourceId: "another-plan" }],
+      bindings: [
+        { resourceId: "plan", projectId: "one", paths: ["/synthetic/plan.md"] },
+        {
+          resourceId: "another-plan",
+          projectId: "one",
+          paths: ["/synthetic/plan.md"],
+        },
+      ],
+      errors: [
+        {
+          source: "one:source-a:scan:/synthetic/plan.md",
+          error: "Ambiguous plan path",
+        },
+      ],
+    }),
+    "one",
+  );
+  assert.equal(ambiguous.items.length, 1);
+  assert.equal(ambiguous.items[0].resourceId, undefined);
 });
