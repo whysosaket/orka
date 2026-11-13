@@ -20,6 +20,14 @@ to the published resource table or outbox merely to make it readable. The UI mer
 local and authorized shared identities and filters ownership independently of
 provider and repository.
 
+The native `local_resources` SQLite table persists the local index independently of
+the UI's in-memory catalogs. The catalog command performs discovery before reading
+those entries; the UI reuses completed and pending reads across navigation to avoid
+extra discovery. Catalog and skill-usage freshness and visible-view refreshes follow
+the configured sync interval, including changes to that setting. Explicit refresh
+remains immediate, and revalidation preserves loaded rows and counts. This timing
+also applies when automatic sharing is off; browsing does not queue publication.
+
 Memories, plans, and text skill files use three-way merges. Binary files and executable flags use whole-value acceptance. Sessions preserve complete native snapshots and use explicit conflict handling; they are never line-merged. Active native sessions are protected from incoming replacement or deletion.
 
 ENV support remains in the native implementation for compatibility, but is currently disabled in the desktop UI. See the [security model](security-model.md).

@@ -86,3 +86,25 @@ Native UI inspection is separate from browser fixture evidence; no cross-Mac syn
 ## Inputs and native review
 
 TextField, SearchField, Textarea, and shared Field are now implemented. Review actual components in Orka Development through **Design system → Inputs**; Foundations and Buttons are available in the same gallery.
+
+## Loading
+
+Use `LoadingRegion` for pending content. Its measured skeletons share neutral
+surface tokens, a soft blur, a fade toward the bottom, and a slow opacity pulse.
+The same treatment applies to readers, conversations, skill pickers, members, and
+settings. Reduced motion keeps placeholders static; available controls and content
+stay usable.
+
+Sessions, Memories, and Plans use `CollectionSkeleton` on first discovery, with
+title and metadata shapes aligned to the collection rows, without visible loading
+copy. Skills cards and Home updates show placeholders only for pending metadata,
+keeping known content and navigation available. Decorative shapes stay out of the
+accessibility tree; one status announces the pending collection. Background refresh
+keeps existing rows visible. Empty and error states appear after the request
+settles, with existing retry actions intact.
+
+Local catalogs and project skill usage reuse fresh results and pending requests
+across navigation for the configured sync interval. Changing that setting updates
+freshness and the visible collection's refresh schedule without clearing loaded
+rows or counts. Explicit refresh bypasses freshness. Account, service, profile,
+source-folder, and relevant resource changes invalidate their scoped entries.
