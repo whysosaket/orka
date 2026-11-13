@@ -6,8 +6,9 @@ import {
   LogIcon,
   VersionsIcon,
 } from "@primer/octicons-react";
-import type { Resource } from "@portable/protocol";
-import type { Project } from "../types.js";
+import type { Project, ProjectResource as Resource } from "../types.js";
+import { ResourceItemMenu } from "./resource-menu.js";
+import { ItemMenuButton } from "./item-menu.js";
 import {
   resourceDisplayTitle,
   sessionFallbackTitle,
@@ -138,42 +139,62 @@ export function ProjectHome({
               const time = updatedTime(item.updatedAt, now);
               return (
                 <li key={item.resourceId}>
-                  <button
-                    type="button"
-                    className="home-update"
-                    data-resource-id={item.resourceId}
-                    onClick={() => onOpen(item)}
-                  >
-                    <span
-                      className={`home-update-icon home-overview-kind--${item.kind}`}
-                      aria-hidden="true"
-                    >
-                      <collection.icon size={16} focusable="false" />
-                    </span>
-                    <span className="home-update-description">
-                      <span className="home-update-title" title={title}>
-                        {title}
-                        <span className="sr-only"> ({collection.noun})</span>
-                      </span>
-                      <span className="home-update-metadata">
-                        Updated by {actor === "You" ? "you" : actor}
-                        {time && (
-                          <>
-                            <span aria-hidden="true"> · </span>
-                            <time
-                              dateTime={item.updatedAt}
-                              title={new Date(item.updatedAt).toLocaleString()}
-                            >
-                              {time}
-                            </time>
-                          </>
+                  <ResourceItemMenu resource={item}>
+                    {(actions) => (
+                      <div className="home-update-row">
+                        <button
+                          type="button"
+                          className="home-update"
+                          data-resource-id={item.resourceId}
+                          onClick={() => onOpen(item)}
+                        >
+                          <span
+                            className={`home-update-icon home-overview-kind--${item.kind}`}
+                            aria-hidden="true"
+                          >
+                            <collection.icon size={16} focusable="false" />
+                          </span>
+                          <span className="home-update-description">
+                            <span className="home-update-title" title={title}>
+                              {title}
+                              <span className="sr-only">
+                                {" "}
+                                ({collection.noun})
+                              </span>
+                            </span>
+                            <span className="home-update-metadata">
+                              Updated by {actor === "You" ? "you" : actor}
+                              {time && (
+                                <>
+                                  <span aria-hidden="true"> · </span>
+                                  <time
+                                    dateTime={item.updatedAt}
+                                    title={new Date(
+                                      item.updatedAt,
+                                    ).toLocaleString()}
+                                  >
+                                    {time}
+                                  </time>
+                                </>
+                              )}
+                            </span>
+                          </span>
+                          <span
+                            className="home-update-chevron"
+                            aria-hidden="true"
+                          >
+                            <ChevronRightIcon size={16} focusable="false" />
+                          </span>
+                        </button>
+                        {actions.length > 0 && (
+                          <ItemMenuButton
+                            actions={actions}
+                            label={`Actions for ${title}`}
+                          />
                         )}
-                      </span>
-                    </span>
-                    <span className="home-update-chevron" aria-hidden="true">
-                      <ChevronRightIcon size={16} focusable="false" />
-                    </span>
-                  </button>
+                      </div>
+                    )}
+                  </ResourceItemMenu>
                 </li>
               );
             })}

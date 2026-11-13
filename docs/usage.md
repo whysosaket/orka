@@ -179,3 +179,11 @@ Choose **Link** in the invitation method control to create a joining link. Serve
 delivery open directly on **Copy joining link**. Delivery errors preserve the
 entered email and allow switching to a link. Invites retain your service's signup
 policy; an instance with signup disabled still needs operator-provisioned accounts.
+
+## Right-click item actions
+
+Right-click a resource, project option, member or source folder to see actions
+for that item. Resource collection and Recent Updates rows also provide an **…**
+button. Available options depend on the item's local/shared state, connection and
+permissions. See [item actions](context-menus.md) for snapshot sharing, reviewed
+shared deletion and keyboard access.

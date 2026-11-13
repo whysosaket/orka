@@ -62,6 +62,7 @@ try {
             "tests/migrations.integration.ts",
             "tests/shutdown.integration.ts",
             "tests/cloud.integration.ts",
+            "tests/resource-deletion.integration.ts",
             "tests/onboarding.integration.ts",
             "tests/member-emails.integration.ts",
             "tests/devices.integration.ts",

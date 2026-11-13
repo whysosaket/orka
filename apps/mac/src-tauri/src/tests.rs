@@ -22,6 +22,8 @@ mod plan_tests;
 mod plugin_operations_tests;
 #[path = "repository_tests.rs"]
 mod repository_tests;
+#[path = "resource_command_tests.rs"]
+mod resource_command_tests;
 #[path = "selective_sharing_tests.rs"]
 mod selective_sharing_tests;
 #[path = "session_compatibility_tests.rs"]

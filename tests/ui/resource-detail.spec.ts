@@ -485,7 +485,7 @@ test("resource skeletons keep the reader header and navigation usable", async ({
   });
   await page
     .getByRole("region", { name: "Recent Updates" })
-    .getByRole("button", { name: /Design decisions/ })
+    .getByRole("button", { name: /^Design decisions/ })
     .click();
   const view = page.getByRole("region", { name: "Memory details" });
   const title = view.getByRole("heading", {
@@ -550,7 +550,10 @@ test("skeleton shapes never persist resource URLs or paths", async ({
       "# Private resource\n\n[Internal document](https://private.example/design?access_token=test-secret)\n\n[Source](internal/private-project.md)",
   });
   await page.getByRole("button", { name: /^Skills/ }).click();
-  await page.getByRole("button", { name: /Review checklist/ }).click();
+  await page
+    .locator(".skill-card")
+    .filter({ hasText: "Review checklist" })
+    .click();
   await expect(
     page
       .getByRole("article", { name: "Rendered Markdown" })
@@ -623,7 +626,7 @@ test("conversation skeletons give way to virtualized turns and paging preserves 
 const more = (page: Page) =>
   page.getByRole("button", { name: "More resource actions", exact: true });
 const menu = (page: Page) =>
-  page.getByRole("dialog", { name: "Resource actions", exact: true });
+  page.getByRole("menu", { name: "More resource actions", exact: true });
 const calls = (page: Page, name: string) =>
   page.evaluate(
     (name) =>
@@ -854,20 +857,20 @@ test("Plans supports both providers, source filters, Markdown, editor actions, a
   });
   await detail.getByRole("button", { name: "More resource actions" }).click();
   await expect(
-    page.getByRole("button", { name: "Export ZIP", exact: true }),
+    page.getByRole("menuitem", { name: "Export ZIP…", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Copy link", exact: true }),
+    page.getByRole("menuitem", { name: "Copy link", exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Show Markdown", exact: true })
+    .getByRole("menuitem", { name: "Show Markdown", exact: true })
     .click();
   await expect(detail.locator("pre.content")).toHaveText([/- \[x\] Design/]);
   await detail
     .getByRole("button", { name: "More resource actions", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Compare with previous revision" })
+    .getByRole("menuitem", { name: "Compare with previous revision" })
     .click();
   await expect(detail.getByLabel("File changes")).toHaveText([/Old content/]);
   await detail
@@ -954,7 +957,10 @@ test("ZIP export sits in Skill info for skills and moves into the session launch
   await expect(menu(page)).not.toContainText("Export ZIP");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /^Skills/ }).click();
-  await page.getByRole("button", { name: /Review checklist/ }).click();
+  await page
+    .locator(".skill-card")
+    .filter({ hasText: "Review checklist" })
+    .click();
   const skillInfo = page.getByRole("complementary", {
     name: "Skill information",
   });
@@ -984,7 +990,7 @@ test("ZIP export sits in Skill info for skills and moves into the session launch
   ).toBeVisible();
 });
 
-test("Copy link in the resource menu keeps the menu open and confirms inline", async ({
+test("Copy link in the resource menu confirms with a toast and restores focus", async ({
   page,
 }) => {
   await detailFixture(page);
@@ -993,14 +999,16 @@ test("Copy link in the resource menu keeps the menu open and confirms inline", a
     .getByRole("button", { name: "Design decisions", exact: true })
     .click();
   await more(page).click();
-  const copy = menu(page).getByRole("button", {
+  const copy = menu(page).getByRole("menuitem", {
     name: "Copy link",
     exact: true,
   });
   await copy.click();
-  await expect(menu(page)).toBeVisible();
-  await expect(copy).toHaveAttribute("data-copied", "true");
-  await expect(menu(page).getByRole("status")).toHaveText("Link copied");
+  await expect(menu(page)).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: "Link copied" }),
+  ).toBeVisible();
+  await expect(more(page)).toBeFocused();
   expect(await page.evaluate(() => (window as any).copiedText)).toBe(
     "orka://project/one/memory-a",
   );
@@ -1033,7 +1041,10 @@ for (const size of [
     await expect(sort).toBeFocused();
     expect(await page.evaluate(() => (window as any).popoverExits)).toBe(1);
 
-    await page.getByRole("button", { name: /Review checklist/ }).click();
+    await page
+      .locator(".skill-card")
+      .filter({ hasText: "Review checklist" })
+      .click();
     if (size.width === 900) {
       // Compact readers keep the file list in a popover beside the view tabs.
       const files = page.getByRole("button", { name: "Files, 2" });
@@ -1074,7 +1085,7 @@ for (const size of [
     await expect(menu(page)).toHaveCount(0);
     await expect(more(page)).toBeFocused();
     await more(page).click();
-    await expect(menu(page)).toHaveCSS("animation-duration", "0.16s");
+    await expect(menu(page)).toHaveCSS("animation-name", "none");
     // Escape remains instant even after a pointer opened the menu.
     const exits = await page.evaluate(() => (window as any).popoverExits);
     await page.keyboard.press("Escape");
@@ -1084,7 +1095,7 @@ for (const size of [
     await page.emulateMedia({ reducedMotion: "reduce" });
     await more(page).click();
     await expect(menu(page)).toHaveCSS("animation-name", "none");
-    await menu(page).getByRole("button", { name: "Show Markdown" }).click();
+    await menu(page).getByRole("menuitem", { name: "Show Markdown" }).click();
     await expect(menu(page)).toHaveCount(0);
     await expect(more(page)).toBeFocused();
     expect(await page.evaluate(() => (window as any).popoverExits)).toBe(exits);
@@ -1146,7 +1157,7 @@ test("Home recent rows and collection rows open the reading view", async ({
   await page.setViewportSize({ width: 1160, height: 800 });
   await page
     .getByRole("region", { name: "Recent Updates" })
-    .getByRole("button", { name: /Design decisions/ })
+    .getByRole("button", { name: /^Design decisions/ })
     .click();
   const view = page.locator(".resource-detail--memory");
   await expect(view.locator("h2").first()).toHaveText("Design decisions");
@@ -1208,7 +1219,10 @@ test("the skill reader keeps the document heading order beside its rail", async 
 }) => {
   await detailFixture(page);
   await page.getByRole("button", { name: /^Skills/ }).click();
-  await page.getByRole("button", { name: /Review checklist/ }).click();
+  await page
+    .locator(".skill-card")
+    .filter({ hasText: "Review checklist" })
+    .click();
   const view = page.locator(".resource-detail--skill");
   await expect(view).toContainText("Some content");
   await expect(
@@ -2387,7 +2401,7 @@ for (const width of [1160, 900])
     expect(axe.violations).toEqual([]);
     await more(page).click();
     await page
-      .getByRole("button", { name: "Show Markdown", exact: true })
+      .getByRole("menuitem", { name: "Show Markdown", exact: true })
       .click();
     await expect(diagram).toHaveCount(0);
     await expect(page.locator("pre.content")).toHaveText([source]);
@@ -2395,7 +2409,7 @@ for (const width of [1160, 900])
       .getByRole("button", { name: "More resource actions", exact: true })
       .click();
     await page
-      .getByRole("button", { name: "Compare with previous revision" })
+      .getByRole("menuitem", { name: "Compare with previous revision" })
       .click();
     await expect(page.getByLabel("File changes")).toHaveText([/flowchart LR/]);
     await expect(diagram).toHaveCount(0);

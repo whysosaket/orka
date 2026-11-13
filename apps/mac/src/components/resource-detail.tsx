@@ -1,4 +1,5 @@
 import React from "react";
+import { ResourceItemMenu, resourceViewMenuActions } from "./resource-menu.js";
 import type { SessionConflict } from "@portable/protocol";
 import type {
   Project,
@@ -110,6 +111,8 @@ export function ResourceDetail(props: ResourceDetailProps) {
   if (resource.kind === "session")
     return (
       <SessionView
+        resource={resource}
+        menuActions={resourceViewMenuActions(view, true)}
         key={resource.resourceId}
         id={resource.resourceId}
         revision={resource.revision}
@@ -145,12 +148,22 @@ export function ResourceDetail(props: ResourceDetailProps) {
     </div>
   );
   return (
-    <section
-      className="resource-detail resource-detail--memory"
-      aria-label={resource.kind === "plan" ? "Plan details" : "Memory details"}
+    <ResourceItemMenu
+      resource={resource}
+      file={view.file}
+      extraActions={resourceViewMenuActions(view, false)}
     >
-      {header}
-      {body}
-    </section>
+      {() => (
+        <section
+          className="resource-detail resource-detail--memory"
+          aria-label={
+            resource.kind === "plan" ? "Plan details" : "Memory details"
+          }
+        >
+          {header}
+          {body}
+        </section>
+      )}
+    </ResourceItemMenu>
   );
 }

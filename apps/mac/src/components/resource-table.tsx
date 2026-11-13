@@ -1,3 +1,5 @@
+import { ResourceItemMenu } from "./resource-menu.js";
+import { ItemMenuButton } from "./item-menu.js";
 import React, { useMemo, useState } from "react";
 import {
   AlertIcon,
@@ -131,7 +133,7 @@ export function ResourceTable({
           <th scope="col">Updated by</th>
           <th scope="col">Updated</th>
           <th scope="col">
-            <span className="sr-only">Open</span>
+            <span className="sr-only">Actions</span>
           </th>
         </tr>
       </thead>
@@ -166,125 +168,135 @@ export function ResourceTable({
           const children = tree.children.get(resource.resourceId) ?? [];
           const open = filtered || expanded.has(resource.resourceId);
           return (
-            <tr
-              key={resource.resourceId}
-              className={depth > 0 ? "session-fork-row" : undefined}
-              onClick={() => onOpen(resource.resourceId)}
-            >
-              <th scope="row" className="resource-table-title">
-                <div
-                  className="resource-table-title-content"
-                  style={{ paddingInlineStart: Math.min(depth, 4) * 20 }}
+            <ResourceItemMenu key={resource.resourceId} resource={resource}>
+              {(actions) => (
+                <tr
+                  className={depth > 0 ? "session-fork-row" : undefined}
+                  onClick={() => onOpen(resource.resourceId)}
                 >
-                  {tree.children.size > 0 && (
-                    <span className="session-forks-disclosure">
-                      {children.length > 0 && (
+                  <th scope="row" className="resource-table-title">
+                    <div
+                      className="resource-table-title-content"
+                      style={{ paddingInlineStart: Math.min(depth, 4) * 20 }}
+                    >
+                      {tree.children.size > 0 && (
+                        <span className="session-forks-disclosure">
+                          {children.length > 0 && (
+                            <button
+                              type="button"
+                              className="session-forks-toggle"
+                              aria-expanded={open}
+                              aria-label={`${open ? "Collapse" : "Expand"} ${children.length} ${children.length === 1 ? "fork" : "forks"} of ${title}`}
+                              disabled={filtered}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setExpanded((current) => {
+                                  const next = new Set(current);
+                                  if (next.has(resource.resourceId))
+                                    next.delete(resource.resourceId);
+                                  else next.add(resource.resourceId);
+                                  return next;
+                                });
+                              }}
+                            >
+                              {open ? (
+                                <ChevronDownIcon size={16} />
+                              ) : (
+                                <ChevronRightIcon size={16} />
+                              )}
+                              <span>{children.length}</span>
+                            </button>
+                          )}
+                        </span>
+                      )}
+                      {resource.fork && (
+                        <RepoForkedIcon
+                          className="session-fork-icon"
+                          size={16}
+                          aria-label="Forked session"
+                        />
+                      )}
+                      <div className="resource-table-title-text">
                         <button
                           type="button"
-                          className="session-forks-toggle"
-                          aria-expanded={open}
-                          aria-label={`${open ? "Collapse" : "Expand"} ${children.length} ${children.length === 1 ? "fork" : "forks"} of ${title}`}
-                          disabled={filtered}
+                          className="resource-table-open"
+                          data-resource-id={resource.resourceId}
+                          title={resource.title}
                           onClick={(event) => {
                             event.stopPropagation();
-                            setExpanded((current) => {
-                              const next = new Set(current);
-                              if (next.has(resource.resourceId))
-                                next.delete(resource.resourceId);
-                              else next.add(resource.resourceId);
-                              return next;
-                            });
+                            onOpen(resource.resourceId);
                           }}
                         >
-                          {open ? (
-                            <ChevronDownIcon size={16} />
-                          ) : (
-                            <ChevronRightIcon size={16} />
-                          )}
-                          <span>{children.length}</span>
+                          {title}
                         </button>
-                      )}
+                        {duplicateTitles?.has(title.toLocaleLowerCase()) && (
+                          <small
+                            className="resource-table-suffix"
+                            title={resource.logicalPath}
+                          >
+                            {pathSuffix(resource)}
+                          </small>
+                        )}
+                        {(resource.local ||
+                          (resource.fork && resource.revision === 0) ||
+                          resource.localChanges) && (
+                          <small className="resource-table-suffix">
+                            {resource.localChanges
+                              ? "Local changes"
+                              : "On this Mac"}
+                          </small>
+                        )}
+                        {!resource.local && resource.owner !== user && (
+                          <small className="resource-table-suffix">
+                            Owner: {memberName(resource.owner)}
+                          </small>
+                        )}
+                        {conflicted.has(resource.resourceId) && (
+                          <span className="resource-conflict">
+                            <AlertIcon size={12} aria-hidden="true" />
+                            Needs resolution
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </th>
+                  {showRepository && (
+                    <td className="resource-table-repository">
+                      <RepositoryLabel name={resource.repositoryName} />
+                    </td>
+                  )}
+                  <td>
+                    <span className="resource-source-pill">
+                      <SourceLabel source={resource.source} />
                     </span>
-                  )}
-                  {resource.fork && (
-                    <RepoForkedIcon
-                      className="session-fork-icon"
-                      size={16}
-                      aria-label="Forked session"
-                    />
-                  )}
-                  <div className="resource-table-title-text">
-                    <button
-                      type="button"
-                      className="resource-table-open"
-                      data-resource-id={resource.resourceId}
-                      title={resource.title}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onOpen(resource.resourceId);
-                      }}
+                  </td>
+                  <td
+                    className="resource-table-author"
+                    title={memberName(resource.updatedBy)}
+                  >
+                    {memberName(resource.updatedBy)}
+                  </td>
+                  <td className="resource-table-updated">
+                    <time
+                      dateTime={resource.updatedAt}
+                      title={`Updated ${new Date(resource.updatedAt).toLocaleString()}`}
                     >
-                      {title}
-                    </button>
-                    {duplicateTitles?.has(title.toLocaleLowerCase()) && (
-                      <small
-                        className="resource-table-suffix"
-                        title={resource.logicalPath}
-                      >
-                        {pathSuffix(resource)}
-                      </small>
+                      {relativeUpdated(resource.updatedAt)}
+                    </time>
+                  </td>
+                  <td className="resource-table-actions">
+                    {actions.length > 0 ? (
+                      <ItemMenuButton
+                        actions={actions}
+                        label={`Actions for ${title}`}
+                      />
+                    ) : (
+                      <ChevronRightIcon size={16} aria-hidden="true" />
                     )}
-                    {(resource.local ||
-                      (resource.fork && resource.revision === 0) ||
-                      resource.localChanges) && (
-                      <small className="resource-table-suffix">
-                        {resource.localChanges
-                          ? "Local changes"
-                          : "On this Mac"}
-                      </small>
-                    )}
-                    {!resource.local && resource.owner !== user && (
-                      <small className="resource-table-suffix">
-                        Owner: {memberName(resource.owner)}
-                      </small>
-                    )}
-                    {conflicted.has(resource.resourceId) && (
-                      <span className="resource-conflict">
-                        <AlertIcon size={12} aria-hidden="true" />
-                        Needs resolution
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </th>
-              {showRepository && (
-                <td className="resource-table-repository">
-                  <RepositoryLabel name={resource.repositoryName} />
-                </td>
+                  </td>
+                </tr>
               )}
-              <td>
-                <span className="resource-source-pill">
-                  <SourceLabel source={resource.source} />
-                </span>
-              </td>
-              <td
-                className="resource-table-author"
-                title={memberName(resource.updatedBy)}
-              >
-                {memberName(resource.updatedBy)}
-              </td>
-              <td className="resource-table-updated">
-                <time
-                  dateTime={resource.updatedAt}
-                  title={`Updated ${new Date(resource.updatedAt).toLocaleString()}`}
-                >
-                  {relativeUpdated(resource.updatedAt)}
-                </time>
-              </td>
-              <td className="resource-table-chevron">
-                <ChevronRightIcon size={16} aria-hidden="true" />
-              </td>
-            </tr>
+            </ResourceItemMenu>
           );
         })}
       </tbody>

@@ -215,10 +215,10 @@ test("Home shows the selected project's six latest resources and real update met
 }) => {
   await homeFixture(page);
   const list = updates(page);
-  await expect(list.getByRole("button")).toHaveCount(6);
+  await expect(list.locator("button[data-resource-id]")).toHaveCount(6);
   expect(
     await list
-      .getByRole("button")
+      .locator("button[data-resource-id]")
       .evaluateAll((rows) =>
         rows.map((row) => row.getAttribute("data-resource-id")),
       ),

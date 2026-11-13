@@ -2,14 +2,16 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeftIcon,
   ChevronRightIcon,
-  KebabHorizontalIcon,
   PeopleIcon,
 } from "@primer/octicons-react";
 import { defaultProjectRules } from "@portable/protocol";
 import { ENV_ENABLED } from "../lib/features.js";
 import type { Project, Snapshot } from "../types.js";
-import { ActionPopover } from "./resource-actions.js";
-import { IconButton } from "./icon-button.js";
+import {
+  ItemContextMenu,
+  ItemMenuButton,
+  type ItemMenuAction,
+} from "./item-menu.js";
 import { ProjectLogs } from "./project-logs.js";
 import { Button } from "./button.js";
 import { MemberPermissions } from "./member-permissions.js";
@@ -325,53 +327,60 @@ export function MembersPage({
                         )}
                       </div>
                       <div className="member-list">
-                        {catalog.members.map((item) => (
-                          <div className="member-list-entry" key={item.id}>
-                            <button
-                              type="button"
-                              className="member-row"
-                              onClick={() => {
+                        {catalog.members.map((item) => {
+                          const actions: ItemMenuAction[] = [
+                            {
+                              id: "permissions",
+                              label:
+                                catalog.owner && item.role !== "owner"
+                                  ? "Edit permissions"
+                                  : "View permissions",
+                              onSelect: () => {
                                 setMember(item.id);
                                 setRemoving(null);
-                              }}
+                              },
+                            },
+                          ];
+                          if (catalog.owner && item.role !== "owner")
+                            actions.push({
+                              id: "remove",
+                              label: "Remove member",
+                              danger: true,
+                              separator: true,
+                              disabled: busy,
+                              onSelect: () => setRemoving(item.id),
+                            });
+                          return (
+                            <ItemContextMenu
+                              key={item.id}
+                              actions={actions}
+                              label={`Actions for ${name(item.id)}`}
                             >
-                              <MemberIdentity
-                                name={name(item.id)}
-                                role={item.role}
-                              />
-                            </button>
-                            {catalog.owner && item.role !== "owner" && (
-                              <ActionPopover
-                                label={`Actions for ${name(item.id)}`}
-                                trigger={
-                                  <IconButton
-                                    icon={KebabHorizontalIcon}
-                                    aria-label={`Manage ${name(item.id)}`}
-                                    variant="tertiary"
-                                    size="sm"
+                              <div className="member-list-entry">
+                                <button
+                                  type="button"
+                                  className="member-row"
+                                  onClick={() => {
+                                    setMember(item.id);
+                                    setRemoving(null);
+                                  }}
+                                >
+                                  <MemberIdentity
+                                    name={name(item.id)}
+                                    role={item.role}
                                   />
-                                }
-                              >
-                                <Button
-                                  variant="tertiary"
-                                  size="sm"
-                                  onClick={() => setMember(item.id)}
-                                >
-                                  Edit permissions
-                                </Button>
-                                <Button
-                                  className="management-danger"
-                                  variant="tertiary"
-                                  size="sm"
-                                  disabled={busy}
-                                  onClick={() => setRemoving(item.id)}
-                                >
-                                  Remove member
-                                </Button>
-                              </ActionPopover>
-                            )}
-                          </div>
-                        ))}
+                                </button>
+                                {catalog.owner && item.role !== "owner" && (
+                                  <ItemMenuButton
+                                    actions={actions}
+                                    label={`Manage ${name(item.id)}`}
+                                    disabled={busy}
+                                  />
+                                )}
+                              </div>
+                            </ItemContextMenu>
+                          );
+                        })}
                       </div>
                       <p className="management-note">
                         Names use account profiles, with email as a fallback.

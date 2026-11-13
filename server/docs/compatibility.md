@@ -80,6 +80,26 @@ explicit ledger-adoption step before a baseline-based server can start.
 
 Automatic category sharing is a local desktop preference. The updated native plugin bridge can submit one explicitly selected frozen snapshot without changing that preference. Remote MCP tokens cannot call this ordinary API endpoint; shared-resource operations use separate MCP handlers and consent scopes. OSS and managed editions share this implementation. Selected local publication itself requires no protocol or database migration, OAuth scope expansion, provider setting, or environment variable. Plugin 0.3 shared-resource operations additionally require migration `004_mcp_operations.sql` and explicit write/manage consent. Update the service before enabling local publication; older remote read-only plugins remain compatible.
 
+## Reviewed resource deletion
+
+`resourceDeletion: 1` in `/v2/projects/capabilities` advertises exact-revision
+deletion for shared memories, skills and plans through the existing
+`POST /v2/sync/push` change contract. A tombstone must name the resource's current
+`baseRevision`; a stale deletion returns 409 without changing the resource,
+project revision or mutation receipt. The comparison runs under the same project
+lock as publication, after membership, source and write authorization. Exact
+retries retain their original receipt and request identity.
+
+Both Cloud and self-hosted editions use this shared implementation. There is no
+wire/schema, database migration or configuration change. Desktop reviewed
+deletion requires this capability where older services did not check a
+tombstone's exact revision. Ordinary content merge rules remain unchanged, and
+sessions keep their existing stale-change conflict and explicit resolution
+behavior. A deletion is not a source-preserving unshare or a change to a Mac's
+automatic-sharing preferences; local removal still follows native installation,
+dirty-file and active-session safeguards. Releasing the service and updating
+clients are separate rollout steps.
+
 Backend 0.5.3 adds nullable `email` to the existing governance
 catalog member rows in both editions. Migration 011 adds one column to the
 existing identity table; the normal authenticated GoTrue `/user` lookup refreshes
