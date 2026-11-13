@@ -12,7 +12,7 @@ const theme = {
   },
   dark: { base: "var(--surface-tertiary)", highlight: "var(--surface-stroke)" },
   radius: "var(--radius-detail)",
-  animation: "shimmer" as const,
+  animation: "pulse" as const,
   speed: "slow" as const,
 };
 

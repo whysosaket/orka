@@ -313,11 +313,12 @@ function WorkspaceApp({
   const skillSummaries = useSkillSummaries(resources, workspaceScope);
   const skillUsage = useProjectSkillUsage(
     project,
-    JSON.stringify([workspaceScope, projectPath]),
+    workspaceScope,
     resources,
     tab === "skill" &&
       Boolean(state.user && selectedProject) &&
       resources.length > 0,
+    JSON.stringify([selectedProject?.path, selectedProject?.sources]),
   );
   const displayTitle = useCallback(
     (item: Resource) =>

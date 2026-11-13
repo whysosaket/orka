@@ -13,6 +13,8 @@ import {
   type IndexFilters,
 } from "./index-toolbar.js";
 import { ResourceTable } from "./resource-table.js";
+import { LoadingRegion } from "./loading-region.js";
+import { CollectionSkeleton } from "./collection-skeleton.js";
 import type { SkillSummaries } from "./use-skill-summaries.js";
 import { SkillGrid } from "./skill-grid.js";
 import { useMemberLabel } from "./member-names.js";
@@ -149,10 +151,10 @@ export function ResourceIndex({
             )}
           </div>
         )}
-        {kind !== "skill" && discovering && (
-          <p className="resource-discovery-status" role="status">
-            Checking {collectionNoun(kind)} on this Mac…
-          </p>
+        {discovering && resources.length > 0 && (
+          <span className="sr-only" role="status">
+            Refreshing {collectionNoun(kind)}…
+          </span>
         )}
         {kind !== "skill" && discoveryErrors.length > 0 && (
           <div className="resource-discovery-status" role="alert">
@@ -184,26 +186,35 @@ export function ResourceIndex({
             usageLoading={skillUsage?.loading}
           />
         )}
-        {!visible.length &&
-        (!filtered ||
-          (!resources.length &&
-            (discovering || discoveryErrors.length > 0))) ? (
+        {discovering && !resources.length ? (
+          <LoadingRegion
+            id={`collection:${kind}`}
+            label={`Loading ${collectionNoun(kind)}…`}
+            loading
+            skeleton={
+              <CollectionSkeleton label={`Loading ${collectionNoun(kind)}…`} />
+            }
+          >
+            <div />
+          </LoadingRegion>
+        ) : !visible.length &&
+          (!filtered ||
+            (!resources.length &&
+              (discovering || discoveryErrors.length > 0))) ? (
           <p className="empty" role="status">
-            {discovering && !resources.length
-              ? `Looking for ${collectionNoun(kind)} on this Mac…`
-              : discoveryErrors.length > 0 && !resources.length
-                ? `Local ${collectionNoun(kind)} could not be checked.`
-                : noAccess && ownership === "shared"
-                  ? `Access to shared ${collectionNoun(kind)} is restricted.`
-                  : ownership === "mine"
-                    ? `No ${collectionNoun(kind)} of your own yet.`
-                    : ownership === "shared"
-                      ? `No ${collectionNoun(kind)} have been shared with you yet.`
-                      : noAccess
-                        ? `Access to shared ${collectionNoun(kind)} is restricted.`
-                        : connected
-                          ? `No ${collectionNoun(kind)} yet.`
-                          : "Connect a folder to get started."}
+            {discoveryErrors.length > 0 && !resources.length
+              ? `Local ${collectionNoun(kind)} could not be checked.`
+              : noAccess && ownership === "shared"
+                ? `Access to shared ${collectionNoun(kind)} is restricted.`
+                : ownership === "mine"
+                  ? `No ${collectionNoun(kind)} of your own yet.`
+                  : ownership === "shared"
+                    ? `No ${collectionNoun(kind)} have been shared with you yet.`
+                    : noAccess
+                      ? `Access to shared ${collectionNoun(kind)} is restricted.`
+                      : connected
+                        ? `No ${collectionNoun(kind)} yet.`
+                        : "Connect a folder to get started."}
           </p>
         ) : !visible.length ? (
           <div className="index-empty-filtered" role="status">

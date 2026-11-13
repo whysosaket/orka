@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Resource } from "@portable/protocol";
 import { Button } from "./button.js";
@@ -7,6 +7,15 @@ export interface SkillUsage {
   counts: Record<string, number>;
   partial: boolean;
 }
+
+interface UsageEntry {
+  key: string;
+  usage: SkillUsage | null;
+  error: string;
+  updatedAt: number;
+  pending?: Promise<void>;
+}
+const freshness = 30_000;
 
 export function SkillUsageCount({ count }: { count: number | undefined }) {
   return count === undefined ? null : (
@@ -24,51 +33,73 @@ export function useProjectSkillUsage(
   scope: string,
   resources: Resource[],
   enabled: boolean,
+  folders = "",
 ) {
-  const key = enabled
-    ? JSON.stringify([
-        scope,
-        projectId,
-        resources.map((skill) => [skill.resourceId, skill.logicalPath]),
-      ])
-    : "";
-  const [attempt, setAttempt] = useState(0);
-  const [state, setState] = useState({
-    key: "",
-    usage: null as SkillUsage | null,
-    loading: false,
-    error: "",
-  });
-  const retry = useCallback(() => setAttempt((current) => current + 1), []);
-  useEffect(() => {
-    if (!key) return;
-    let active = true;
-    setState((current) => ({
+  const cache = useMemo(
+    () => ({ scope, projects: new Map<string, UsageEntry>() }),
+    [scope],
+  );
+  const key = JSON.stringify([
+    folders,
+    resources.map((skill) => [
+      skill.resourceId,
+      skill.logicalPath,
+      skill.sourceId,
+    ]),
+  ]);
+  const entry = useMemo(() => {
+    if (!enabled) return undefined;
+    const cached = cache.projects.get(projectId);
+    if (cached?.key === key) return cached;
+    const next: UsageEntry = {
       key,
-      usage: current.key === key ? current.usage : null,
-      loading: true,
+      usage: null,
       error: "",
-    }));
-    void invoke<SkillUsage>("project_skill_usage", { projectId })
-      .then((usage) => {
-        if (active) setState({ key, usage, loading: false, error: "" });
-      })
-      .catch((error) => {
-        if (active)
-          setState((current) => ({
-            ...current,
-            loading: false,
-            error: String(error),
-          }));
+      updatedAt: 0,
+    };
+    cache.projects.set(projectId, next);
+    return next;
+  }, [cache, projectId, key, enabled]);
+  const [, setVersion] = useState(0);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    if (entry) entry.updatedAt = 0;
+    setAttempt((current) => current + 1);
+  }, [entry]);
+  useEffect(() => {
+    if (!entry) return;
+    let active = true;
+    if (
+      !entry.pending &&
+      (!entry.updatedAt || Date.now() - entry.updatedAt >= freshness)
+    ) {
+      entry.error = "";
+      entry.pending = invoke<SkillUsage>("project_skill_usage", { projectId })
+        .then((usage) => {
+          entry.usage = usage;
+        })
+        .catch((error) => {
+          entry.error = String(error);
+        })
+        .finally(() => {
+          entry.updatedAt = Date.now();
+          entry.pending = undefined;
+        });
+    }
+    if (entry.pending) {
+      setVersion((version) => version + 1);
+      void entry.pending.then(() => {
+        if (active) setVersion((version) => version + 1);
       });
+    }
     return () => {
       active = false;
     };
-  }, [key, projectId, attempt]);
+  }, [entry, projectId, attempt]);
   return {
-    usage: state.key === key ? state.usage : null,
-    loading: Boolean(key) && (state.key !== key || state.loading),
-    error: state.key === key ? state.error : "",
+    usage: entry?.usage ?? null,
+    loading: Boolean(entry && (!entry.updatedAt || entry.pending)),
+    error: entry?.error ?? "",
     retry,
   };
 }
@@ -79,13 +110,15 @@ export function ProjectSkillUsageStatus({
   retry,
 }: ReturnType<typeof useProjectSkillUsage>) {
   if (!loading && !error) return null;
+  if (loading)
+    return (
+      <span className="sr-only" role="status">
+        Loading skill usage…
+      </span>
+    );
   return (
     <div className="session-preview-status" role="status">
-      <span>
-        {loading
-          ? "Checking project skill usage…"
-          : `Skill usage unavailable. ${error}`}
-      </span>
+      <span>{`Skill usage unavailable. ${error}`}</span>
       {error && !loading && (
         <Button size="sm" variant="tertiary" onClick={retry}>
           Retry usage
