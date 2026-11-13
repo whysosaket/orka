@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import type { FileManifestEntry } from "../../apps/mac/src/components/diff-model.js";
 import {
   defaultProjectRules,
   type ClassRule,
@@ -21,9 +22,16 @@ async function fixture(
   removed = false,
   mode = "owner",
   envData = false,
+  review: {
+    before?: Record<string, string>;
+    files?: Record<string, string>;
+    baseRevision?: number;
+    beforeManifest?: FileManifestEntry[];
+    manifest?: FileManifestEntry[];
+  } = {},
 ) {
   await page.addInitScript(
-    ({ rules, governed, removed, mode, envData }) => {
+    ({ rules, governed, removed, mode, envData, review }) => {
       const isMember = mode === "member" || mode === "restricted";
       const instructions = mode === "instructions";
       const file = instructions ? "CLAUDE.md" : "SKILL.md";
@@ -44,7 +52,19 @@ async function fixture(
       const localDraft = {
         id: "local-memory",
         projectId: "project",
-        resource: { ...resource, kind: "memory", title: "Saved learning" },
+        resource: {
+          ...resource,
+          kind: "memory",
+          title: "Saved learning",
+          files: Object.entries(
+            review.files ?? { "content.md": "Saved learning\n" },
+          ).map(([path, content]) => ({
+            path,
+            hash: "fixture",
+            size: content.length,
+            executable: false,
+          })),
+        },
         paths: [],
         status: "local",
         createdAt: "2026-10-18T00:00:00Z",
@@ -325,11 +345,23 @@ async function fixture(
                 case "draft":
                   return {
                     draft: localDraft,
-                    files: { "content.md": "Saved learning\n" },
+                    files: review.files ?? { "content.md": "Saved learning\n" },
+                    before: review.before,
+                    baseRevision: review.baseRevision,
+                    beforeManifest: review.beforeManifest,
+                    manifest: review.manifest,
                     related: [],
                     canPublish: mode === "draft-publisher",
                   };
                 case "submit-draft":
+                  if ((window as any).holdDraftSubmit)
+                    await new Promise<void>((resolve) => {
+                      (window as any).finishDraftSubmit = resolve;
+                    });
+                  if ((window as any).governanceStale)
+                    throw new Error(
+                      "The shared version changed. Review the changes again before publishing.",
+                    );
                   return {
                     status: mode === "draft-publisher" ? "queued" : "pending",
                   };
@@ -347,7 +379,11 @@ async function fixture(
                 case "request":
                   return {
                     request,
-                    files: { "SKILL.md": "Reviewed candidate\n" },
+                    files: {
+                      "SKILL.md": removed
+                        ? "Previous version\n"
+                        : "Reviewed candidate\n",
+                    },
                     before: { "SKILL.md": "Previous version\n" },
                     content: { resource },
                   };
@@ -388,7 +424,7 @@ async function fixture(
         },
       });
     },
-    { rules: savedProjectRules, governed, removed, mode, envData },
+    { rules: savedProjectRules, governed, removed, mode, envData, review },
   );
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -540,10 +576,19 @@ for (const publisher of [true, false]) {
     await local
       .getByRole("button", { name: "Review changes", exact: true })
       .click();
-    await expect(local.getByLabel("File changes")).toContainText(
+    const dialog = page.getByRole("dialog", {
+      name: "Review changes",
+      exact: true,
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel("File changes")).toContainText(
       "Saved learning",
     );
-    await local
+    await expect(dialog.locator(".diff-count--added")).toContainText("+1");
+    await expect(
+      dialog.getByRole("heading", { name: "content.md", exact: true }),
+    ).toBeVisible();
+    await dialog
       .getByRole("button", {
         name: publisher ? "Publish update" : "Send for approval",
         exact: true,
@@ -554,12 +599,279 @@ for (const publisher of [true, false]) {
         projectId: "project",
         id: "local-memory",
         reviewedFiles: [
-          { path: "SKILL.md", hash: "fixture", size: 16, executable: false },
+          { path: "content.md", hash: "fixture", size: 15, executable: false },
         ],
       },
     ]);
   });
 }
+test("local review compares the accepted version with additions and removals in a bounded modal", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 820, height: 600 });
+  await fixture(page, true, false, "draft-publisher", false, {
+    baseRevision: 3,
+    before: {
+      "content.md": "Original learning\n",
+      "removed.md": "Old learning\n",
+    },
+    files: { "content.md": "Saved learning\n", "added.md": "New learning\n" },
+  });
+  await management(page)
+    .getByRole("button", { name: "Review changes", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review changes",
+    exact: true,
+  });
+  await expect(dialog.getByLabel("Compared versions")).toHaveText(
+    "Version 3tocompared withThis Mac",
+  );
+  await expect(dialog.locator(".diff-card-path")).toHaveText([
+    "content.md",
+    "removed.md",
+    "added.md",
+  ]);
+  await expect(
+    dialog
+      .getByRole("region", { name: "content.md changes", exact: true })
+      .getByLabel("File changes"),
+  ).toContainText("Original learning");
+  await expect(
+    dialog
+      .getByRole("region", { name: "removed.md changes", exact: true })
+      .getByLabel("File changes"),
+  ).toContainText("Old learning");
+  await expect(dialog.locator(".diff-card-removed")).toHaveText("Removed");
+  await expect(
+    dialog.getByRole("button", { name: "Publish update", exact: true }),
+  ).toBeInViewport();
+  const bounds = await dialog.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(24);
+  expect(bounds!.y).toBeGreaterThanOrEqual(24);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(576);
+});
+
+test("local review keeps a readable diff when modern renderer features are unavailable", async ({
+  page,
+}) => {
+  const adapterRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/src/components/pierre-diff.tsx"))
+      adapterRequests.push(request.url());
+  });
+  await page.addInitScript(() => {
+    const supports = CSS.supports.bind(CSS);
+    CSS.supports = ((...args: string[]) =>
+      args.some((argument) => argument.includes("light-dark("))
+        ? false
+        : Reflect.apply(supports, CSS, args)) as typeof CSS.supports;
+  });
+  await fixture(page, true, false, "draft-publisher", false, {
+    before: { "content.md": "Original learning\n" },
+    baseRevision: 3,
+  });
+  await management(page)
+    .getByRole("button", { name: "Review changes", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review changes",
+    exact: true,
+  });
+  const diff = dialog.getByRole("group", { name: "File changes", exact: true });
+  await expect(diff).toContainText("Original learning");
+  await expect(diff).toContainText("Saved learning");
+  await expect(diff.getByLabel("Removed", { exact: true })).toHaveText("−");
+  await expect(diff.getByLabel("Added", { exact: true })).toHaveText("+");
+  await expect(dialog.locator("diffs-container")).toHaveCount(0);
+  expect(adapterRequests).toEqual([]);
+});
+
+test("local review includes executable-only changes and distinguishes binary assets from literal text", async ({
+  page,
+}) => {
+  await fixture(page, true, false, "draft-publisher", false, {
+    before: { "run.sh": "echo hello\n", "image.bin": "Binary asset" },
+    files: {
+      "run.sh": "echo hello\n",
+      "image.bin": "Binary asset",
+      "literal.txt": "Binary asset",
+    },
+    beforeManifest: [
+      { path: "run.sh", hash: "fixture", executable: false, binary: false },
+      { path: "image.bin", hash: "binary", binary: true },
+    ],
+    manifest: [
+      { path: "run.sh", hash: "fixture", executable: true, binary: false },
+      { path: "image.bin", hash: "binary", binary: true },
+      { path: "literal.txt", hash: "literal", binary: false },
+    ],
+    baseRevision: 3,
+  });
+  await management(page)
+    .getByRole("button", { name: "Review changes", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review changes",
+    exact: true,
+  });
+  await expect(dialog.locator(".diff-card-path")).toHaveText([
+    "run.sh",
+    "literal.txt",
+  ]);
+  await expect(
+    dialog.getByText("Executable permission added.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog
+      .getByRole("region", { name: "literal.txt changes", exact: true })
+      .getByLabel("File changes"),
+  ).toContainText("Binary asset");
+  await expect(
+    dialog.getByText("No file changes.", { exact: true }),
+  ).toHaveCount(0);
+});
+
+test("closing local review restores focus without dismissing or publishing private changes", async ({
+  page,
+}) => {
+  await fixture(page, true, false, "draft-publisher");
+  const trigger = management(page).getByRole("button", {
+    name: "Review changes",
+    exact: true,
+  });
+  for (const close of ["Cancel", "Close review changes", "Escape"]) {
+    await trigger.click();
+    const dialog = page.getByRole("dialog", {
+      name: "Review changes",
+      exact: true,
+    });
+    await expect(dialog).toBeVisible();
+    if (close === "Escape") await page.keyboard.press("Escape");
+    else await dialog.getByRole("button", { name: close, exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  }
+  expect(await calls(page, "submit-draft")).toEqual([]);
+  expect(await calls(page, "dismiss")).toEqual([]);
+});
+
+test("local publication failures remain visible beside the exact reviewed version", async ({
+  page,
+}) => {
+  await fixture(page, true, false, "draft-publisher", false, {
+    baseRevision: 3,
+    before: { "content.md": "Original learning\n" },
+  });
+  await management(page)
+    .getByRole("button", { name: "Review changes", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review changes",
+    exact: true,
+  });
+  await page.evaluate(() => {
+    (window as any).governanceStale = true;
+  });
+  await dialog
+    .getByRole("button", { name: "Publish update", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "The shared version changed. Review the changes again before publishing.",
+  );
+  await expect(dialog.getByLabel("Compared versions")).toContainText(
+    "Version 3",
+  );
+  expect(await calls(page, "submit-draft")).toEqual([
+    {
+      projectId: "project",
+      id: "local-memory",
+      reviewedFiles: [
+        { path: "content.md", hash: "fixture", size: 15, executable: false },
+      ],
+      reviewedRevision: 3,
+    },
+  ]);
+});
+
+test("an in-flight local publication keeps the review open and prevents duplicate submissions", async ({
+  page,
+}) => {
+  await fixture(page, true, false, "draft-publisher");
+  await management(page)
+    .getByRole("button", { name: "Review changes", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review changes",
+    exact: true,
+  });
+  await page.evaluate(() => {
+    (window as any).holdDraftSubmit = true;
+  });
+  await dialog
+    .getByRole("button", { name: "Publish update", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "Cancel", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "Publish update", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  expect(await calls(page, "submit-draft")).toHaveLength(1);
+  await page.evaluate(() => {
+    (window as any).finishDraftSubmit();
+  });
+  await expect(dialog).toHaveCount(0);
+});
+
+for (const local of [false, true]) {
+  test(`${local ? "local changes" : "pending requests"} show deletion diffs when tombstones retain file metadata`, async ({
+    page,
+  }) => {
+    await fixture(
+      page,
+      true,
+      true,
+      local ? "draft-publisher" : "owner",
+      false,
+      { before: { "content.md": "Saved learning\n" }, baseRevision: 3 },
+    );
+    await management(page)
+      .getByRole("button", {
+        name: local ? "Review changes" : "Review request",
+        exact: true,
+      })
+      .click();
+    const review = local
+      ? page.getByRole("dialog", { name: "Review changes", exact: true })
+      : management(page);
+    await expect(review.locator(".diff-card-removed")).toHaveText("Removed");
+    await expect(
+      review.getByRole("group", { name: "File changes", exact: true }),
+    ).toContainText(local ? "Saved learning" : "Previous version");
+    await expect(
+      review.getByText("No file changes.", { exact: true }),
+    ).toHaveCount(0);
+    if (!local) {
+      await review
+        .getByRole("button", { name: "Approve request", exact: true })
+        .click();
+      expect(await calls(page, "decide")).toEqual([
+        {
+          projectId: "project",
+          id: "request",
+          previewHash: "reviewed-hash",
+          expectedPolicyRevision: 1,
+          decision: "approve",
+        },
+      ]);
+    }
+  });
+}
+
 test("request approval sends the exact reviewed hash and reports stale proposals", async ({
   page,
 }) => {

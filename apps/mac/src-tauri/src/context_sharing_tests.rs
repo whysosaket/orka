@@ -444,6 +444,33 @@ fn disabled_categories_and_resource_restrictions_preserve_local_candidates() {
 }
 
 #[test]
+fn draft_reviews_preserve_executable_and_binary_manifest_metadata() {
+    let f = fixture("owner");
+    let id = uuid::Uuid::new_v4().to_string();
+    let project = f.project["id"].as_str().unwrap();
+    let original = json!({"resourceId":id,"projectId":project,"kind":"skill","source":"shared","logicalPath":"example","title":"Example","revision":3,"owner":db::get(&f.db,"user").unwrap(),"deleted":false,"files":[{"path":"run.sh","hash":db::blob(b"echo hello\n").unwrap(),"size":11,"executable":false},{"path":"literal.txt","hash":db::blob(b"Binary asset").unwrap(),"size":12,"executable":false},{"path":"asset.bin","hash":db::blob(&[255,254]).unwrap(),"size":2,"executable":false}]});
+    db::upsert(&f.db, "resources", &id, project, &original).unwrap();
+    let mut edited = original.clone();
+    edited["files"][0]["executable"] = json!(true);
+    let draft = governance::capture(&f.db, &f.project, &edited, &json!([])).unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let detail = runtime
+        .block_on(governance::governance_command(
+            "draft".into(),
+            json!({"projectId":project,"id":draft}),
+        ))
+        .unwrap();
+    assert_eq!(detail["baseRevision"], 3);
+    assert_eq!(detail["beforeManifest"][0]["executable"], false);
+    assert_eq!(detail["manifest"][0]["executable"], true);
+    assert_eq!(detail["before"], detail["files"]);
+    for key in ["manifest", "beforeManifest"] {
+        assert_eq!(detail[key][1]["binary"], false);
+        assert_eq!(detail[key][2]["binary"], true);
+    }
+}
+
+#[test]
 fn owners_submit_memory_directly_and_legacy_pending_requests_finish_without_self_review() {
     let f = fixture("owner");
     let resource = json!({"resourceId":uuid::Uuid::new_v4().to_string(),"kind":"memory","source":"claude","logicalPath":"claude/MEMORY.md","title":"Learning","deleted":false,"files":[{"path":"content.md","hash":db::blob(b"Saved learning\n").unwrap(),"size":15,"executable":false}]});
