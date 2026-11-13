@@ -11,7 +11,6 @@ type CatalogEntry = {
 };
 type Catalogs = Partial<Record<LocalKind, CatalogEntry>>;
 const kinds: LocalKind[] = ["memory", "session", "plan"];
-const refreshInterval = 30_000;
 
 /** Private discovery runs separately from the workspace's inexpensive snapshots. */
 export function useLocalResources({
@@ -20,13 +19,16 @@ export function useLocalResources({
   page,
   user,
   serviceOrigin,
+  syncMinutes = 15,
 }: {
   scope: string;
   project: Project | undefined;
   page: ProjectPage;
   user: string | null;
   serviceOrigin: string | undefined;
+  syncMinutes?: number;
 }) {
+  const refreshInterval = Math.max(1, Math.min(syncMinutes, 1440)) * 60_000;
   const cache = useMemo(
     () => ({
       scope,
@@ -56,6 +58,7 @@ export function useLocalResources({
     if (!kind || !projectId || !user || !serviceOrigin) return;
     let canceled = false;
     let timer: number | undefined;
+    let running = false;
     const schedule = () => {
       const age = Date.now() - (catalogs[kind]?.updatedAt ?? 0);
       timer = window.setTimeout(
@@ -69,7 +72,9 @@ export function useLocalResources({
       );
     };
     const load = async () => {
-      if (canceled) return;
+      if (canceled || running) return;
+      running = true;
+      window.clearTimeout(timer);
       const entry = (catalogs[kind] ??= { updatedAt: 0 });
       if (
         !entry.pending &&
@@ -104,14 +109,20 @@ export function useLocalResources({
         await entry.pending;
         if (!canceled) setVersion((value) => value + 1);
       }
+      running = false;
       if (!canceled) schedule();
     };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     void load();
     return () => {
       canceled = true;
       window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [catalogs, projectId, kind, user, serviceOrigin, retry]);
+  }, [catalogs, projectId, kind, user, serviceOrigin, refreshInterval, retry]);
   return {
     resources: Object.values(catalogs).flatMap(
       (entry) => entry.catalog?.resources ?? [],

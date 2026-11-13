@@ -191,9 +191,7 @@ export function ResourceIndex({
             id={`collection:${kind}`}
             label={`Loading ${collectionNoun(kind)}…`}
             loading
-            skeleton={
-              <CollectionSkeleton label={`Loading ${collectionNoun(kind)}…`} />
-            }
+            skeleton={<CollectionSkeleton />}
           >
             <div />
           </LoadingRegion>

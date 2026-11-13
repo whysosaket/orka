@@ -1022,7 +1022,9 @@ test("main Skills remain browsable during usage loading, failures, and partial h
   page,
 }) => {
   await fixture(page, "project-loading");
-  await expect(page.getByRole("status")).toContainText("Loading skill usage…");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Loading skill usage…" }),
+  ).toHaveText("Loading skill usage…");
   await expect(page.locator(".skill-usage-count")).toHaveCount(0);
   await page.getByRole("searchbox", { name: "Search skills" }).fill("review");
   await expect(page.locator(".skill-card strong")).toHaveText(["Code review"]);
@@ -1067,7 +1069,9 @@ test("late usage results cannot leak into another project's Skills", async ({
   page,
 }) => {
   await fixture(page, "project-scope");
-  await expect(page.getByRole("status")).toContainText("Loading skill usage…");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Loading skill usage…" }),
+  ).toHaveText("Loading skill usage…");
   await page.getByRole("combobox", { name: "Select project" }).click();
   await page.getByRole("option", { name: "Studio", exact: true }).click();
   await expect(page.locator(".skill-usage-count").first()).toHaveText(

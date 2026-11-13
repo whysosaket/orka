@@ -77,7 +77,7 @@ test("periodic and explicit refresh retain cached rows and do not overlap on nav
   await select(page, "session");
   await expect(rows(page)).toHaveText("one session user 1");
   await defer(page);
-  await page.clock.runFor(30_100);
+  await page.clock.runFor(60_100);
   await expect.poll(async () => (await calls(page)).length).toBe(2);
   await expect(rows(page)).toHaveText("one session user 1");
   await expect(page.getByLabel("Loading", { exact: true })).toHaveText("true");
@@ -123,7 +123,7 @@ test("returning to a stale catalog refreshes in the background while retaining r
   await expect(rows(page)).toHaveText("one session user 1");
   await select(page, "home");
   await defer(page);
-  await page.clock.runFor(31_000);
+  await page.clock.runFor(61_000);
   expect(await calls(page)).toHaveLength(1);
   await select(page, "session");
   await expect.poll(async () => (await calls(page)).length).toBe(2);
@@ -150,15 +150,53 @@ test("hidden windows defer periodic discovery until visible", async ({
   await page.clock.runFor(90_100);
   expect(await calls(page)).toHaveLength(1);
   await expect(rows(page)).toHaveText("one session user 1");
-  await page.evaluate(() =>
+  await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       value: "visible",
-    }),
-  );
-  await page.clock.runFor(30_000);
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
   await expect.poll(async () => (await calls(page)).length).toBe(2);
   await expect(rows(page)).toHaveText("one session user 1");
   await finish(page, 0);
   await expect(rows(page)).toHaveText("one session user 2");
+  await defer(page);
+  await page.clock.runFor(59_000);
+  expect(await calls(page)).toHaveLength(2);
+  await page.clock.runFor(1_100);
+  await expect.poll(async () => (await calls(page)).length).toBe(3);
+  await expect(rows(page)).toHaveText("one session user 2");
+});
+
+test("sync interval changes reschedule discovery without clearing cached rows", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await fixture(page);
+  await select(page, "session");
+  await expect(rows(page)).toHaveText("one session user 1");
+  await select(page, "Sync every five minutes");
+  await page.clock.runFor(60_100);
+  expect(await calls(page)).toHaveLength(1);
+  await select(page, "home");
+  await select(page, "session");
+  await expect(rows(page)).toHaveText("one session user 1");
+  expect(await calls(page)).toHaveLength(1);
+  await defer(page);
+  await select(page, "Sync every minute");
+  await expect.poll(async () => (await calls(page)).length).toBe(2);
+  await expect(rows(page)).toHaveText("one session user 1");
+  await select(page, "Sync every five minutes");
+  expect(await calls(page)).toHaveLength(2);
+  await finish(page, 0);
+  await expect(rows(page)).toHaveText("one session user 2");
+  await page.clock.runFor(60_100);
+  expect(await calls(page)).toHaveLength(2);
+  await select(page, "Refresh");
+  await expect.poll(async () => (await calls(page)).length).toBe(3);
+  await expect(rows(page)).toHaveText("one session user 2");
+  await finish(page, 1);
+  await expect(rows(page)).toHaveText("one session user 3");
 });

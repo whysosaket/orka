@@ -54,6 +54,7 @@ function Fixture() {
   const [scope, setScope] = useState("profile-one");
   const [folder, setFolder] = useState("/synthetic/first");
   const [source, setSource] = useState("/synthetic/repository-first");
+  const [syncMinutes, setSyncMinutes] = useState(1);
   const catalog = useLocalResources({
     scope,
     project: {
@@ -73,6 +74,7 @@ function Fixture() {
     page,
     user,
     serviceOrigin: origin,
+    syncMinutes,
   });
   return h(
     "main",
@@ -100,6 +102,12 @@ function Fixture() {
       "Change sources",
     ),
     h("button", { onClick: catalog.refresh }, "Refresh"),
+    h("button", { onClick: () => setSyncMinutes(1) }, "Sync every minute"),
+    h(
+      "button",
+      { onClick: () => setSyncMinutes(5) },
+      "Sync every five minutes",
+    ),
     h(
       "output",
       { "aria-label": "Rows" },

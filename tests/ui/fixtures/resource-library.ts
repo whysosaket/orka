@@ -10,6 +10,7 @@ export interface LibraryState {
   finishCatalog?: () => void;
   finishCatalogs: (() => void)[];
   tail: number;
+  syncMinutes: number;
 }
 
 export type LibraryWindow = Window & { library: LibraryState };
@@ -33,6 +34,7 @@ export async function resourceLibraryFixture(
       deferCatalog: options.defer ?? false,
       finishCatalogs: [],
       tail: 0,
+      syncMinutes: 1,
     };
     const resource = (
       kind: "memory" | "session" | "plan",
@@ -116,7 +118,10 @@ export async function resourceLibraryFixture(
           if (command === "snapshot")
             return {
               user: library.user,
-              config: { apiUrl: library.apiUrl, syncMinutes: 15 },
+              config: {
+                apiUrl: library.apiUrl,
+                syncMinutes: library.syncMinutes,
+              },
               projects: [
                 {
                   id: "project",

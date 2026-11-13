@@ -277,6 +277,7 @@ function WorkspaceApp({
     page: tab,
     user: state.user,
     serviceOrigin: state.config?.apiUrl,
+    syncMinutes: state.config?.syncMinutes,
   });
   const catalogResources = useMemo<ProjectResource[]>(
     () =>
@@ -319,6 +320,7 @@ function WorkspaceApp({
       Boolean(state.user && selectedProject) &&
       resources.length > 0,
     JSON.stringify([selectedProject?.path, selectedProject?.sources]),
+    state.config?.syncMinutes,
   );
   const displayTitle = useCallback(
     (item: Resource) =>

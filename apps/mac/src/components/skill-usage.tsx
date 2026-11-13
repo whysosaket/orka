@@ -15,7 +15,6 @@ interface UsageEntry {
   updatedAt: number;
   pending?: Promise<void>;
 }
-const freshness = 30_000;
 
 export function SkillUsageCount({ count }: { count: number | undefined }) {
   return count === undefined ? null : (
@@ -34,7 +33,9 @@ export function useProjectSkillUsage(
   resources: Resource[],
   enabled: boolean,
   folders = "",
+  syncMinutes = 15,
 ) {
+  const refreshInterval = Math.max(1, Math.min(syncMinutes, 1440)) * 60_000;
   const cache = useMemo(
     () => ({ scope, projects: new Map<string, UsageEntry>() }),
     [scope],
@@ -69,33 +70,65 @@ export function useProjectSkillUsage(
   useEffect(() => {
     if (!entry) return;
     let active = true;
-    if (
-      !entry.pending &&
-      (!entry.updatedAt || Date.now() - entry.updatedAt >= freshness)
-    ) {
-      entry.error = "";
-      entry.pending = invoke<SkillUsage>("project_skill_usage", { projectId })
-        .then((usage) => {
-          entry.usage = usage;
-        })
-        .catch((error) => {
-          entry.error = String(error);
-        })
-        .finally(() => {
-          entry.updatedAt = Date.now();
-          entry.pending = undefined;
-        });
-    }
-    if (entry.pending) {
-      setVersion((version) => version + 1);
-      void entry.pending.then(() => {
-        if (active) setVersion((version) => version + 1);
-      });
-    }
+    let running = false;
+    let timer: number | undefined;
+    const schedule = () => {
+      const age = Date.now() - entry.updatedAt;
+      timer = window.setTimeout(
+        () => {
+          if (document.visibilityState === "visible") void load();
+          else schedule();
+        },
+        document.visibilityState === "visible"
+          ? Math.max(refreshInterval - age, 1000)
+          : refreshInterval,
+      );
+    };
+    const load = async () => {
+      if (!active || running) return;
+      window.clearTimeout(timer);
+      running = true;
+      try {
+        if (
+          !entry.pending &&
+          (!entry.updatedAt || Date.now() - entry.updatedAt >= refreshInterval)
+        ) {
+          entry.error = "";
+          entry.pending = invoke<SkillUsage>("project_skill_usage", {
+            projectId,
+          })
+            .then((usage) => {
+              entry.usage = usage;
+            })
+            .catch((error) => {
+              entry.error = String(error);
+            })
+            .finally(() => {
+              entry.updatedAt = Date.now();
+              entry.pending = undefined;
+            });
+        }
+        if (entry.pending) {
+          setVersion((version) => version + 1);
+          await entry.pending;
+          if (active) setVersion((version) => version + 1);
+        }
+      } finally {
+        running = false;
+        if (active) schedule();
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    void load();
     return () => {
       active = false;
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [entry, projectId, attempt]);
+  }, [entry, projectId, attempt, refreshInterval]);
   return {
     usage: entry?.usage ?? null,
     loading: Boolean(entry && (!entry.updatedAt || entry.pending)),

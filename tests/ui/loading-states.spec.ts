@@ -29,6 +29,12 @@ for (const width of [1160, 900]) {
       await expect(collection.getByRole("status")).toHaveText(
         `Loading ${label.toLowerCase()}…`,
       );
+      await expect(collection.getByRole("status")).toHaveClass("sr-only");
+      await expect(skeleton).not.toContainText(/Loading/);
+      await expect(collection.locator("[skullet-own]")).toHaveCSS(
+        "mask-image",
+        "linear-gradient(rgb(0, 0, 0) 35%, rgba(0, 0, 0, 0))",
+      );
       await expect(collection.getByText(/Checking|Looking for/)).toHaveCount(0);
       await expect(skeleton.getByRole("button")).toHaveCount(0);
       await expect(

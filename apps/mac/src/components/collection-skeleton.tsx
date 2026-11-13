@@ -1,13 +1,9 @@
 import React from "react";
 
 /** Mirrors collection rows without exposing sample content or focusable actions. */
-export function CollectionSkeleton({ label }: { label: string }) {
+export function CollectionSkeleton() {
   return (
     <div className="collection-skeleton" aria-hidden="true">
-      <div className="collection-skeleton-label">
-        <span className="loading-dot" />
-        {label}
-      </div>
       <div className="collection-skeleton-rows">
         {[68, 88, 54, 76, 62, 82].map((width, index) => (
           <div className="collection-skeleton-row" key={index}>

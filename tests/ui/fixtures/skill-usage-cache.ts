@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { useProjectSkillUsage } from "../../../apps/mac/src/components/skill-usage.js";
 import type { Resource } from "@portable/protocol";
@@ -9,6 +9,7 @@ export type UsageWindow = Window & {
     deferred: boolean;
     failed: boolean;
     finish: (() => void)[];
+    observedCounts: (number | null)[];
   };
 };
 const fixture = {
@@ -16,6 +17,7 @@ const fixture = {
   deferred: false,
   failed: false,
   finish: [] as (() => void)[],
+  observedCounts: [] as (number | null)[],
 };
 Object.assign(window, {
   usageFixture: fixture,
@@ -42,6 +44,7 @@ function Fixture() {
   const [scope, setScope] = useState("account:service:profile");
   const [folders, setFolders] = useState("/synthetic/first");
   const [path, setPath] = useState("review");
+  const [syncMinutes, setSyncMinutes] = useState(1);
   const resources = [
     { resourceId: "skill", logicalPath: path, sourceId: "source" },
   ] as Resource[];
@@ -51,7 +54,12 @@ function Fixture() {
     resources,
     enabled,
     folders,
+    syncMinutes,
   );
+  const count = usage.usage?.counts.skill;
+  useEffect(() => {
+    fixture.observedCounts.push(count ?? null);
+  }, [count]);
   return h(
     "main",
     null,
@@ -59,6 +67,8 @@ function Fixture() {
     h("button", { onClick: () => setProject("two") }, "Project two"),
     h("button", { onClick: () => setEnabled(true) }, "Skills"),
     h("button", { onClick: () => setEnabled(false) }, "Home"),
+    h("button", { onClick: () => setSyncMinutes(1) }, "Sync 1 minute"),
+    h("button", { onClick: () => setSyncMinutes(5) }, "Sync 5 minutes"),
     h(
       "button",
       { onClick: () => setScope("other-account:service:profile") },
