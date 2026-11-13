@@ -1,0 +1,37 @@
+{
+  "baseRevision": "a080d5ced33431ab270ad51dfd98b5b30c10d754",
+  "headRevision": "d7f1451899fa9c4514b568918327aee8992a91e5",
+  "baseTemplateSha256": "784dc4bc463d2697d7080291b140e9e359fb2d0ba5d882a7fc05218282c6cbee",
+  "headTemplateSha256": "301bb61b9c12823342f0460840c570084da01c260bc6fbc650c0cf89e96d9673",
+  "baseHandlerSha256": "21b8a45515f400f2a453a88c457054d3540e6199d04f96d7d85c383d1a9d0056",
+  "headHandlerSha256": "5482baca6f56c187a107cf885a58e9151130f32880977f6371af62f167f28281",
+  "baseBinarySha256": "f7086562112db6e5cb05590e090104c690bf8819ad6fc12cc561b7c3b19c2e08",
+  "headBinarySha256": "0601eeffb4f8b429176550d4e6e61e8041dae79bbccdcccb2f56322b0d4df3b4",
+  "captureMethod": "Actual Go /authorize route via existing tests/acceptance/mcp-preview.ts, with ORKA_GO_TEST_BIN set to separately compiled orkatest binaries and disposable PostgreSQL. GET only; no authentication submitted.",
+  "comparisonLimit": "Base accepts only orka.read; an actual expanded-scope authorize request returns HTTP 400. Before shows accepted orka.read, after shows explicitly requested orka.read orka.write orka.manage. Both use identical synthetic client name, blank form state, service origin, viewport, theme, and pixel scale.",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 1100
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844
+    }
+  },
+  "theme": "actual dark server CSS",
+  "deviceScaleFactor": 1,
+  "files": [
+    "self-hosted-consent-before.png",
+    "self-hosted-consent-after.png",
+    "self-hosted-consent-mobile-before.png",
+    "self-hosted-consent-mobile-after.png"
+  ],
+  "inspection": "All four images inspected: real form and consent copy visible, no error overlays or horizontal overflow, synthetic data only. Mobile expanded content scrolls vertically.",
+  "headWorkingTreeNote": "The binary was compiled from the feature worktree while nonvisual MCP operation/test fixes were in progress. oauth.go and templates/oauth.html match the recorded d7f1451 revision exactly; the recorded source hashes pin all changed consent rendering.",
+  "nonvisualModifiedFilesAtCapture": [
+    "internal/server/mcp_operations.go",
+    "tests/mcp-operations.integration.ts",
+    "tests/migrations.integration.ts"
+  ]
+}

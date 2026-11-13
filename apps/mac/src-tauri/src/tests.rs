@@ -18,6 +18,8 @@ mod local_resource_tests;
 mod memory_context_tests;
 #[path = "plan_tests.rs"]
 mod plan_tests;
+#[path = "plugin_operations_tests.rs"]
+mod plugin_operations_tests;
 #[path = "repository_tests.rs"]
 mod repository_tests;
 #[path = "selective_sharing_tests.rs"]

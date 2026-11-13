@@ -69,7 +69,7 @@ func Command(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		return verifyDeployment(ctx, "https://"+config["DOMAIN"])
+		return verifyDeployment(ctx, "https://"+config["DOMAIN"], config["DASHBOARD_URL"])
 	case "check-data-root":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: orka-server check-data-root FILE")
@@ -305,7 +305,6 @@ func checkDeployment(env map[string]string, cloud bool) error {
 		env["GITHUB_ENABLED"] = "true"
 		env["MAGIC_LINK_ENABLED"] = "true"
 		env["EMAIL_PROVIDER"] = "resend"
-		env["RESEND_ENABLED"] = "true"
 	}
 	settings, err := SettingsFromEnv(env, false)
 	if err != nil {
@@ -321,9 +320,6 @@ func checkDeployment(env map[string]string, cloud bool) error {
 	if settings.GitHub && (env["GITHUB_CLIENT_ID"] == "" || env["GITHUB_CLIENT_SECRET"] == "") {
 		return fmt.Errorf("configure the GitHub OAuth App client ID and secret")
 	}
-	if (env["RESEND_ENABLED"] == "true") != (settings.EmailProvider == "resend") {
-		return fmt.Errorf("EMAIL_PROVIDER=resend and RESEND_ENABLED=true must be set together")
-	}
 	if settings.EmailProvider == "resend" {
 		if !regexp.MustCompile(`^v1,whsec_[A-Za-z0-9+/]{43}=$`).MatchString(env["SEND_EMAIL_HOOK_SECRET"]) {
 			return fmt.Errorf("generate SEND_EMAIL_HOOK_SECRET as v1,whsec_ followed by 32 base64-encoded random bytes")
@@ -332,13 +328,13 @@ func checkDeployment(env map[string]string, cloud bool) error {
 			return fmt.Errorf("configure a Resend sending key and verified sender")
 		}
 	}
-	if settings.MagicLink && settings.EmailProvider == "smtp" && (env["SMTP_HOST"] == "" || env["SMTP_FROM"] == "") {
-		return fmt.Errorf("magic links need SMTP configuration or Resend")
+	if settings.DashboardURL != "" && (!strings.HasPrefix(env["DASHBOARD_URL"], "https://") || settings.DashboardURL != env["DASHBOARD_URL"]) {
+		return fmt.Errorf("DASHBOARD_URL must be an HTTPS origin without a trailing slash")
 	}
-	fmt.Printf("Configuration valid for %s. Provider credentials and sender verification still require a live sign-in smoke test.\nGitHub callback: https://%s/auth/callback\nDesktop redirect: orka://auth/callback\n", settings.Mode, domain)
+	fmt.Printf("Configuration valid for %s. Provider credentials and sender verification still require a live sign-in smoke test.\nGitHub callback: %s/auth/callback\nDesktop redirect: orka://auth/callback\n", settings.Mode, settings.browserURL())
 	return nil
 }
-func verifyDeployment(ctx context.Context, origin string) error {
+func verifyDeployment(ctx context.Context, origin, dashboard string) error {
 	return retry(ctx, 6, 5*time.Second, func() error {
 		if _, err := getJSON(ctx, origin+"/health"); err != nil {
 			return err
@@ -349,6 +345,14 @@ func verifyDeployment(ctx context.Context, origin string) error {
 		}
 		if number(field(v, "version")) != 1 || text(field(v, "mode")) != "cloud" || !flag(field(field(v, "auth"), "github")) || !flag(field(field(v, "auth"), "magicLink")) {
 			return fmt.Errorf("managed auth capabilities check failed")
+		}
+		if dashboard != "" {
+			if text(field(field(v, "auth"), "browserOrigin")) != dashboard {
+				return fmt.Errorf("managed dashboard origin was not advertised")
+			}
+			if health, err := getJSON(ctx, dashboard+"/health"); err != nil || !flag(field(health, "ok")) {
+				return fmt.Errorf("public dashboard health check failed")
+			}
 		}
 		fmt.Println("Public HTTPS health and managed auth capabilities passed.")
 		return nil

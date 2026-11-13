@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 pub const QUEUE_PATH: &str = "/local/selected-share";
 
-fn context(db: &Connection, input: &Value) -> Result<Value> {
+pub(crate) fn context(db: &Connection, input: &Value) -> Result<Value> {
     let user = db::get(db, "user")?;
     let config = db::get(db, "config")?;
     if !user.is_string() || input["accountId"] != user {

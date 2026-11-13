@@ -294,12 +294,48 @@ fn recover_installation(db: &rusqlite::Connection, key: &str, journal: &Value) -
     db::set(db, key, &Value::Null)
 }
 
+fn recover_current_installation(
+    db: &rusqlite::Connection,
+    key: &str,
+    journal: &Value,
+) -> Result<()> {
+    let project = crate::governance::project(
+        db,
+        journal["project"]["id"]
+            .as_str()
+            .ok_or("Missing installation project")?,
+    )?;
+    let source = crate::sources::for_resource(&project, &journal["project"])
+        .ok_or("409: Installation source is removed or disconnected; original recovery journal and local files preserved for review")?;
+    crate::sources::validate(&source)?;
+    if source["path"] != journal["project"]["path"]
+        || source["folderIdentity"] != journal["project"]["folderIdentity"]
+    {
+        return Err("409: Installation folder changed; original recovery journal and local files preserved for review".into());
+    }
+    recover_installation(db, key, journal)
+}
+
 pub fn recover_installations(db: &rusqlite::Connection) -> Result<()> {
     for row in db::rows(db,"SELECT json_object('key',key,'journal',json(value)) FROM meta WHERE key LIKE 'installation:%' AND value!='null'",&[])? {
         let key = row["key"].as_str().ok_or("Invalid installation key")?;
-        let result = recover_installation(db, key, &row["journal"]);
+        let result = recover_current_installation(db, key, &row["journal"]);
         let project = row["journal"]["project"]["id"].as_str().ok_or("Missing installation project")?;
         crate::sync::record_result(db, &format!("{project}:{key}"), result)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn recover_project_installations(
+    db: &rusqlite::Connection,
+    project: &Value,
+) -> Result<()> {
+    let id = project["id"].as_str().ok_or("Missing project")?;
+    for row in db::rows(db, "SELECT json_object('key',key,'journal',json(value)) FROM meta WHERE key LIKE 'installation:%' AND value!='null' AND json_extract(value,'$.project.id')=?", &[&id])? {
+        let journal = &row["journal"];
+        let key = row["key"].as_str().ok_or("Invalid installation key")?;
+        let result = recover_current_installation(db, key, journal);
+        crate::sync::record_result(db, &format!("{id}:{key}"), result)?;
     }
     Ok(())
 }

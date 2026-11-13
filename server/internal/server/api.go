@@ -69,6 +69,14 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, errors.New("unexpected request failure"))
 		}
 	}()
+	if path, ok := strings.CutPrefix(r.URL.Path, dashboardBridgePrefix); ok && (path == "" || strings.HasPrefix(path, "/")) {
+		bridge := a.Settings.dashboardRequest(r, path)
+		if bridge == nil {
+			writeError(w, &HTTPError{Status: 404, Message: "Not found"})
+			return
+		}
+		r = bridge
+	}
 	result, handled, err := a.handle(w, r)
 	if err != nil {
 		writeError(w, err)
@@ -85,7 +93,14 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 		return nil, true, nil
 	}
 	if path == "/v2/instance" && method == http.MethodGet {
-		return Object{"version": 1, "onboarding": 1, "invites": Object{"email": a.invitationEmailAvailable()}, "profile": Object{"version": 2, "jobRole": true, "avatarUpload": true, "conditionalSave": 1}, "mode": a.Settings.Mode, "repositories": Object{"github": choose(a.Repositories.Settings.Enabled, 1, 0)}, "auth": Object{"password": a.Settings.Password, "github": a.Settings.GitHub, "magicLink": a.Settings.MagicLink, "profileRedirect": true, "emailCode": a.Settings.MagicLink}}, false, nil
+		auth := Object{"password": a.Settings.Password, "github": a.Settings.GitHub, "magicLink": a.Settings.MagicLink, "profileRedirect": true, "emailCode": a.Settings.MagicLink}
+		if a.Settings.DashboardURL != "" {
+			auth["browserOrigin"] = a.Settings.DashboardURL
+			if fromDashboard(r) {
+				auth["browserBridge"] = true
+			}
+		}
+		return Object{"version": 1, "onboarding": 1, "invites": Object{"email": a.invitationEmailAvailable()}, "profile": Object{"version": 2, "jobRole": true, "avatarUpload": true, "conditionalSave": 1}, "mode": a.Settings.Mode, "repositories": Object{"github": choose(a.Repositories.Settings.Enabled, 1, 0)}, "auth": auth}, false, nil
 	}
 	if path == "/integrations/github/webhook" && method == http.MethodPost {
 		raw, err := readBytes(w, r, 1_000_000)
@@ -120,6 +135,10 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 		return nil, true, a.invitePage(w, r)
 	}
 	if path == "/auth/confirm" && a.AuthURL != "" {
+		if method == http.MethodGet && a.Settings.DashboardURL != "" {
+			http.Redirect(w, r, a.Settings.DashboardURL+r.URL.RequestURI(), http.StatusTemporaryRedirect)
+			return nil, true, nil
+		}
 		return nil, true, a.confirmEmail(w, r)
 	}
 	if strings.HasPrefix(path, "/auth/") && a.AuthURL != "" {

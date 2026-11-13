@@ -85,6 +85,7 @@ const toolBytes =
     orkaTools.map((t) => ({
       name: t.name,
       description: t.description,
+      scope: t.scope,
       inputSchema: z.toJSONSchema(t.schema),
     })),
     null,

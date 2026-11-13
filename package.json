@@ -1,6 +1,6 @@
 {
   "name": "orka",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -29,7 +29,8 @@
     "format:check": "prettier --check \"*.{js,json,ts}\" .github/workflows apps/mac/src tests scripts",
     "lint": "eslint . --max-warnings 0",
     "backend:update": "node scripts/update-backend.mjs",
-    "test:repository-access": "tsx scripts/repository-access-e2e.ts"
+    "test:repository-access": "tsx scripts/repository-access-e2e.ts",
+    "test:plugin-native": "python3 -B scripts/plugin-native-acceptance.py"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
@@ -56,6 +57,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@portable/protocol": "file:vendor/portable-protocol-0.6.6-dev.0.tgz"
+    "@portable/protocol": "file:vendor/portable-protocol-0.6.6-dev.1.tgz"
   }
 }

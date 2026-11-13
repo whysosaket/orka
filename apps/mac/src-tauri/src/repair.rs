@@ -18,41 +18,46 @@ pub fn workspace(db: &rusqlite::Connection) -> Result<()> {
     .iter()
     .flat_map(crate::sources::views)
     {
-        let Some(root) = project["path"].as_str().map(Path::new) else {
-            continue;
-        };
-        if !root.is_dir()
-            || project["folderIdentity"].as_str().is_some_and(|expected| {
-                !indexer::folder_identity_matches(root, expected).unwrap_or(false)
-            })
-        {
+        project_state(db, &project)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn project_state(db: &rusqlite::Connection, project: &Value) -> Result<()> {
+    let Some(root) = project["path"].as_str().map(Path::new) else {
+        return Ok(());
+    };
+    if !root.is_dir()
+        || project["folderIdentity"].as_str().is_some_and(|expected| {
+            !indexer::folder_identity_matches(root, expected).unwrap_or(false)
+        })
+    {
+        return Ok(());
+    }
+    let project_id = project["id"].as_str().ok_or("Missing project")?;
+    let resources = db::rows(
+        db,
+        "SELECT value FROM resources WHERE project=?",
+        &[&project_id],
+    )?;
+    for (index, resource) in resources.iter().enumerate() {
+        if !crate::sources::matches(project, resource) {
             continue;
         }
-        let project_id = project["id"].as_str().ok_or("Missing project")?;
-        let resources = db::rows(
+        sync::progress(
             db,
-            "SELECT value FROM resources WHERE project=?",
-            &[&project_id],
+            "Repairing local sync state",
+            project["name"].as_str(),
+            index,
+            Some(resources.len()),
         )?;
-        for (index, resource) in resources.iter().enumerate() {
-            if !crate::sources::matches(&project, resource) {
-                continue;
-            }
-            sync::progress(
-                db,
-                "Repairing local sync state",
-                project["name"].as_str(),
-                index,
-                Some(resources.len()),
-            )?;
-            let id = resource["resourceId"].as_str().ok_or("Missing resource")?;
-            let result = recover(db, &project, resource);
-            match result {
-                Ok(true) => sync::record_result(db, id, Ok(()))?,
-                Ok(false) => (),
-                Err(error) => {
-                    sync::record_result(db, id, Err(error))?;
-                }
+        let id = resource["resourceId"].as_str().ok_or("Missing resource")?;
+        let result = recover(db, project, resource);
+        match result {
+            Ok(true) => sync::record_result(db, id, Ok(()))?,
+            Ok(false) => (),
+            Err(error) => {
+                sync::record_result(db, id, Err(error))?;
             }
         }
     }

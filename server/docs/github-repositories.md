@@ -15,8 +15,8 @@ receipt; completion remains bound to the requesting Orka account and attempt.
 Register a GitHub App with account **Email addresses: read** (GoTrue calls
 `/user/emails`), repository **Contents: read** and **Metadata: read**. Enable
 Device Flow and expiring user tokens. Install it on selected repositories. No
-repository Administration/write permission is required. Use OAuth callback
-`<PUBLIC_URL>/auth/callback` and webhook
+repository Administration/write permission is required. For managed sign-in, use the configured dashboard’s `/auth/callback`
+(`<PUBLIC_URL>/auth/callback` when the dashboard is disabled). Use webhook
 `<PUBLIC_URL>/integrations/github/webhook`; enable webhook deliveries after its
 HTTPS endpoint and shared secret have been verified. Other accounts can install
 only a public app. Development and production use their own registrations;
@@ -31,7 +31,6 @@ delivery; do not claim external revocation delivery was tested in that setup.
 Configure the private server environment:
 
 ```dotenv
-GITHUB_ENABLED=true
 GITHUB_CLIENT_ID=Iv...
 GITHUB_CLIENT_SECRET=...
 GITHUB_REPOS_ENABLED=true

@@ -1,6 +1,6 @@
 # Authentication and deployment
 
-New deployments can use one GitHub App for sign-in and repositories, with Email
+Managed deployments can use one GitHub App for sign-in and repositories, with Email
 addresses read and selected-repository Metadata/Contents read. Existing OAuth
 registrations remain supported during the [explicit single-app migration](github-repositories.md);
 verify existing-account continuity and native PKCE before switching credentials.
@@ -29,9 +29,21 @@ Use a GitHub App with callback `https://api.tryorka.ai/auth/callback` and Email 
 
 Run `npm run deploy:check -- deploy/ec2/.env --cloud`, then the deployment runbook. `DISABLE_SIGNUP=true` requires operator-provisioned accounts; set it to false only when registration is intended. `PASSWORD_ENABLED=false` blocks password grants in the API and removes the advertised capability; refresh remains available to existing sessions.
 
-## OSS providers
+## OSS password sign-in
 
-The OSS image needs no managed secrets. Password login is enabled by default with public signup disabled. Enable GitHub with `GITHUB_ENABLED=true` and its app credentials. Enable email with `MAGIC_LINK_ENABLED=true`; choose SMTP (`EMAIL_PROVIDER=smtp`, SMTP host/port/from/credentials) or Resend (`EMAIL_PROVIDER=resend`, `RESEND_ENABLED=true`, sending key/from/hook secret). Capabilities describe effective settings and provider endpoints enforce them.
+The self-hosted API advertises password sign-in, accepts password and refresh
+grants, and leaves public signup disabled. The administrator provisions users
+with `sh ./orka-server user user@example.com` and shares the generated
+password privately. See [self-hosting](../SELF_HOSTING.md) for account and
+credential management. Optional GitHub repository connections are independent
+of sign-in.
+
+Before upgrading an instance that previously allowed GitHub or email-link
+sign-in, use GoTrue’s [admin user update operation](https://supabase.com/docs/reference/javascript/auth-admin-updateuserbyid)
+to set a password on each affected account’s existing user ID. Perform the
+update with service-role authorization over the private GoTrue connection.
+Verify the password login with the same user ID before upgrading so the user
+retains their memberships and content.
 
 ## Link and code flow
 
@@ -62,6 +74,25 @@ Unknown/disabled-signup email requests have the same success response; delivery 
 
 Sources: [GoTrue v2.196.0](https://github.com/supabase/auth/tree/v2.196.0), [PKCE](https://supabase.com/docs/guides/auth/sessions/pkce-flow), [send-email hook](https://supabase.com/docs/guides/auth/auth-hooks/send-email-hook).
 
+## Optional Orka Cloud dashboard
+
+Set `DASHBOARD_URL` and `DASHBOARD_PROXY_SECRET` on the managed API to
+enable the private Vercel application and advertise its origin as
+`auth.browserOrigin` in `/v2/instance`. The dashboard server uses the shared
+secret over HTTPS to call the allowlisted routes at `/internal/dashboard`.
+The API retains the native password, OTP request, PKCE exchange, refresh, and
+email hook endpoints. It accepts web PKCE returns from the authenticated bridge
+at the configured `/auth/session` route with a fixed-format transaction ID.
+GoTrue remains the OAuth and session authority. Add the dashboard’s
+`/auth/callback` to the existing GitHub App before changing the GoTrue callback.
+
+Desktop invite URLs retain the service origin so existing desktop versions can
+paste them directly. Browser visits redirect to the dashboard, which requests a
+read-only preview and links back to the original service. MCP discovery
+advertises the dashboard’s consent URL while keeping the original API issuer,
+resource, and token endpoints. Existing API browser entry URLs continue to
+work. Self-hosted project invites and optional MCP consent continue to use the API.
+
 ## Project email invitations
 
 The desktop prefers email when `/v2/instance` advertises `invites.email`.
@@ -70,9 +101,9 @@ after the provider accepts delivery. Omitting email retains `{ token, url? }` an
 the existing single-use joining-link flow. Missing delivery configuration falls
 back to joining links; delivery errors preserve that option.
 
-The Go server reuses `EMAIL_PROVIDER`, `PUBLIC_URL`, and either
-`RESEND_API_KEY`/`RESEND_FROM` or `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_FROM`
-and optional `SMTP_USER`/`SMTP_PASSWORD`. The shared Compose definition passes
+The Go server reuses `PUBLIC_URL` and the configured delivery adapter. Managed
+services use `RESEND_API_KEY`/`RESEND_FROM`; self-hosted services use `SMTP_HOST`,
+`SMTP_PORT` (default 587), `SMTP_FROM`, and optional `SMTP_USER`/`SMTP_PASSWORD`. The shared Compose definition passes
 SMTP settings to both GoTrue and the API. Port 465 uses implicit TLS; other ports
 negotiate STARTTLS when available. No new provider keys or desktop secrets are
 introduced, and project invitations do not require magic-link sign-in.

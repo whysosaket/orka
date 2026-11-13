@@ -195,14 +195,19 @@ original domain at the new host and verify sign-in/project sync before reopening
 access. Original account passwords still work; saved plaintext login files are
 not required for recovery. Never restore these commands over a live installation.
 
-## Optional providers and configuration
+## Sign-in and optional configuration
 
-Edit the private `.env`, then run `sh ./orka-server start` to apply changes.
-Password login works without provider keys. To enable GitHub, set
-`GITHUB_ENABLED=true`, its client ID/secret, and register
-`https://<domain>/auth/callback`. To enable email magic links, set
-`MAGIC_LINK_ENABLED=true` and configure SMTP, or select Resend and its signed
-email hook. See [authentication](docs/authentication.md) for exact settings.
+Self-hosted Orka uses email and password sign-in directly through the API.
+Provision accounts with `sh ./orka-server user you@example.com` and share
+each private credential file with its intended user. Public signup is disabled.
+If an existing user previously signed in with GitHub or email links, set a
+password on their existing GoTrue account before upgrading. Preserving its user
+ID preserves project memberships. See [authentication](docs/authentication.md)
+for the operator procedure.
+
+Optional [GitHub repository connections](docs/github-repositories.md) remain
+available for password accounts. Edit the private `.env` and run
+`sh ./orka-server start` to apply settings.
 
 No inference provider is required for sharing instructions, skills, plans,
 sessions or ordinary memory additions/deletions. Memory replacements and

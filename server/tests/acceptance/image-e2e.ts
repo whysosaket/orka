@@ -5,7 +5,6 @@ import {
   mkdtemp,
   mkdir,
   readFile,
-  readdir,
   stat,
   writeFile,
   rm,
@@ -13,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { checkMcpImage } from "./mcp-image-check.js";
+import { reserveImagePorts } from "./image-ports.js";
 
 const [
   edition = "oss",
@@ -21,12 +21,12 @@ const [
 ] = process.argv.slice(2);
 assert.ok(["oss", "managed"].includes(edition));
 const managed = edition === "managed";
-const publicCompose = resolve(composeFile) === resolve("compose.yml");
 const root = await mkdtemp(join(tmpdir(), "orka-image-"));
 const name = `orka-image-${randomBytes(5).toString("hex")}`;
-const port = 54000 + Math.floor(Math.random() * 1000);
+const ports = await reserveImagePorts();
+const { port, mailPort } = ports;
 const base = `http://127.0.0.1:${port}`,
-  mailBase = `http://127.0.0.1:${port + 1000}`;
+  mailBase = `http://127.0.0.1:${mailPort}`;
 const compose = resolve(composeFile),
   override = join(root, "test.json"),
   envFile = join(root, ".env");
@@ -63,12 +63,20 @@ await writeFile(
   JSON.stringify({
     volumes: { "db-data": {}, "blob-data": {} },
     services: {
-      ...(publicCompose
+      ...(!managed
         ? {
             admin: {
               image,
+              entrypoint: ["orka-server", "create-user"],
+              environment: {
+                AUTH_URL: "http://auth:9999",
+                ORKA_OPERATOR_ENV: "/fixtures/operator.env",
+              },
               user: `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
-              volumes: [`${accounts}:/output`],
+              volumes: [
+                `${accounts}:/output`,
+                `${envFile}:/fixtures/operator.env:ro`,
+              ],
             },
           }
         : {}),
@@ -121,10 +129,10 @@ await writeFile(
         environment: {
           API_EXTERNAL_URL: base + "/auth",
           GOTRUE_SITE_URL: base,
-          GOTRUE_EXTERNAL_GITHUB_ENABLED: "true",
+          GOTRUE_EXTERNAL_GITHUB_ENABLED: String(managed),
           GOTRUE_EXTERNAL_GITHUB_CLIENT_ID: "Iv1fixture",
           GOTRUE_EXTERNAL_GITHUB_SECRET: "fixture-secret",
-          GOTRUE_DISABLE_SIGNUP: "false",
+          GOTRUE_DISABLE_SIGNUP: String(!managed),
           GOTRUE_SMTP_HOST: "mail",
           GOTRUE_SMTP_PORT: "1025",
           GOTRUE_SMTP_USER: "",
@@ -145,11 +153,11 @@ await writeFile(
             image: "node:24-bookworm-slim",
             command: ["node", "/capture.mjs"],
             volumes: [`${capture}:/capture.mjs:ro`],
-            ports: [`127.0.0.1:${port + 1000}:8025`],
+            ports: [`127.0.0.1:${mailPort}:8025`],
           }
         : {
             image: "axllent/mailpit:v1.27.8",
-            ports: [`127.0.0.1:${port + 1000}:8025`],
+            ports: [`127.0.0.1:${mailPort}:8025`],
           },
     },
   }),
@@ -219,95 +227,145 @@ const post = (path: string, body: unknown, token?: string) =>
     },
     body: JSON.stringify(body),
   });
-try {
-  dc("up", "-d", "--wait", "api", "mail", ...(managed ? ["hook-proxy"] : []));
-  await wait(async () => (await fetch(base + "/health")).ok);
-  const instance = await (await fetch(base + "/v2/instance")).json();
-  assert.equal(instance.mode, managed ? "cloud" : "self-hosted");
-  assert.equal(instance.auth.github, true);
-  assert.equal(instance.repositories.github, 1);
-  assert.equal(instance.auth.magicLink, true);
-  assert.equal((await fetch(base + "/v2/projects")).status, 401);
-  for (const route of ["/auth/admin/users", "/auth/signup", "/auth/user"])
-    assert.equal((await post(route, {})).status, 404);
-  if (publicCompose) {
-    dc("run", "--rm", "--no-deps", "admin", "operator@example.test");
-    const [name] = await readdir(accounts);
-    const credentialPath = join(accounts, name);
-    assert.equal((await stat(credentialPath)).mode & 0o777, 0o600);
-    const account = JSON.parse(await readFile(credentialPath, "utf8")) as {
-      email: string;
-      password: string;
-    };
-    const login = await post("/auth/token?grant_type=password", account);
-    assert.equal(
-      login.status,
-      200,
-      "Compose-provisioned accounts must be able to sign in",
-    );
-  }
-  const verifier = randomBytes(32).toString("base64url"),
-    challenge = createHash("sha256").update(verifier).digest("base64url");
-  assert.equal(
-    (
-      await post(
-        "/auth/otp?" +
-          new URLSearchParams({
-            redirect_to: "orka://auth/callback?profile=qa-login",
-          }),
-        {
-          email: "owner@example.test",
-          create_user: true,
-          code_challenge: challenge,
-          code_challenge_method: "s256",
-        },
-      )
-    ).status,
-    200,
+type Session = {
+  access_token: string;
+  refresh_token: string;
+  user: { id: string };
+};
+
+async function passwordAccount(email: string) {
+  const filename = email.split("@")[0] + ".json";
+  dc("run", "--rm", "--no-deps", "admin", email, "--output", filename);
+  const credentialPath = join(accounts, filename);
+  assert.equal((await stat(credentialPath)).mode & 0o777, 0o600);
+  const account = JSON.parse(await readFile(credentialPath, "utf8")) as {
+    email: string;
+    password: string;
+  };
+  const login = await post("/auth/token?grant_type=password", account);
+  assert.equal(login.status, 200, "Admin-provisioned account sign-in failed");
+  return {
+    session: (await login.json()) as Session,
+    password: account.password,
+  };
+}
+
+async function emailAccount(
+  address: string,
+  profile?: string,
+  useCode = false,
+): Promise<Session> {
+  const verifier = randomBytes(32).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const redirect =
+    "orka://auth/callback" + (profile ? "?profile=" + profile : "");
+  const requested = await post(
+    "/auth/otp?" + new URLSearchParams({ redirect_to: redirect }),
+    {
+      email: address,
+      create_user: true,
+      code_challenge: challenge,
+      code_challenge_method: "s256",
+    },
   );
+  assert.equal(requested.status, 200);
   const html = await email();
   const emailCode = html.match(/<h1>(\d{6,10})<\/h1>/)?.[1];
   assert.ok(emailCode);
   const link = html.match(/href="([^"]+)"/)?.[1]?.replaceAll("&amp;", "&");
   assert.ok(link);
-  assert.equal(new URL(link).pathname, "/auth/confirm");
-  for (let scan = 0; scan < 2; scan++)
-    assert.equal((await fetch(link)).status, 200);
-  const params = new URL(link).searchParams;
+  const url = new URL(link);
+  assert.equal(url.pathname, "/auth/confirm");
+  for (let scan = 0; scan < 2; scan++) {
+    const preview = await fetch(url);
+    assert.equal(preview.status, 200);
+    assert.equal(preview.headers.get("referrer-policy"), "strict-origin");
+  }
+  assert.equal(
+    (
+      await post("/auth/verify", {
+        email: address,
+        token: emailCode === "000000" ? "999999" : "000000",
+        type: "email",
+      })
+    ).status,
+    403,
+  );
   const confirm = () =>
     fetch(base + "/auth/confirm", {
       method: "POST",
       headers: { Origin: base },
-      body: params,
+      body: url.searchParams,
       redirect: "manual",
     });
+  const verifyCode = () =>
+    post("/auth/verify", { email: address, token: emailCode, type: "email" });
+  if (useCode) {
+    const login = await verifyCode();
+    assert.equal(login.status, 200, await login.clone().text());
+    assert.equal((await confirm()).status, 410);
+    assert.equal((await verifyCode()).status, 403);
+    return (await login.json()) as Session;
+  }
   const verification = await confirm();
   assert.equal(verification.status, 200, await verification.clone().text());
   const handoff = (await verification.text()).match(/href="(orka:[^"]+)"/)?.[1];
   assert.ok(handoff);
   const callback = new URL(handoff.replaceAll("&amp;", "&"));
-  assert.equal(callback.searchParams.get("profile"), "qa-login");
-  assert.ok(callback.searchParams.get("code"));
-  const authCode = callback.searchParams.get("code");
+  assert.equal(callback.searchParams.get("profile"), profile ?? null);
+  const code = callback.searchParams.get("code");
+  assert.ok(code);
+  const exchange = (code_verifier: string) =>
+    post("/auth/token?grant_type=pkce", { auth_code: code, code_verifier });
   assert.equal(
-    (
-      await post("/auth/token?grant_type=pkce", {
-        auth_code: authCode,
-        code_verifier: randomBytes(32).toString("base64url"),
-      })
-    ).status,
+    (await exchange(randomBytes(32).toString("base64url"))).status,
     400,
   );
-  const login = await post("/auth/token?grant_type=pkce", {
-    auth_code: authCode,
-    code_verifier: verifier,
-  });
+  const login = await exchange(verifier);
   assert.equal(login.status, 200, await login.clone().text());
-  const session = (await login.json()) as {
-    access_token: string;
-    refresh_token: string;
-    user: { id: string };
-  };
+  assert.equal((await confirm()).status, 410);
+  assert.equal((await verifyCode()).status, 403);
+  assert.equal((await exchange(verifier)).status, 404);
+  return (await login.json()) as Session;
+}
+
+try {
+  dc("up", "-d", "--wait", "api", "mail", ...(managed ? ["hook-proxy"] : []));
+  await wait(async () => (await fetch(base + "/health")).ok);
+  const instance = await (await fetch(base + "/v2/instance")).json();
+  assert.equal(instance.mode, managed ? "cloud" : "self-hosted");
+  assert.equal(instance.auth.password, true);
+  assert.equal(instance.auth.github, managed);
+  assert.equal(instance.auth.magicLink, managed);
+  assert.equal(instance.auth.emailCode, managed);
+  assert.equal(instance.auth.browserOrigin, undefined);
+  assert.equal(instance.repositories.github, 1);
+  assert.equal((await fetch(base + "/v2/projects")).status, 401);
+  for (const route of ["/auth/admin/users", "/auth/signup", "/auth/user"])
+    assert.equal((await post(route, {})).status, 404);
+
+  let session: Session, other: Session, password: string | undefined;
+  if (managed) {
+    session = await emailAccount("owner@example.test", "qa-login");
+    other = await emailAccount("other@example.test", undefined, true);
+  } else {
+    for (const route of [
+      "/auth/callback",
+      "/auth/confirm",
+      "/auth/verify",
+      "/internal/dashboard/v2/instance",
+    ])
+      assert.equal((await fetch(base + route)).status, 404);
+    for (const route of [
+      "/auth/otp",
+      "/auth/verify",
+      "/auth/token?grant_type=pkce",
+      "/auth/token?grant_type=password&grant_type=pkce",
+    ])
+      assert.equal((await post(route, {})).status, 404);
+    ({ session, password } = await passwordAccount("owner@example.test"));
+    ({ session: other } = await passwordAccount("other@example.test"));
+  }
   const githubStatus = await post(
     "/v2/github/action",
     { action: "status", input: {} },
@@ -315,74 +373,6 @@ try {
   );
   assert.equal(githubStatus.status, 200);
   assert.equal((await githubStatus.json()).connected, false);
-  assert.equal((await confirm()).status, 410);
-  assert.equal(
-    (
-      await post("/auth/verify", {
-        email: "owner@example.test",
-        token: emailCode,
-        type: "email",
-      })
-    ).status,
-    403,
-  );
-  assert.equal(
-    (
-      await post("/auth/token?grant_type=pkce", {
-        auth_code: authCode,
-        code_verifier: verifier,
-      })
-    ).status,
-    404,
-  );
-  const otherVerifier = randomBytes(32).toString("base64url");
-  const second = await post(
-    "/auth/otp?" + new URLSearchParams({ redirect_to: "orka://auth/callback" }),
-    {
-      email: "other@example.test",
-      create_user: true,
-      code_challenge: createHash("sha256")
-        .update(otherVerifier)
-        .digest("base64url"),
-      code_challenge_method: "s256",
-    },
-  );
-  assert.equal(second.status, 200);
-  const otherHtml = await email();
-  const otherEmailCode = otherHtml.match(/<h1>(\d{6,10})<\/h1>/)?.[1];
-  assert.ok(otherEmailCode);
-  const otherLink = otherHtml
-    .match(/href="([^"]+)"/)?.[1]
-    ?.replaceAll("&amp;", "&");
-  assert.ok(otherLink);
-  assert.equal(
-    (
-      await post("/auth/verify", {
-        email: "other@example.test",
-        token: otherEmailCode === "000000" ? "999999" : "000000",
-        type: "email",
-      })
-    ).status,
-    403,
-  );
-  const otherLogin = await post("/auth/verify", {
-    email: "other@example.test",
-    token: otherEmailCode,
-    type: "email",
-  });
-  assert.equal(
-    (
-      await fetch(base + "/auth/confirm", {
-        method: "POST",
-        headers: { Origin: base },
-        body: new URL(otherLink).searchParams,
-        redirect: "manual",
-      })
-    ).status,
-    410,
-  );
-  assert.equal(otherLogin.status, 200, await otherLogin.clone().text());
-  const other = (await otherLogin.json()) as { access_token: string };
   const projectResponse = await post(
     "/v2/projects",
     { name: "Image parity" },
@@ -540,7 +530,12 @@ try {
     ).status,
     404, // A member cannot read another person's unpublished upload.
   );
-  await checkMcpImage(base, project, session.access_token, email);
+  await checkMcpImage(
+    base,
+    project,
+    session.access_token,
+    managed ? { email } : { password: password! },
+  );
   assert.equal(
     (
       await post("/auth/token?grant_type=refresh_token", {
@@ -556,43 +551,47 @@ try {
         provider: "github",
         redirect_to: "orka://auth/callback",
         code_challenge_method: "s256",
-        code_challenge: challenge,
+        code_challenge: randomBytes(32).toString("base64url"),
       }),
     { redirect: "manual" },
   );
-  assert.equal(authorize.status, 302);
-  assert.equal(
-    new URL(authorize.headers.get("location")!).hostname,
-    "github.com",
-  );
-  assert.ok(
-    new URL(authorize.headers.get("location")!).searchParams.get("state"),
-  );
-  // GoTrue's IP limiter must see a server-derived identity even when callers spoof headers.
-  let throttled = false;
-  for (let attempt = 0; attempt < 70; attempt++) {
-    const response = await fetch(base + "/auth/verify", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Orka-Client-IP": `fake-${attempt}`,
-        "X-Forwarded-For": `192.0.2.${attempt + 1}`,
-      },
-      body: JSON.stringify({
-        email: "other@example.test",
-        token: otherEmailCode === "000000" ? "999999" : "000000",
-        type: "email",
-      }),
-    });
-    if (response.status === 429) {
-      throttled = true;
-      break;
+  if (managed) {
+    assert.equal(authorize.status, 302);
+    assert.equal(
+      new URL(authorize.headers.get("location")!).hostname,
+      "github.com",
+    );
+    assert.ok(
+      new URL(authorize.headers.get("location")!).searchParams.get("state"),
+    );
+    // GoTrue's IP limiter must see a server-derived identity even when callers spoof headers.
+    let throttled = false;
+    for (let attempt = 0; attempt < 70; attempt++) {
+      const response = await fetch(base + "/auth/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Orka-Client-IP": `fake-${attempt}`,
+          "X-Forwarded-For": `192.0.2.${attempt + 1}`,
+        },
+        body: JSON.stringify({
+          email: "other@example.test",
+          token: "000000",
+          type: "email",
+        }),
+      });
+      if (response.status === 429) {
+        throttled = true;
+        break;
+      }
     }
+    assert.ok(
+      throttled,
+      "Verification attempts must be rate limited even with forged forwarding headers",
+    );
+  } else {
+    assert.equal(authorize.status, 404);
   }
-  assert.ok(
-    throttled,
-    "Verification attempts must be rate limited even with forged forwarding headers",
-  );
   // Backup and restore run against the final image and validate every stored blob.
   for (const script of ["backup.sh", "restore-check.sh"]) {
     const result = spawnSync(
@@ -622,12 +621,16 @@ try {
     data,
   );
   console.log(
-    `Passed ${edition} image: actual GoTrue, ${managed ? "signed Resend hook/SDK" : "SMTP"}, desktop email link and code, scanner-safe PKCE and browser invites, replay/interception rejection, GitHub redirect, session refresh, membership/blob isolation, MCP email-code consent and all seven tools, handoff, token refresh/revocation, coordinated backup/restore.`,
+    `Passed ${edition} image: actual GoTrue, ${managed ? "signed Resend hook, scanner-safe desktop PKCE and email code, GitHub redirect" : "admin-provisioned password-only sign-in"}, project invites, session refresh, membership/blob isolation, MCP consent and all seven tools, handoff, token refresh/revocation, coordinated backup/restore.`,
   );
 } finally {
   try {
     dc("down", "--volumes", "--remove-orphans");
   } finally {
-    await rm(root, { recursive: true, force: true });
+    try {
+      await rm(root, { recursive: true, force: true });
+    } finally {
+      ports.release();
+    }
   }
 }

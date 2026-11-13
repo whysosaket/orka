@@ -732,3 +732,132 @@ async fn local_library_rejects_stale_account_and_service_before_discovery() {
         .is_empty());
     assert!(f.outbox().is_empty());
 }
+
+#[test]
+fn plugin_discovery_preserves_incomplete_library_cache_without_previewing_stale_resources() {
+    for failure in ["missing-provider", "corrupt-history"] {
+        let mut f = Fixture::new();
+        prepare(&mut f);
+        let sessions = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+        let plans = local_resources::catalog(&f.db, &f.project, "plan").unwrap();
+        let session_id = sessions["resources"][0]["resourceId"].as_str().unwrap();
+        let plan_id = plans["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|resource| {
+                resource["logicalPath"]
+                    .as_str()
+                    .is_some_and(|path| path.contains("/sessions/"))
+            })
+            .unwrap()["resourceId"]
+            .as_str()
+            .unwrap();
+        let directory = native::codex_home().unwrap().join("sessions");
+        if failure == "missing-provider" {
+            fs::rename(&directory, f._home.path().join("missing-history")).unwrap();
+        } else {
+            let path = fs::read_dir(&directory)
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .path();
+            fs::write(path, "Incomplete native history\n").unwrap();
+        }
+        assert!(
+            indexer::discover(&f.db, &f.project, "session")
+                .unwrap()
+                .is_empty(),
+            "{failure}"
+        );
+        let fresh_plans = indexer::discover(&f.db, &f.project, "plan").unwrap();
+        assert_eq!(
+            fresh_plans.len(),
+            1,
+            "the current file plan remains discoverable"
+        );
+        assert_eq!(
+            fresh_plans[0]["resource"]["logicalPath"],
+            "codex/files/feature.md"
+        );
+        for (kind, id) in [("session", session_id), ("plan", plan_id)] {
+            assert!(
+                crate::selective_sharing::preview(
+                    &f.db,
+                    &f.project,
+                    &json!({"kind":kind,"resourceId":id})
+                )
+                .is_err(),
+                "{failure}: {kind}"
+            );
+            assert!(
+                !db::rows(
+                    &f.db,
+                    "SELECT value FROM local_resources WHERE id=?",
+                    &[&id]
+                )
+                .unwrap()
+                .is_empty(),
+                "private reading cache must survive plugin discovery"
+            );
+        }
+        for (kind, before) in [("session", &sessions), ("plan", &plans)] {
+            let after = local_resources::catalog(&f.db, &f.project, kind).unwrap();
+            assert_eq!(after["resources"], before["resources"], "{failure}: {kind}");
+            assert!(!after["errors"].as_array().unwrap().is_empty());
+        }
+        assert!(f.outbox().is_empty());
+        assert!(f.resources().is_empty());
+        assert!(db::rows(&f.db, "SELECT value FROM bindings", &[])
+            .unwrap()
+            .is_empty());
+    }
+}
+
+#[test]
+fn plugin_discovery_returns_only_healthy_current_sessions_beside_incomplete_cached_history() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    let previous = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    let old_id = previous["resources"][0]["resourceId"].as_str().unwrap();
+    let directory = native::codex_home().unwrap().join("sessions");
+    let old_path = fs::read_dir(&directory)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let mut records = native::complete_records(&fs::read(&old_path).unwrap()).unwrap();
+    let native_id = uuid::Uuid::new_v4().to_string();
+    records[0]["payload"]["id"] = json!(native_id);
+    let fresh_path = directory.join(format!("rollout-{native_id}.jsonl"));
+    fs::write(&fresh_path, native::encode(&records)).unwrap();
+    fs::write(&old_path, "Incomplete old native history\n").unwrap();
+    let discovered = indexer::discover(&f.db, &f.project, "session").unwrap();
+    assert_eq!(discovered.len(), 1);
+    assert_eq!(discovered[0]["nativeId"], native_id);
+    assert_ne!(discovered[0]["resource"]["resourceId"], old_id);
+    let cached = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    assert_eq!(cached["resources"].as_array().unwrap().len(), 2);
+    assert!(cached["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|resource| resource["resourceId"] == old_id));
+    assert!(!cached["errors"].as_array().unwrap().is_empty());
+    fs::remove_file(old_path).unwrap();
+    let complete = indexer::discover(&f.db, &f.project, "session").unwrap();
+    assert_eq!(complete.len(), 1);
+    assert!(
+        db::rows(
+            &f.db,
+            "SELECT value FROM local_resources WHERE id=?",
+            &[&old_id]
+        )
+        .unwrap()
+        .is_empty(),
+        "a complete scan still retires genuinely removed resources"
+    );
+    assert!(f.outbox().is_empty());
+}

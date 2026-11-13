@@ -25,11 +25,19 @@ case "$*" in
   *'--entrypoint sh '*'/run/previous/image /run/previous/deploy'*)
     [[ "$*" = *"--network none --user 0"* && "$*" = *"/releases/"* ]]
     chmod 600 "$TEST_UNREADABLE_IMAGE" ;;
+  *'--entrypoint sh '*'/run/backups '*)
+    [[ "$*" = *'--network none --user 0'* ]]
+    backup_name=${!#}
+    [[ "$backup_name" =~ ^[a-f0-9]{40}\.[a-zA-Z0-9]{8}$ ]]
+    # Simulate root's directory access without changing any shared blob modes.
+    chmod u+rwx "$TEST_BACKUP_ROOT/$backup_name"
+    rm -rf --one-file-system -- "$TEST_BACKUP_ROOT/$backup_name" ;;
   'compose config '*) [[ ${TEST_FAILURE:-} != config ]] ;;
   'compose up '*)
     [[ "$ORKA_IMAGE" = ghcr.io/whysosaket/orka-api@sha256:* ]]
     [[ "$COMPOSE_PROJECT_NAME" = orka-managed ]]
-    [[ -f "$COMPOSE_ENV_FILES" && "$COMPOSE_FILE" = *"/deploy/cloud/compose.yml" ]]
+    [[ -f "$COMPOSE_ENV_FILES" ]]
+    [[ "$COMPOSE_FILE" = *"/deploy/cloud/compose.yml" ]]
     [[ ${TEST_FAILURE:-} != up ]] ;;
   *"pg_database_size('orka')"*) if [[ ${TEST_FAILURE:-} = space ]]; then echo 1000000000000; else echo 100; fi ;;
   'compose exec -T db psql '*) cat >/dev/null; [[ ${TEST_FAILURE:-} != backfill ]] ;;
@@ -61,6 +69,7 @@ new_root() {
   touch "$root/.env"
   chmod 600 "$root/.env"
   export TEST_LOG="$root/events"
+  export TEST_BACKUP_ROOT="$root/backups"
 }
 deploy() {
   : > "$TEST_LOG"
@@ -71,26 +80,39 @@ check_credentials_removed() {
   if grep -q fixture-token "$root/output"; then exit 1; fi
 }
 new_root happy
+first_backup="$root/backups/$(printf 'c%.0s' {1..40}).ABC12345"
+mkdir "$first_backup"
 deploy
+[[ -d "$first_backup" ]]
 [[ $(readlink "$root/active") = "$(readlink "$root/current")" ]]
 if grep -q '^backup$' "$TEST_LOG"; then exit 1; fi
 check_credentials_removed
 initial=$(readlink "$root/current")
 deploy
 [[ $(readlink "$root/current") != "$initial" ]]
+[[ ! -e "$first_backup" ]]
 [[ $(sed -n '/^backup$/,/^compose up/p' "$TEST_LOG" | head -2) = $'backup\nrestore' ]]
+[[ $(sed -n '/verify-deployment /,$p' "$TEST_LOG" | grep -c '/run/backups ') -eq 1 ]]
 check_credentials_removed
 previous=$(readlink "$root/current")
+previous_backup="$root/backups/$(basename "$previous")"
+[[ -d "$previous_backup" ]]
+chmod 000 "$previous_backup"
 export TEST_UNREADABLE_IMAGE="$previous/image"
 chmod 000 "$TEST_UNREADABLE_IMAGE"
 deploy
 grep -q -- 'chown -h ' "$TEST_LOG"
 [[ -r "$TEST_UNREADABLE_IMAGE" && $(readlink "$root/current") != "$previous" ]]
+[[ ! -e "$previous_backup" ]]
+[[ -d "$root/backups/$(basename "$(readlink "$root/current")")" ]]
 check_credentials_removed
 for failure in revision config space backup restore up backfill health; do
   export TEST_FAILURE="$failure"
   successful=$(readlink "$root/current")
+  backups_before=("$root/backups/"*)
   if deploy; then echo "Expected failure: $failure" >&2; exit 1; fi
+  for previous_backup in "${backups_before[@]}"; do [[ -d "$previous_backup" ]]; done
+  if grep -q '/run/backups ' "$TEST_LOG"; then exit 1; fi
   [[ $(readlink "$root/current") = "$successful" ]]
   if [[ "$failure" != up && "$failure" != backfill && "$failure" != health ]]; then
     if grep -q '^compose up ' "$TEST_LOG"; then exit 1; fi
@@ -100,6 +122,10 @@ for failure in revision config space backup restore up backfill health; do
   if [[ "$failure" = space ]] && grep -q '^backup$' "$TEST_LOG"; then exit 1; fi
   check_credentials_removed
 done
+unset TEST_FAILURE
+deploy
+[[ $(find "$root/backups" -mindepth 1 -maxdepth 1 -type d | wc -l) -eq 1 ]]
+[[ -d "$root/backups/$(basename "$(readlink "$root/current")")" ]]
 for failure in mount existing existing-data; do
   new_root "$failure"
   export TEST_FAILURE="$failure"
@@ -108,6 +134,27 @@ for failure in mount existing existing-data; do
   if grep -q '^compose up ' "$TEST_LOG"; then exit 1; fi
 done
 unset TEST_FAILURE
+new_root symlinked-backups
+mkdir "$workspace/managed-backups" "$workspace/live-blobs"
+rmdir "$root/backups"
+ln -s "$workspace/managed-backups" "$root/backups"
+deploy
+deploy
+previous_backup="$root/backups/$(basename "$(readlink "$root/current")")"
+printf 'live blob\n' > "$workspace/live-blobs/blob"
+ln "$workspace/live-blobs/blob" "$previous_backup/blob"
+ln -s "$workspace/live-blobs" "$previous_backup/live-link"
+printf 'private config\n' > "$root/.env"
+mkdir "$root/backups/manual-snapshot"
+touch "$root/backups/operator-notes"
+backup_link="$root/backups/$(printf 'c%.0s' {1..40}).ABC12345"
+ln -s "$workspace/live-blobs" "$backup_link"
+deploy
+[[ ! -e "$previous_backup" ]]
+[[ -d "$root/backups/$(basename "$(readlink "$root/current")")" ]]
+[[ $(find -H "$root/backups" -mindepth 1 -maxdepth 1 -type d | wc -l) -eq 2 ]]
+[[ -d "$root/backups/manual-snapshot" && -f "$root/backups/operator-notes" && -L "$backup_link" ]]
+[[ $(cat "$workspace/live-blobs/blob") = 'live blob' && $(cat "$root/.env") = 'private config' ]]
 new_root outside-release
 mkdir "$workspace/unrelated"
 ln -s "$workspace/unrelated" "$root/active"
@@ -118,4 +165,12 @@ new_root permissions
 chmod 644 "$root/.env"
 if deploy; then echo 'Expected private env check to fail' >&2; exit 1; fi
 [[ ! -s "$TEST_LOG" ]]
+new_root dashboard
+printf '%s\n' 'DASHBOARD_URL=https://dashboard.example.test' > "$root/.env"
+deploy
+[[ $(readlink "$root/active") = "$(readlink "$root/current")" ]]
+check_credentials_removed
+: > "$root/.env"
+deploy
+[[ $(readlink "$root/active") = "$(readlink "$root/current")" ]]
 echo 'Managed deployment lifecycle checks passed.'

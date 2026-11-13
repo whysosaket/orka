@@ -143,6 +143,16 @@ func (s *Store) governance(q *Queries, user, action string, input Object) any {
 			next = field(items[len(items)-1], "id")
 		}
 		return Object{"items": items, "next": next}
+	case "installation":
+		v := q.Parse(input, scopeShape(map[string]Field{"resourceId": uuidField(), "expectedRevision": intField(1)}))
+		resource := s.resource(q, project, text(v["resourceId"]))
+		if !q.Require(resource != nil && text(resource["kind"]) == "skill" && !flag(resource["deleted"]) && s.canRead(q, user, project, text(v["resourceId"])), 404, "Skill unavailable") {
+			return nil
+		}
+		if !q.Require(number(resource["revision"]) == number(v["expectedRevision"]), 409, "Skill changed; refresh before installing") {
+			return nil
+		}
+		return Object{"resource": resource, "access": s.access(q, user, project, resource)}
 	case "catalog":
 		q.Parse(input, scopeShape(nil))
 		members := values(q.Rows(`select m.user_id as id,m.role,coalesce(profile.display_name,p.label,'Member ' || left(m.user_id::text,8)) as name,p.email,profile.display_name as "displayName",profile.avatar_url as "avatarUrl",profile.avatar_data as "avatarData" from orka.members m left join orka.env_profiles p on p.user_id=m.user_id left join orka.profiles profile on profile.user_id=m.user_id where m.project_id=$1 order by m.role,name,m.user_id`, project))

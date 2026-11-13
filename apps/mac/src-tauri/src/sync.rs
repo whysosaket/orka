@@ -364,6 +364,39 @@ fn automatic_skill_binding(
     Ok(binding)
 }
 
+fn guard_unbound_destinations(
+    binding: &Value,
+    resource: &Value,
+    root: &Path,
+    paths: &[PathBuf],
+) -> Result<()> {
+    let unbound: Vec<_> = paths
+        .iter()
+        .filter(|path| {
+            !binding["paths"]
+                .as_array()
+                .is_some_and(|mapped| mapped.contains(&json!(path)))
+        })
+        .collect();
+    if unbound.is_empty() {
+        return Ok(());
+    }
+    let incoming = indexer::manifest_hash(&resource["files"]);
+    let empty = indexer::manifest_hash(&json!([]));
+    let current = live_hash(
+        &json!({"paths":unbound,"base":resource}),
+        resource["kind"].as_str().ok_or("Missing kind")?,
+        root,
+    )?;
+    if current
+        .iter()
+        .any(|hash| hash != &empty && hash != &incoming)
+    {
+        return Err("Unindexed local files preserved; incoming version staged. Review or index the local files in Orka before applying this update.".into());
+    }
+    Ok(())
+}
+
 pub fn materialize(db: &rusqlite::Connection, project: &Value, resource: &Value) -> Result<()> {
     let scoped;
     let project = if project["sources"].is_array() && !project["sourceId"].is_string() {
@@ -595,6 +628,7 @@ pub fn materialize(db: &rusqlite::Connection, project: &Value, resource: &Value)
                 root.join(".agents/skills").join(&name),
                 root.join(".claude/skills").join(&name),
             ];
+            guard_unbound_destinations(&b, resource, &root, &paths)?;
             packages::install_mirrors(db, project, id, &paths, files)?;
             paths
         } else if kind == "plan" {
@@ -607,6 +641,7 @@ pub fn materialize(db: &rusqlite::Connection, project: &Value, resource: &Value)
                 resource["source"].as_str().ok_or("Missing plan source")?,
                 &path,
             )?;
+            guard_unbound_destinations(&b, resource, &root, std::slice::from_ref(&path))?;
             fs::create_dir_all(&base).map_err(|e| e.to_string())?;
             packages::write_file(&base, &path, files.first().ok_or("Missing plan file")?)?;
             vec![path]
@@ -622,6 +657,7 @@ pub fn materialize(db: &rusqlite::Connection, project: &Value, resource: &Value)
             } else {
                 project_memory(project, resource)?
             };
+            guard_unbound_destinations(&b, resource, &root, std::slice::from_ref(&path))?;
             fs::create_dir_all(&base).map_err(|e| e.to_string())?;
             packages::write_file(&base, &path, files.first().ok_or("Missing memory file")?)?;
             vec![path]
@@ -751,7 +787,7 @@ pub async fn once() -> Result<()> {
 }
 pub(crate) async fn onboarding_once(scope: Option<(&str, &str)>) -> Result<()> {
     // The current onboarding job already owns its retry lock.
-    match workspace_cycle(Ok(()), scope).await? {
+    match workspace_cycle(Ok(()), scope, None).await? {
         WorkspaceSync::Complete(_) => Ok(()),
         WorkspaceSync::Yielded => Err("A sync or project operation is in progress".into()),
     }
@@ -775,6 +811,7 @@ async fn cycle() -> Result<bool> {
             }
         }),
         None,
+        None,
     )
     .await
     .map(|outcome| match outcome {
@@ -785,6 +822,7 @@ async fn cycle() -> Result<bool> {
 async fn workspace_cycle(
     preparation: Result<()>,
     scope: Option<(&str, &str)>,
+    project_filter: Option<&str>,
 ) -> Result<WorkspaceSync> {
     let _lock = crate::projects::lock()?;
     let mut db = db::open()?;
@@ -795,24 +833,36 @@ async fn workspace_cycle(
             return Err("Account or service changed. Reopen onboarding.".into());
         }
     }
-    db::set(&db, "syncHandledRequest", &db::get(&db, "syncRequest")?)?;
+    if let Some(project) = project_filter {
+        crate::projects::active(&db, project)?;
+    }
+    if project_filter.is_none() {
+        db::set(&db, "syncHandledRequest", &db::get(&db, "syncRequest")?)?;
+        let _ = crate::account_profile::flush_pending().await;
+    }
     progress(&db, "Preparing sync", None, 0, None)?;
-    let _ = crate::account_profile::flush_pending().await;
     let result = match preparation {
-        Ok(()) => sync_workspace(&mut db, &owner).await,
+        Ok(()) => sync_workspace(&mut db, &owner, project_filter).await,
         Err(error) => Err(error),
     };
-    let previous = db::get(&db, "sync")?;
+    let status_key = project_filter
+        .map(|id| format!("plugin-sync:{id}"))
+        .unwrap_or_else(|| "sync".into());
+    let previous = db::get(&db, &status_key)?;
     let status = match &result {
-        Ok(WorkspaceSync::Complete(_)) => json!({"online":true,"lastSync":db::now()}),
+        Ok(WorkspaceSync::Complete(_)) => {
+            json!({"online":true,"lastSync":db::now(),"updatedAt":db::now()})
+        }
         Ok(WorkspaceSync::Yielded) => previous.clone(),
-        Err(error) => json!({"online":false,"lastSync":previous["lastSync"],"error":error}),
+        Err(error) => {
+            json!({"online":false,"lastSync":previous["lastSync"],"error":error,"updatedAt":db::now()})
+        }
     };
     let tx = db.transaction().map_err(|e| e.to_string())?;
-    db::set(&tx, "sync", &status)?;
+    db::set(&tx, &status_key, &status)?;
     db::set(&tx, "syncProgress", &Value::Null)?;
     tx.commit().map_err(|e| e.to_string())?;
-    if !matches!(&result, Ok(WorkspaceSync::Yielded)) {
+    if project_filter.is_none() && !matches!(&result, Ok(WorkspaceSync::Yielded)) {
         let _ = crate::onboarding::reconcile_workspace_sync(
             &db,
             result.as_ref().err().map(String::as_str),
@@ -821,18 +871,74 @@ async fn workspace_cycle(
     result
 }
 
-async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<WorkspaceSync> {
+pub(crate) async fn plugin_once(owner: &str, origin: &str, project: &str) -> Result<()> {
+    match workspace_cycle(Ok(()), Some((owner, origin)), Some(project)).await? {
+        WorkspaceSync::Complete(_) => Ok(()),
+        WorkspaceSync::Yielded => {
+            Err("A foreground project operation is in progress; retry retained".into())
+        }
+    }
+}
+
+fn preflight_project(db: &rusqlite::Connection, project: &Value, retry_only: bool) -> Result<()> {
+    if !retry_only {
+        let mut discovery = project.clone();
+        discovery["deferAutomaticSharing"] = json!(true);
+        return indexer::scan_with_progress(db, &discovery);
+    }
+    let mut failures = Vec::new();
+    for source in crate::sources::views(project) {
+        if source["path"].is_null() {
+            continue;
+        }
+        let checked = crate::sources::validate(&source);
+        if let Err(error) = &checked {
+            failures.push(error.clone());
+        }
+        record_result(
+            db,
+            &format!(
+                "{}:source:{}",
+                project["id"].as_str().unwrap_or(""),
+                source["sourceId"].as_str().unwrap_or("default")
+            ),
+            checked,
+        )?;
+    }
+    if !project["sources"].is_array() && !failures.is_empty() {
+        return Err(failures.join("; "));
+    }
+    Ok(())
+}
+
+async fn sync_workspace(
+    db: &mut rusqlite::Connection,
+    owner: &str,
+    project_filter: Option<&str>,
+) -> Result<WorkspaceSync> {
     if crate::projects::foreground_waiting()? {
         return Ok(WorkspaceSync::Yielded);
     }
-    crate::repair::workspace(db)?;
-    packages::recover_installations(db)?;
+    if let Some(id) = project_filter {
+        let project = crate::governance::project(db, id)?;
+        crate::governance::block_legacy_retry(db, &project)?;
+        for source in crate::sources::views(&project) {
+            crate::repair::project_state(db, &source)?;
+        }
+        packages::recover_project_installations(db, &project)?;
+    } else {
+        crate::repair::workspace(db)?;
+        packages::recover_installations(db)?;
+    }
     let device = db::device(db)?;
     for mut b in db::rows(
         db,
         &format!("SELECT value FROM bindings WHERE json_extract(value,'$.needsCopy')=1 AND project IN (SELECT id FROM projects WHERE {})",crate::projects::ACTIVE),
         &[],
     )? {
+        if project_filter.is_some_and(|id| b["base"]["projectId"] != id) {
+            continue;
+        }
         if b["copyRequest"].is_null() {
             let id = uuid::Uuid::new_v4().to_string();
             let r = b["base"].clone();
@@ -860,8 +966,13 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             crate::projects::ACTIVE
         ),
         &[],
-    )?;
-    crate::history::clear_missing_session_errors(db)?;
+    )?
+    .into_iter()
+    .filter(|p| project_filter.is_none_or(|id| p["id"] == id))
+    .collect::<Vec<_>>();
+    if project_filter.is_none() {
+        crate::history::clear_missing_session_errors(db)?;
+    }
     for p in &local {
         if crate::projects::foreground_waiting()? {
             return Ok(WorkspaceSync::Yielded);
@@ -873,15 +984,15 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             0,
             None,
         )?;
-        let mut discovery = p.clone();
-        discovery["deferAutomaticSharing"] = json!(true);
-        match indexer::scan_with_progress(db, &discovery) {
+        match preflight_project(db, p, project_filter.is_some()) {
             Ok(()) => {
-                db::set(
-                    db,
-                    &format!("firstScan:{}", p["id"].as_str().unwrap_or("")),
-                    &json!(db::now()),
-                )?;
+                if project_filter.is_none() {
+                    db::set(
+                        db,
+                        &format!("firstScan:{}", p["id"].as_str().unwrap_or("")),
+                        &json!(db::now()),
+                    )?;
+                }
                 db.execute("DELETE FROM errors WHERE source=?", [p["id"].as_str()])
                     .map_err(|e| e.to_string())?;
             }
@@ -912,7 +1023,10 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             crate::projects::ACTIVE
         ),
         &[],
-    )?;
+    )?
+    .into_iter()
+    .filter(|p| project_filter.is_none_or(|id| p["id"] == id))
+    .collect::<Vec<_>>();
     let mut blocked_projects = HashSet::new();
     for p in &local {
         if crate::projects::foreground_waiting()? {
@@ -920,9 +1034,13 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         }
         if p["governed"] == true {
             let id = p["id"].as_str().ok_or("Missing project")?;
-            let result = async {
+            let result: Result<()> = async {
                 let local = crate::governance::project(db, id)?;
-                crate::governance::localize_outbox(db, &local)?;
+                if project_filter.is_none() {
+                    crate::governance::localize_outbox(db, &local)?;
+                } else {
+                    crate::governance::block_legacy_retry(db, &local)?;
+                }
                 let catalog = api_as(
                     owner,
                     "POST",
@@ -931,7 +1049,11 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
                 )
                 .await?;
                 db::set(db, &format!("governance:{id}"), &catalog)?;
-                crate::context_sharing::approve_own_pending(db, owner, &local, &catalog).await
+                if project_filter.is_none() {
+                    crate::context_sharing::approve_own_pending(db, owner, &local, &catalog)
+                        .await?;
+                }
+                Ok(())
             }
             .await;
             if result.as_ref().is_err_and(|e| service_error(e)) {
@@ -1002,7 +1124,9 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             if q["path"] == crate::selective_sharing::QUEUE_PATH {
                 return crate::selective_sharing::send(db, owner, q).await;
             }
-            if input["resource"]["files"].is_array() {
+            if q["path"] == crate::context_sharing::QUEUE_PATH {
+                crate::context_sharing::upload(db, owner, q).await?;
+            } else if input["resource"]["files"].is_array() {
                 crate::repair::upload(
                     owner,
                     q["project"].as_str().ok_or("Missing project")?,
@@ -1123,9 +1247,7 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
             None,
         )?;
         let project = p["id"].as_str().ok_or("Missing project")?;
-        let mut discovery = p.clone();
-        discovery["deferAutomaticSharing"] = json!(true);
-        let scan = indexer::scan_with_progress(db, &discovery);
+        let scan = preflight_project(db, p, project_filter.is_some());
         let scanned = scan.is_ok();
         record_result(db, project, scan)?;
         // A failed project preflight must not run permission-reset filesystem
@@ -1153,11 +1275,13 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         }
         // Prepare unsent context only after pending approvals and accepted
         // revisions have arrived; exact-base resources must not freeze early.
-        record_result(
-            db,
-            &format!("{project}:sharing"),
-            crate::context_sharing::queue_waiting(db, p),
-        )?;
+        if project_filter.is_none() {
+            record_result(
+                db,
+                &format!("{project}:sharing"),
+                crate::context_sharing::queue_waiting(db, p),
+            )?;
+        }
         if db::get(&db::open()?, "user")? != owner {
             return Err("Account changed; sync will restart with its own cache".into());
         }
@@ -1222,7 +1346,11 @@ async fn sync_workspace(db: &mut rusqlite::Connection, owner: &str) -> Result<Wo
         )?;
     }
     progress(db, "Finishing sync", None, 0, None)?;
-    crate::codex_skills::retry(db)?;
+    if let Some(project) = project_filter {
+        crate::codex_skills::retry_project(db, project)?;
+    } else {
+        crate::codex_skills::retry(db)?;
+    }
     let devices = api_as(owner, "GET", "/v2/devices", None).await?;
     crate::device_metadata::update_devices(db, &devices)?;
     let has_errors: bool = db

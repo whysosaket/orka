@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { accessRule, classRule } from "./governance.js";
+import { rolePolicies } from "./role-policies.js";
 const id = z.uuid();
 const project = {
   projectId: id.describe("Exact project ID returned by list_projects."),
@@ -24,9 +26,33 @@ const source = {
   expectedRevision: z.number().int().positive().optional(),
 };
 
-function define(name: string, description: string, schema: z.ZodType) {
-  return { name, description, schema };
+function define(
+  name: string,
+  description: string,
+  schema: z.ZodType,
+  scope = "orka.read",
+) {
+  return { name, description, schema, scope };
 }
+const revision = z.number().int().positive();
+const pageCursor = z
+  .object({ updatedAt: z.iso.datetime(), projectId: id, resourceId: id })
+  .strict();
+const catalog = {
+  projectId: id.optional(),
+  sourceId,
+  query: z.string().max(200).optional(),
+  cursor: pageCursor.optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+};
+const resource = { ...project, resourceId: id };
+const operation = {
+  ...project,
+  requestId: id.describe(
+    "Stable retry ID. Reuse only with identical arguments.",
+  ),
+};
+
 export const orkaTools = [
   define(
     "list_projects",
@@ -108,5 +134,161 @@ export const orkaTools = [
           .optional(),
       })
       .strict(),
+  ),
+  define(
+    "search_resources",
+    "Search accessible accepted shared memories, instructions, skills, plans and readable sessions across projects and repository sources. Private local files and ENV are excluded. Follow nextCursor even when a page has no matches.",
+    z
+      .object({
+        ...catalog,
+        kinds: z
+          .array(z.enum(["memory", "instructions", "skill", "plan", "session"]))
+          .min(1)
+          .max(5)
+          .optional(),
+      })
+      .strict(),
+  ),
+  define(
+    "get_resource_history",
+    "List accessible resource revisions with author and timestamp. Current resource and historical source permissions are checked for every revision.",
+    z
+      .object({
+        ...resource,
+        beforeRevision: revision.optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+      })
+      .strict(),
+  ),
+  define(
+    "compare_revisions",
+    "Compare two accessible revisions. Returns changed file manifests and paginated before/after text for one file; session text excludes setup, analysis and tools.",
+    z
+      .object({
+        ...resource,
+        fromRevision: revision,
+        toRevision: revision,
+        file: z.string().max(1024).optional(),
+        offset: offset.optional(),
+      })
+      .strict(),
+  ),
+  define(
+    "list_skills",
+    "Discover accessible shared skill packages across projects and repositories. Returns complete manifests, executable flags and source revisions; installation on a machine uses the local install_skill tool.",
+    z.object(catalog).strict(),
+  ),
+  define(
+    "create_memory",
+    "Save new project or repository knowledge. Preserves project permissions and returns published or approval_required. A stable requestId prevents duplicate retries.",
+    z
+      .object({
+        ...operation,
+        sourceId,
+        title: z.string().trim().min(1).max(160),
+        text: z.string().min(1).max(200000),
+        scope: z.string().max(512).optional(),
+        contextSources: z.array(id).max(100).optional(),
+      })
+      .strict(),
+    "orka.write",
+  ),
+  define(
+    "update_plan",
+    "Update an existing plan using its expectedRevision. Preserves identity and authorization, rejects stale versions, and returns published or approval_required.",
+    z
+      .object({
+        ...operation,
+        resourceId: id,
+        expectedRevision: revision,
+        text: z.string().min(1).max(200000),
+        title: z.string().trim().min(1).max(256).optional(),
+      })
+      .strict(),
+    "orka.write",
+  ),
+  define(
+    "get_permissions",
+    "Inspect your effective project, member or resource permissions. Only an owner may inspect another member's effective permissions.",
+    z
+      .object({
+        ...project,
+        memberId: id.optional(),
+        resourceId: id.optional(),
+      })
+      .strict(),
+  ),
+  define(
+    "update_permissions",
+    "Change project, member or resource access within your authority. Requires current expectedPolicyRevision and a stable requestId. Uses Orka's existing permission workflow.",
+    z
+      .object({
+        ...operation,
+        expectedPolicyRevision: offset,
+        action: z.enum([
+          "policy",
+          "access",
+          "inherit",
+          "member-role",
+          "save-role-policy",
+        ]),
+        memberId: id.optional(),
+        resourceId: id.optional(),
+        category: z
+          .enum(["instructions", "memory", "skill", "plan", "session"])
+          .optional(),
+        rule: classRule.optional(),
+        access: accessRule.optional(),
+        role: z.enum(["admin", "member"]).optional(),
+        policies: rolePolicies.optional(),
+      })
+      .strict(),
+    "orka.manage",
+  ),
+  define(
+    "list_requests",
+    "List accessible access requests and proposed changes awaiting review, filtered by current permissions. ENV requests are excluded.",
+    z
+      .object({
+        ...project,
+        status: z.enum(["pending", "approved", "rejected", "stale"]).optional(),
+        offset: offset.optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+      })
+      .strict(),
+  ),
+  define(
+    "review_request",
+    "Inspect a request before approving or rejecting it. Decisions require its exact previewHash and current expectedPolicyRevision, and follow Orka's authorization and stale-request rules. ENV requests are excluded.",
+    z
+      .object({
+        ...project,
+        requestId: id,
+        offset: offset.optional(),
+        decision: z.enum(["approve", "reject"]).optional(),
+        previewHash: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .optional(),
+        expectedPolicyRevision: offset.optional(),
+      })
+      .strict(),
+    "orka.manage",
+  ),
+  define(
+    "resolve_conflict",
+    "Inspect accessible session conflicts or apply an explicitly selected current/candidate version. Mutations require conflictId, expectedRevision and a stable requestId; permissions and session ownership remain enforced.",
+    z
+      .object({
+        ...resource,
+        action: z.enum(["inspect", "accept", "copy"]),
+        offset: offset.optional(),
+        conflictId: id.optional(),
+        selected: z.enum(["current", "candidate"]).optional(),
+        expectedRevision: revision.optional(),
+        requestId: id.optional(),
+      })
+      .strict(),
+    "orka.write",
   ),
 ];

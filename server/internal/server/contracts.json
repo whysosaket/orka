@@ -2849,6 +2849,692 @@
     ],
     "additionalProperties": false
   },
+  "mcp:search_resources": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "sourceId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Repository source ID returned in list_projects.sources. Omit for a project-wide search."
+      },
+      "query": {
+        "type": "string",
+        "maxLength": 200
+      },
+      "cursor": {
+        "type": "object",
+        "properties": {
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "resourceId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "updatedAt",
+          "projectId",
+          "resourceId"
+        ],
+        "additionalProperties": false
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50
+      },
+      "kinds": {
+        "minItems": 1,
+        "maxItems": 5,
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "memory",
+            "instructions",
+            "skill",
+            "plan",
+            "session"
+          ]
+        }
+      }
+    },
+    "additionalProperties": false
+  },
+  "mcp:get_resource_history": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Exact project ID returned by list_projects."
+      },
+      "resourceId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "beforeRevision": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50
+      }
+    },
+    "required": [
+      "projectId",
+      "resourceId"
+    ],
+    "additionalProperties": false
+  },
+  "mcp:compare_revisions": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Exact project ID returned by list_projects."
+      },
+      "resourceId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "fromRevision": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "toRevision": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "file": {
+        "type": "string",
+        "maxLength": 1024
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      }
+    },
+    "required": [
+      "projectId",
+      "resourceId",
+      "fromRevision",
+      "toRevision"
+    ],
+    "additionalProperties": false
+  },
+  "mcp:list_skills": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "sourceId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Repository source ID returned in list_projects.sources. Omit for a project-wide search."
+      },
+      "query": {
+        "type": "string",
+        "maxLength": 200
+      },
+      "cursor": {
+        "type": "object",
+        "properties": {
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "resourceId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "updatedAt",
+          "projectId",
+          "resourceId"
+        ],
+        "additionalProperties": false
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50
+      }
+    },
+    "additionalProperties": false
+  },
+  "mcp:create_memory": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Exact project ID returned by list_projects."
+      },
+      "requestId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Stable retry ID. Reuse only with identical arguments."
+      },
+      "sourceId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Repository source ID returned in list_projects.sources. Omit for a project-wide search."
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160,
+        "x-orka-trim": true
+      },
+      "text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200000
+      },
+      "scope": {
+        "type": "string",
+        "maxLength": 512
+      },
+      "contextSources": {
+        "maxItems": 100,
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      }
+    },
+    "required": [
+      "projectId",
+      "requestId",
+      "title",
+      "text"
+    ],
+    "additionalProperties": false
+  },
+  "mcp:update_plan": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Exact project ID returned by list_projects."
+      },
+      "requestId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Stable retry ID. Reuse only with identical arguments."
+      },
+      "resourceId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "expectedRevision": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200000
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "x-orka-trim": true
+      }
+    },
+    "required": [
+      "projectId",
+      "requestId",
+      "resourceId",
+      "expectedRevision",
+      "text"
+    ],
+    "additionalProperties": false
+  },
+  "mcp:get_permissions": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Exact project ID returned by list_projects."
+      },
+      "memberId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "resourceId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      }
+    },
+    "required": [
+      "projectId"
+    ],
+    "additionalProperties": false
+  },
+  "mcp:update_permissions": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Exact project ID returned by list_projects."
+      },
+      "requestId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Stable retry ID. Reuse only with identical arguments."
+      },
+      "expectedPolicyRevision": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "action": {
+        "type": "string",
+        "enum": [
+          "policy",
+          "access",
+          "inherit",
+          "member-role",
+          "save-role-policy"
+        ]
+      },
+      "memberId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "resourceId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "instructions",
+          "memory",
+          "skill",
+          "plan",
+          "session"
+        ]
+      },
+      "rule": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "hidden",
+              "read",
+              "suggest",
+              "publish"
+            ]
+          },
+          "canShare": {
+            "default": false,
+            "type": "boolean"
+          },
+          "create": {
+            "type": "string",
+            "enum": [
+              "hidden",
+              "suggest",
+              "publish"
+            ]
+          }
+        },
+        "required": [
+          "mode",
+          "create"
+        ],
+        "additionalProperties": false
+      },
+      "access": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "hidden",
+              "read",
+              "suggest",
+              "publish"
+            ]
+          },
+          "canShare": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "member"
+        ]
+      },
+      "policies": {
+        "type": "object",
+        "properties": {
+          "admin": {
+            "type": "object",
+            "properties": {
+              "memory": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "read",
+                  "add",
+                  "write"
+                ]
+              },
+              "session": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "read",
+                  "add",
+                  "write"
+                ]
+              },
+              "plan": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "read",
+                  "add",
+                  "write"
+                ]
+              },
+              "skill": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "read",
+                  "add",
+                  "write"
+                ]
+              }
+            },
+            "required": [
+              "memory",
+              "session",
+              "plan",
+              "skill"
+            ],
+            "additionalProperties": false
+          },
+          "member": {
+            "type": "object",
+            "properties": {
+              "memory": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "read",
+                  "add",
+                  "write"
+                ]
+              },
+              "session": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "read",
+                  "add",
+                  "write"
+                ]
+              },
+              "plan": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "read",
+                  "add",
+                  "write"
+                ]
+              },
+              "skill": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "read",
+                  "add",
+                  "write"
+                ]
+              }
+            },
+            "required": [
+              "memory",
+              "session",
+              "plan",
+              "skill"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "admin",
+          "member"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "projectId",
+      "requestId",
+      "expectedPolicyRevision",
+      "action"
+    ],
+    "additionalProperties": false
+  },
+  "mcp:list_requests": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Exact project ID returned by list_projects."
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected",
+          "stale"
+        ]
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50
+      }
+    },
+    "required": [
+      "projectId"
+    ],
+    "additionalProperties": false
+  },
+  "mcp:review_request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Exact project ID returned by list_projects."
+      },
+      "requestId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "decision": {
+        "type": "string",
+        "enum": [
+          "approve",
+          "reject"
+        ]
+      },
+      "previewHash": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      },
+      "expectedPolicyRevision": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      }
+    },
+    "required": [
+      "projectId",
+      "requestId"
+    ],
+    "additionalProperties": false
+  },
+  "mcp:resolve_conflict": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+        "description": "Exact project ID returned by list_projects."
+      },
+      "resourceId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "action": {
+        "type": "string",
+        "enum": [
+          "inspect",
+          "accept",
+          "copy"
+        ]
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "conflictId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "selected": {
+        "type": "string",
+        "enum": [
+          "current",
+          "candidate"
+        ]
+      },
+      "expectedRevision": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991
+      },
+      "requestId": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      }
+    },
+    "required": [
+      "projectId",
+      "resourceId",
+      "action"
+    ],
+    "additionalProperties": false
+  },
   "mcp:get_profile": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",

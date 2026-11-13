@@ -102,4 +102,17 @@ docker run --rm --user 0 --entrypoint orka-server \
 ln -s "$release" "$release/current.next"
 mv -Tf "$release/current.next" "$root/current"
 docker compose ps
+if [[ -n "$backup" ]]; then
+  # Prune only generated deployment backups after restore and health checks pass.
+  for old_backup in "$root/backups/"*; do
+    [[ "$old_backup" != "$backup" && -d "$old_backup" && ! -L "$old_backup" ]] || continue
+    backup_name=$(basename "$old_backup")
+    [[ "$backup_name" =~ ^[a-f0-9]{40}\.[a-zA-Z0-9]{8}$ ]] || continue
+    # Older root-run deployments leave private backups unreadable to this user.
+    docker run --rm --network none --user 0 --entrypoint sh \
+      -v "$root/backups:/run/backups" "$image" \
+      -c 'rm -rf --one-file-system -- "/run/backups/$1"' -- "$backup_name"
+  done
+  printf 'Retained verified backup: %s\n' "$backup"
+fi
 printf 'Deployment verified: %s\n' "$commit"

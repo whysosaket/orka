@@ -26,9 +26,9 @@ var profileRedirect = regexp.MustCompile(`^orka://auth/callback\?profile=[a-z][a
 var tokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,256}$`)
 
 type AuthSettings struct {
-	Mode                                                string
-	Password, GitHub, MagicLink, TrustProxy, MCPEnabled bool
-	EmailProvider, PublicURL                            string
+	Mode                                                 string
+	Password, GitHub, MagicLink, TrustProxy, MCPEnabled  bool
+	EmailProvider, PublicURL, DashboardURL, dashboardKey string
 }
 
 func SettingsFromEnv(env map[string]string, managed bool) (AuthSettings, error) {
@@ -49,12 +49,30 @@ func SettingsFromEnv(env map[string]string, managed bool) (AuthSettings, error) 
 	if !includes([]string{"cloud", "self-hosted"}, settings.Mode) || !includes([]string{"smtp", "resend"}, settings.EmailProvider) {
 		return settings, fmt.Errorf("invalid deployment or email provider")
 	}
+	if settings.Mode == "self-hosted" {
+		settings.Password, settings.GitHub, settings.MagicLink = true, false, false
+		settings.EmailProvider = "smtp"
+	}
 	if settings.PublicURL != "" {
 		u, err := parseHTTPURL(settings.PublicURL)
 		if err != nil || u.Username() != "" || u.Password() != "" || u.Search() != "" || u.Hash() != "" || u.Pathname() != "/" || u.Scheme() != "https" && !(u.Scheme() == "http" && includes([]string{"localhost", "127.0.0.1"}, u.Hostname())) {
 			return settings, fmt.Errorf("PUBLIC_URL must be an HTTPS origin (localhost HTTP is allowed)")
 		}
 	}
+	settings.DashboardURL = strings.TrimSuffix(get("DASHBOARD_URL", ""), "/")
+	settings.dashboardKey = get("DASHBOARD_PROXY_SECRET", "")
+	if settings.DashboardURL != "" {
+		if settings.Mode != "cloud" {
+			return settings, fmt.Errorf("DASHBOARD_URL is only supported on managed Orka Cloud")
+		}
+		u, err := parseHTTPURL(settings.DashboardURL)
+		serviceOrigin, _ := canonicalOrigin(settings.PublicURL)
+		if serviceOrigin == "" || err != nil || u.Scheme()+"://"+u.Host() != settings.DashboardURL || settings.DashboardURL == serviceOrigin || len(settings.dashboardKey) < 32 ||
+			u.Scheme() != "https" && !(u.Scheme() == "http" && includes([]string{"localhost", "127.0.0.1"}, u.Hostname())) {
+			return settings, fmt.Errorf("DASHBOARD_URL requires a separate HTTPS origin (localhost HTTP is allowed), PUBLIC_URL, and DASHBOARD_PROXY_SECRET of at least 32 characters")
+		}
+	}
+
 	if (settings.GitHub || settings.MagicLink) && settings.PublicURL == "" {
 		return settings, fmt.Errorf("PUBLIC_URL is required for browser sign-in")
 	}
@@ -84,7 +102,31 @@ func SafeDesktopRedirect(raw string) string {
 	}
 	return desktopRedirect
 }
+
+var webFlow = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
+
+func (settings AuthSettings) browserURL() string {
+	if settings.DashboardURL != "" {
+		return settings.DashboardURL
+	}
+	return settings.PublicURL
+}
+
+func (settings AuthSettings) signInRedirect(raw string, allowWeb bool) string {
+	if allowWeb && settings.DashboardURL != "" {
+		if flow, ok := strings.CutPrefix(raw, settings.DashboardURL+"/auth/session?flow="); ok && webFlow.MatchString(flow) {
+			return raw
+		}
+	}
+	return SafeDesktopRedirect(raw)
+}
+
 func authClientIP(req *http.Request, settings AuthSettings) string {
+	if fromDashboard(req) {
+		if ip := net.ParseIP(req.Header.Get("X-Orka-Dashboard-Client-IP")); ip != nil {
+			return ip.String()
+		}
+	}
 	if settings.TrustProxy {
 		parts := strings.Split(req.Header.Get("X-Forwarded-For"), ",")
 		candidate := trim(parts[len(parts)-1])
@@ -191,15 +233,23 @@ func (a *API) proxyAuth(w http.ResponseWriter, r *http.Request, target *url.URL,
 	if includes([]string{"/otp", "/verify"}, path) && !a.Settings.MagicLink {
 		return &HTTPError{Status: 404, Message: "Email sign-in is not enabled on this service"}
 	}
+	if includes([]string{"/authorize", "/callback"}, path) && !a.Settings.GitHub {
+		return &HTTPError{Status: 404, Message: "GitHub sign-in is not enabled on this service"}
+	}
 	params := target.Query()
+	if path == "/token" && a.Settings.Mode == "self-hosted" {
+		grants := params["grant_type"]
+		if len(grants) != 1 || !includes([]string{"password", "refresh_token"}, grants[0]) {
+			return &HTTPError{Status: 404, Message: "Only password sign-in and session refresh are enabled on this service"}
+		}
+	}
+	trustedDashboard := fromDashboard(r)
+	redirect := a.Settings.signInRedirect(params.Get("redirect_to"), trustedDashboard)
 	if path == "/token" && params.Get("grant_type") == "password" && !a.Settings.Password {
 		return &HTTPError{Status: 404, Message: "Password sign-in is not enabled on this service"}
 	}
 	if path == "/authorize" {
-		if !a.Settings.GitHub {
-			return &HTTPError{Status: 404, Message: "GitHub sign-in is not enabled on this service"}
-		}
-		if params.Get("provider") != "github" || params.Get("redirect_to") != SafeDesktopRedirect(params.Get("redirect_to")) || params.Get("code_challenge_method") != "s256" || !regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`).MatchString(params.Get("code_challenge")) {
+		if params.Get("provider") != "github" || len(params["redirect_to"]) != 1 || params.Get("redirect_to") != redirect || params.Get("code_challenge_method") != "s256" || !regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`).MatchString(params.Get("code_challenge")) {
 			return bad("Invalid sign-in request")
 		}
 		for key := range params {
@@ -207,9 +257,13 @@ func (a *API) proxyAuth(w http.ResponseWriter, r *http.Request, target *url.URL,
 				params.Del(key)
 			}
 		}
+		if a.Settings.DashboardURL != "" && !trustedDashboard {
+			http.Redirect(w, r, a.Settings.DashboardURL+"/auth/authorize?"+params.Encode(), http.StatusTemporaryRedirect)
+			return nil
+		}
 	}
 	if path == "/otp" || path == "/verify" && get {
-		params.Set("redirect_to", SafeDesktopRedirect(params.Get("redirect_to")))
+		params.Set("redirect_to", redirect)
 	}
 	endpoint := strings.TrimSuffix(a.AuthURL, "/") + path
 	if encoded := params.Encode(); encoded != "" {
@@ -388,10 +442,16 @@ func (a *API) emailHook(ctx context.Context, payload []byte, headers http.Header
 		return bad("Invalid request")
 	}
 	plugin := redirect == a.Settings.PublicURL+"/mcp/connect"
-	link := a.Settings.PublicURL + "/auth/confirm?" + url.Values{"token": []string{tokenHash}, "type": []string{kind}, "redirect_to": []string{SafeDesktopRedirect(redirect)}}.Encode()
+	target := a.Settings.signInRedirect(redirect, true)
+	link := a.Settings.browserURL() + "/auth/confirm?" + url.Values{"token": []string{tokenHash}, "type": []string{kind}, "redirect_to": []string{target}}.Encode()
 	end := "This code expires in 10 minutes and can be used once. If you did not request it, ignore this email."
+	escapedLink := html.EscapeString(link)
 	plain := "Open this link on the Mac where you requested it:\n" + link + "\n\nOr enter this code in Orka: " + token + "\n\n" + desktopEmailExpiry
-	content := desktopEmailHTML(strings.ReplaceAll(link, "&", "&amp;"), token)
+	content := desktopEmailHTML(escapedLink, token)
+	if target != SafeDesktopRedirect(target) {
+		plain = "Open this link in the browser where you requested it:\n" + link + "\n\nThis link expires in 10 minutes and can be used once. If you did not request it, ignore this email."
+		content = `<p>Open this link in the browser where you requested it:</p><p><a href="` + escapedLink + `">Sign in to Orka</a></p><p>This link expires in 10 minutes and can be used once. If you did not request it, ignore this email.</p>`
+	}
 	if plugin {
 		plain = "Enter this code on the Orka connection page: " + token + "\n\n" + end
 		content = "<p>Enter this code on the Orka connection page:</p><h1>" + token + "</h1><p>" + end + "</p>"

@@ -20,6 +20,7 @@ mod onboarding;
 mod packages;
 mod plans;
 mod plugin_mcp;
+mod plugin_operations;
 mod profiles;
 mod projects;
 mod repair;

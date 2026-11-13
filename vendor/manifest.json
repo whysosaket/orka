@@ -5,14 +5,14 @@
     "toolchain": "1.27.4"
   },
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "e788f0df7f3d13c6d20c75a57d58488075e1e3ea",
+  "commit": "333f5404b97432ff4a01c9b1e48a57622a4fd2fa",
   "packages": [
     {
       "name": "@portable/protocol",
-      "version": "0.6.6-dev.0",
-      "file": "portable-protocol-0.6.6-dev.0.tgz",
-      "sha256": "212b5b3f1d47b1057b3bed0f618b2186b76b5fe7f89fdc74431f794d7a632f6f",
-      "integrity": "sha512-jT2abQOnBI/V8H0tUk9xNI6ZaKFUOWwjV6QuQuB9wCH4mm6h6rdSt0WuvLvLT/6lDfsoLXFFUGJ8id9IgaxiNg=="
+      "version": "0.6.6-dev.1",
+      "file": "portable-protocol-0.6.6-dev.1.tgz",
+      "sha256": "1b183c99d371dc3f22cfad93631bf7d162864838c33664075360428562f45dc6",
+      "integrity": "sha512-MaRevt/x7PB1+7gxdb/NncQWIFSS+ghQ11NM/efSDsvRAoLffofi+S07KqDw77SVlTiuQ2fSLM19qaHXvxQ0fg=="
     }
   ]
 }

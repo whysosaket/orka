@@ -75,6 +75,7 @@ try {
             "tests/governance.integration.ts",
             "tests/role-policies.integration.ts",
             "tests/mcp.integration.ts",
+            "tests/mcp-operations.integration.ts",
             "tests/mcp-regression.integration.ts",
             "tests/selected-sharing.integration.ts",
             "tests/selected-sharing-native.integration.ts",

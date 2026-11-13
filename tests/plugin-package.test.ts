@@ -19,7 +19,25 @@ await test("portable and desktop plugin ZIPs preserve host metadata and the veri
     "list_sessions",
     "fetch_resource",
     "prepare_claude_handoff",
+    "search_resources",
+    "get_resource_history",
+    "compare_revisions",
+    "list_skills",
+    "get_permissions",
+    "list_requests",
+    "create_memory",
+    "update_plan",
+    "resolve_conflict",
+    "update_permissions",
+    "review_request",
   ];
+  const scope = (name: string) =>
+    ["update_permissions", "review_request"].includes(name)
+      ? "orka.manage"
+      : ["create_memory", "update_plan", "resolve_conflict"].includes(name)
+        ? "orka.write"
+        : "orka.read";
+  let invalidContract = "";
   let origin = "";
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", "application/json");
@@ -28,6 +46,10 @@ await test("portable and desktop plugin ZIPs preserve host metadata and the veri
         JSON.stringify({
           resource: origin + "/mcp",
           authorization_servers: [origin + "/"],
+          scopes_supported:
+            invalidContract === "discovery"
+              ? ["orka.read"]
+              : ["orka.read", "orka.write", "orka.manage"],
         }),
       );
     } else if (request.url === "/.well-known/oauth-authorization-server") {
@@ -35,6 +57,7 @@ await test("portable and desktop plugin ZIPs preserve host metadata and the veri
         JSON.stringify({
           code_challenge_methods_supported: ["S256"],
           registration_endpoint: origin + "/register",
+          scopes_supported: ["orka.read", "orka.write", "orka.manage"],
         }),
       );
     } else if (request.url === "/mcp") {
@@ -53,13 +76,38 @@ await test("portable and desktop plugin ZIPs preserve host metadata and the veri
                     serverInfo: { name: "orka" },
                   }
                 : {
-                    tools: tools.map((name) => ({
-                      name,
-                      annotations: { readOnlyHint: true },
-                      securitySchemes: [
-                        { type: "oauth2", scopes: ["orka.read"] },
-                      ],
-                    })),
+                    tools: tools
+                      .filter(
+                        (name) =>
+                          invalidContract !== "missing" ||
+                          name !== "update_plan",
+                      )
+                      .concat(
+                        invalidContract === "duplicate" ? ["get_profile"] : [],
+                      )
+                      .map((name) => ({
+                        name,
+                        annotations: {
+                          readOnlyHint:
+                            invalidContract === "annotation" ||
+                            scope(name) === "orka.read",
+                        },
+                        securitySchemes: [
+                          ...(invalidContract === "noauth"
+                            ? [{ type: "noauth" }]
+                            : []),
+                          {
+                            type: "oauth2",
+                            scopes: [
+                              "orka.read",
+                              ...(scope(name) !== "orka.read" &&
+                              invalidContract !== "scope"
+                                ? [scope(name)]
+                                : []),
+                            ],
+                          },
+                        ],
+                      })),
                   },
           }),
         );
@@ -79,6 +127,26 @@ await test("portable and desktop plugin ZIPs preserve host metadata and the veri
       origin + "/mcp",
       output,
     ]);
+    for (const invalid of [
+      "missing",
+      "noauth",
+      "duplicate",
+      "annotation",
+      "scope",
+      "discovery",
+    ]) {
+      invalidContract = invalid;
+      await assert.rejects(
+        run(process.execPath, [
+          resolve("plugins/orka/scripts/package.mjs"),
+          origin + "/mcp",
+          join(directory, invalid + ".zip"),
+        ]),
+        (error: unknown) =>
+          error instanceof Error && /contract|OAuth/.test(error.message),
+      );
+    }
+    invalidContract = "";
     const entry = async (path: string) =>
       JSON.parse((await run("unzip", ["-p", output, `orka/${path}`])).stdout);
     const manifest = JSON.parse(
@@ -97,6 +165,14 @@ await test("portable and desktop plugin ZIPs preserve host metadata and the veri
       portable.mcpServers.orka.extensions["com.openai"].auth.type,
       "oauth",
     );
+    assert.deepEqual(
+      portable.mcpServers.orka.extensions["com.openai"].auth.baseScopes,
+      ["orka.read"],
+    );
+    assert.deepEqual(
+      portable.mcpServers.orka.extensions["com.openai"].auth.defaultScopes,
+      ["orka.read", "orka.write", "orka.manage"],
+    );
     const claude = await entry(".claude-plugin/plugin.json");
     assert.equal(claude.name, manifest.name);
     assert.equal(claude.version, manifest.version);
@@ -109,8 +185,14 @@ await test("portable and desktop plugin ZIPs preserve host metadata and the veri
     );
     assert.equal(verification.developmentOnly, true);
     assert.equal(verification.authenticatedWorkflowVerified, false);
+    assert.deepEqual(verification.tools, tools);
+    assert.deepEqual(verification.scopes, [
+      "orka.read",
+      "orka.write",
+      "orka.manage",
+    ]);
     const inventory = (await run("unzip", ["-Z1", output])).stdout;
-    assert.equal(inventory.match(/\/SKILL\.md$/gm)?.length, 4);
+    assert.equal(inventory.match(/\/SKILL\.md$/gm)?.length, 5);
     const desktop = join(directory, "orka-desktop.zip");
     assert.equal(
       (await run("unzip", ["-p", desktop, "orka/README.md"])).stdout,

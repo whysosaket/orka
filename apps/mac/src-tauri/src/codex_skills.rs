@@ -23,8 +23,13 @@ pub fn queue(db: &Connection, project: &Value, changed: bool) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 pub fn refresh(db: &Connection) -> Result<()> {
-    let pending = db::rows(db, "SELECT json_object('key',key,'projectId',json_extract(value,'$.projectId'),'path',json_extract(value,'$.path')) FROM meta WHERE key LIKE 'codex-skill-refresh:%' AND json_extract(value,'$.pending')=1", &[])?;
+    refresh_scoped(db, None)
+}
+
+fn refresh_scoped(db: &Connection, project: Option<&str>) -> Result<()> {
+    let pending = db::rows(db, "SELECT json_object('key',key,'projectId',json_extract(value,'$.projectId'),'path',json_extract(value,'$.path')) FROM meta WHERE key LIKE 'codex-skill-refresh:%' AND json_extract(value,'$.pending')=1", &[])?.into_iter().filter(|item|project.is_none_or(|id|item["projectId"]==id)).collect::<Vec<_>>();
     if pending.is_empty() || native::binary("codex").is_err() || !native::codex_home()?.is_dir() {
         return Ok(());
     }
@@ -44,8 +49,17 @@ pub fn refresh(db: &Connection) -> Result<()> {
 }
 
 pub fn retry(db: &Connection) -> Result<()> {
-    let projects = db::rows(db, "SELECT DISTINCT json_quote(json_extract(value,'$.projectId')) FROM meta WHERE key LIKE 'codex-skill-refresh:%' AND json_extract(value,'$.pending')=1", &[])?;
-    let result = refresh(db).map_err(|error| format!("Codex skill refresh pending: {error}"));
+    retry_scoped(db, None)
+}
+
+pub(crate) fn retry_project(db: &Connection, project: &str) -> Result<()> {
+    retry_scoped(db, Some(project))
+}
+
+fn retry_scoped(db: &Connection, project: Option<&str>) -> Result<()> {
+    let projects = db::rows(db, "SELECT DISTINCT json_quote(json_extract(value,'$.projectId')) FROM meta WHERE key LIKE 'codex-skill-refresh:%' AND json_extract(value,'$.pending')=1", &[])?.into_iter().filter(|value|project.is_none_or(|id|value==id)).collect::<Vec<_>>();
+    let result = refresh_scoped(db, project)
+        .map_err(|error| format!("Codex skill refresh pending: {error}"));
     for project in projects {
         let id = project.as_str().ok_or("Missing refresh project")?;
         crate::sync::record_result(db, &format!("{id}:codex-skills"), result.clone())?;
