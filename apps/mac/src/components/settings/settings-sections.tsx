@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   CopyIcon,
   FileDirectoryIcon,
@@ -15,6 +16,8 @@ import { Icon } from "../icon.js";
 import { IconButton } from "../icon-button.js";
 import { TextField } from "../text-field.js";
 import { connectProject } from "../use-project-setup.js";
+import { activeSources } from "../project-sources.js";
+import { useSettingsQuery } from "./use-settings-query.js";
 
 export function SettingsGeneral({
   project,
@@ -89,6 +92,7 @@ export function SettingsFolder({
   onConnect,
   onDisconnect,
   onDisconnectSource,
+  onRemoveSource,
   onSyncActivity,
   run,
 }: {
@@ -99,17 +103,38 @@ export function SettingsFolder({
   onConnect: () => void;
   onDisconnect: () => void;
   onDisconnectSource: (sourceId: string) => void;
+  onRemoveSource: (sourceId: string) => void;
   onSyncActivity: () => void;
   run: (action: () => Promise<unknown>) => Promise<unknown>;
 }) {
-  const sources: NonNullable<Project["sources"]> = project.sources ?? [
-    {
-      id: "",
-      name: project.path?.split("/").filter(Boolean).at(-1) ?? project.name,
-      path: project.path,
-      folderState: project.folderState,
-    },
-  ];
+  const user = state.user,
+    service = state.config?.apiUrl;
+  const loadCapabilities = useCallback(async () => {
+    const capabilities = await invoke<{ sourcesRemoval?: number }>(
+      "settings_command",
+      {
+        action: "capabilities",
+        context: { user, service },
+      },
+    );
+    return { user, service, supported: capabilities.sourcesRemoval === 1 };
+  }, [user, service]);
+  const capabilities = useSettingsQuery(loadCapabilities);
+  const canRemove =
+    project.role === "owner" &&
+    capabilities.data?.user === user &&
+    capabilities.data?.service === service &&
+    capabilities.data.supported;
+  const sources: NonNullable<Project["sources"]> = project.sources
+    ? activeSources(project.sources)
+    : [
+        {
+          id: "",
+          name: project.path?.split("/").filter(Boolean).at(-1) ?? project.name,
+          path: project.path,
+          folderState: project.folderState,
+        },
+      ];
   return (
     <>
       <RepositoryConnections
@@ -119,6 +144,7 @@ export function SettingsFolder({
         folderBusy={busy}
         queued={queued}
         onDisconnectSource={onDisconnectSource}
+        onRemoveSource={canRemove ? onRemoveSource : undefined}
         onLocalFolder={async () => {
           let connected = false;
           await run(async () => {
@@ -185,20 +211,22 @@ export function SettingsFolder({
                             : "Reconnect"}
                         </Button>
                       )}
-                      {enabled ? (
+                      {source.id ? (
                         <ActionPopover
                           label={`Options for ${source.name}`}
                           trigger={
                             <IconButton
                               icon={KebabHorizontalIcon}
-                              variant="tertiary"
+                              variant="secondary"
                               size="sm"
+                              className="repository-source-options"
+                              title={`Options for ${source.name}`}
                               aria-label={`Options for ${source.name}`}
                               disabled={busy}
                             />
                           }
                         >
-                          {project.role === "owner" && (
+                          {enabled && project.role === "owner" && (
                             <Button size="sm" onClick={() => onLink(source)}>
                               Link GitHub repository
                             </Button>
@@ -214,6 +242,15 @@ export function SettingsFolder({
                           >
                             Disconnect folder on this Mac
                           </Button>
+                          {canRemove && (
+                            <Button
+                              size="sm"
+                              disabled={busy || queued > 0}
+                              onClick={() => onRemoveSource(source.id)}
+                            >
+                              Remove source folder
+                            </Button>
+                          )}
                         </ActionPopover>
                       ) : (
                         <IconButton

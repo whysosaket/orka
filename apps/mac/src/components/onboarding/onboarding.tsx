@@ -105,8 +105,8 @@ export function Onboarding({
     if (candidates.length && !choice) return true;
     const project = candidates.find((p) => p.id === choice);
     return Boolean(
-      (project?.sources?.length ?? 0) > 1 &&
-      !(draft.sourceChoices?.[path] || suggestedSource(project, name)),
+      (project?.sources?.filter((source) => !source.removedAt).length ?? 0) >
+        1 && !(draft.sourceChoices?.[path] || suggestedSource(project, name)),
     );
   });
   const synced = projects.filter(
@@ -241,7 +241,9 @@ export function Onboarding({
             const destinations = suggestion
               ? [suggestion, ...candidates.filter((p) => p !== suggestion)]
               : candidates;
-            const sources = project?.sources ?? [];
+            const sources = (project?.sources ?? []).filter(
+              (source) => !source.removedAt,
+            );
             return (
               <div className="onboarding-flow__match" key={path}>
                 <div className="onboarding-flow__project-details">

@@ -119,6 +119,7 @@ export type ManagementLog = {
   action:
     | "project.remote_set"
     | "project.created"
+    | "project.source_removed"
     | "invite.created"
     | "member.joined"
     | "member.removed"
@@ -134,6 +135,7 @@ export type ManagementLog = {
     | "request.stale"
     | "request.recorded";
   requestId?: string;
+  sourceId?: string;
   requestType?: "change" | "access";
   status?: ReviewRequest["status"];
   category?: PolicyClass;

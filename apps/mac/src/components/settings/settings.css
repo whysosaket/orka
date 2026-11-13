@@ -75,6 +75,10 @@
   .repository-card-actions {
     @apply flex shrink-0 items-center gap-1;
   }
+  .repository-source-options {
+    outline: 1px solid var(--surface-stroke);
+    outline-offset: -1px;
+  }
   .repository-job-feedback {
     @apply m-0 px-4 pb-4 text-body-xs text-muted;
   }
@@ -86,29 +90,25 @@
   .repository-dialog-heading {
     @apply flex items-center justify-between gap-3;
   }
-  .repository-dialog-heading h2 {
-    @apply m-0 text-heading-sm;
+  .repository-dialog .repository-dialog-heading h2 {
+    @apply m-0 text-heading-xs;
   }
-  .repository-dialog p {
+  .repository-dialog.modal p {
     @apply m-0 text-body-xs text-muted;
     overflow-wrap: anywhere;
   }
   .repository-picker-fields {
     @apply flex min-w-0 flex-col gap-4;
   }
-  .repository-picker-fields > label {
-    @apply flex min-w-0 flex-col gap-2 text-label-sm;
+  .repository-picker-field {
+    @apply flex min-w-0 flex-col gap-2 text-label-xs;
   }
-  .repository-picker-fields select,
   .repository-onboarding select {
     @apply min-h-10 w-full min-w-0 border border-line bg-raised px-3 text-body-xs;
     border-radius: var(--radius-control);
   }
   .repository-dialog-footer {
-    @apply flex items-center justify-between gap-3 border-t border-line pt-4;
-  }
-  .repository-account {
-    @apply flex min-w-0 items-center gap-2 text-label-caption text-muted;
+    @apply flex items-center justify-end gap-3 border-t border-line pt-4;
   }
   .repository-location {
     @apply flex flex-col gap-2;
@@ -132,9 +132,30 @@
     @apply text-heading-md tracking-widest;
   }
   .repository-local-option {
-    @apply self-start px-0 text-muted;
-    --button-tertiary-bg: transparent;
-    --button-tertiary-bg-hover: transparent;
+    @apply w-full;
+    outline: 1px solid var(--surface-stroke);
+    outline-offset: -1px;
+  }
+  .repository-account-row {
+    @apply flex items-center justify-between gap-3 text-body-xs text-muted;
+  }
+  .repository-account-trigger {
+    @apply min-w-0;
+    outline: 1px solid var(--surface-stroke);
+    outline-offset: -1px;
+  }
+  .repository-account-trigger > span {
+    @apply truncate;
+  }
+  .repository-picker-field .permission-select-trigger {
+    @apply w-full min-w-0 text-body-sm;
+    min-height: var(--button-lg-height);
+  }
+  .repository-picker-field .permission-select-trigger > span:first-child {
+    @apply truncate;
+  }
+  .repository-access-setup {
+    @apply flex flex-col items-start gap-3 rounded-lg border border-line bg-raised p-4;
   }
   .repository-source-choice {
     @apply flex flex-wrap gap-4 border-0 p-0 text-body-xs;

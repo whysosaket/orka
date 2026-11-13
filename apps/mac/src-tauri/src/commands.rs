@@ -67,7 +67,7 @@ pub fn snapshot() -> Result<Value> {
         "profile":crate::profiles::current(), "onboarding":onboarding, "accountProfile":db::get(&db,"accountProfile")?,
         "user":db::get(&db,"user")?, "config":db::get(&db,"config")?,
         "projects":projects, "localSkills":local_skills,
-        "managedProjects":db::rows(&db,"SELECT json_set(value,'$.pendingChanges',(SELECT count(*) FROM outbox WHERE project=projects.id)+(SELECT count(*) FROM meta WHERE ? AND key LIKE 'env:%:pending:%' AND json_extract(value,'$.header.manifest.projectId')=projects.id)) FROM projects ORDER BY json_extract(value,'$.name')",&[&crate::env::enabled()])?,
+        "managedProjects":db::rows(&db,"SELECT json_set(value,'$.pendingChanges',(SELECT count(*) FROM outbox WHERE project=projects.id)+(SELECT count(*) FROM meta WHERE ? AND key LIKE 'env:%:pending:%' AND json_extract(value,'$.sourceRemoval') IS NULL AND json_extract(value,'$.header.manifest.projectId')=projects.id)) FROM projects ORDER BY json_extract(value,'$.name')",&[&crate::env::enabled()])?,
         "resources":resources, "bindings":scoped("bindings")?, "conflicts":scoped("conflicts")?,
         "drafts":scoped("drafts")?,
         "governance":db::rows(&db,&format!("SELECT json_object('projectId',substr(key,12),'catalog',json(value)) FROM meta WHERE key LIKE 'governance:%' AND substr(key,12) IN ({visible})"),&[])?,

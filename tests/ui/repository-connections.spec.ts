@@ -1,4 +1,10 @@
-import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import {
+  test,
+  expect,
+  type Page,
+  type TestInfo,
+  type Locator,
+} from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
 
 interface Call {
@@ -43,6 +49,11 @@ async function fixture(
     statusFailsOnce?: boolean;
     multiple?: boolean;
     reconnect?: boolean;
+    delayedAuthStatus?: boolean;
+    pollFailsOnce?: boolean;
+    pollDeclined?: boolean;
+    localMatch?: boolean;
+    matchingFailsOnce?: boolean;
   } = {},
 ) {
   await page.addInitScript((options) => {
@@ -136,6 +147,8 @@ async function fixture(
           },
         ]
       : [];
+    let pollAttempts = 0;
+    let matchingAttempts = 0;
     let cloneAttempts = 0,
       statusAttempts = 0,
       accountsInstalled = options.accounts !== 0;
@@ -244,6 +257,8 @@ async function fixture(
             if (action === "status") {
               if (options.statusFailsOnce && statusAttempts++ === 0)
                 throw new Error("GitHub status unavailable");
+              if (options.delayedAuthStatus && connected)
+                await new Promise((resolve) => setTimeout(resolve, 120));
               return {
                 connected,
                 identity: connected
@@ -269,12 +284,22 @@ async function fixture(
                 expiresIn: 900,
               };
             if (action === "poll") {
+              if (options.pollFailsOnce && pollAttempts++ === 0)
+                throw new Error("Temporary network failure");
+              if (options.pollDeclined) return { error: "access_denied" };
               connected = true;
               return { connected: true };
             }
             if (action === "disconnect") {
               connected = false;
               return { ok: true };
+            }
+            if (action === "matching-source") {
+              if (options.matchingFailsOnce && matchingAttempts++ === 0)
+                throw new Error(
+                  "More than one connected folder matches this repository",
+                );
+              return options.localMatch ? { sourceId: "source" } : null;
             }
             if (action === "jobs") return structuredClone(jobs);
             if (action === "default-directory") return "/local/Orka";
@@ -296,6 +321,15 @@ async function fixture(
                   input.installationId === "18"
                     ? { ...available, fullName: "team/web-app" }
                     : available,
+                  ...(options.matchingFailsOnce
+                    ? [
+                        {
+                          ...available,
+                          id: "9999",
+                          fullName: "fixtures/another-app",
+                        },
+                      ]
+                    : []),
                 ],
                 nextPage: options.pagination && input.page === 1 ? 2 : null,
               };
@@ -426,6 +460,16 @@ const panel = (page: Page) =>
 const picker = (page: Page) =>
   page.getByRole("dialog", { name: "Connect repository", exact: true });
 const calls = (page: Page) => page.evaluate(() => window.repositoryCalls);
+async function choose(page: Page, control: Locator, value: string) {
+  await control.click();
+  const labels: Record<string, string> = {
+    "8484": "fixtures/web-app · Private",
+    "9999": "fixtures/another-app · Private",
+    "17": "fixtures",
+    "18": "team",
+  };
+  await page.getByRole("option", { name: labels[value], exact: true }).click();
+}
 
 for (const width of [1160, 900])
   test(`automatic access and one connect action at ${width}`, async ({
@@ -460,6 +504,17 @@ for (const width of [1160, 900])
     expect(
       (await calls(page)).filter((call) => call.action === "clone"),
     ).toHaveLength(0);
+    const heading = await picker(page)
+      .locator(".repository-dialog-heading h2")
+      .boundingBox();
+    const close = await picker(page)
+      .getByRole("button", { name: "Close repository connection" })
+      .boundingBox();
+    expect(heading).not.toBeNull();
+    expect(close).not.toBeNull();
+    expect(
+      Math.abs(heading!.y + heading!.height / 2 - close!.y - close!.height / 2),
+    ).toBeLessThanOrEqual(1);
     await capture(page, info, `destination-after-${width}`);
     await picker(page)
       .getByRole("button", { name: "Connect repository", exact: true })
@@ -502,14 +557,16 @@ test("discovery is account, repository, and one connect action", async ({
     .click();
   await expect(
     picker(page).getByRole("combobox", { name: "GitHub account" }),
-  ).toHaveValue("17");
-  await picker(page)
-    .getByRole("combobox", { name: "Repository", exact: true })
-    .selectOption("8484");
+  ).toHaveText("fixtures");
+  await choose(
+    page,
+    picker(page).getByRole("combobox", { name: "Repository", exact: true }),
+    "8484",
+  );
   await expect(picker(page).getByRole("combobox")).toHaveCount(2);
   await expect(
     picker(page).getByRole("button", {
-      name: /Disconnect GitHub|Use another GitHub account|Manage GitHub access/,
+      name: /Disconnect GitHub|Connect another GitHub account|Manage GitHub access/,
     }),
   ).not.toBeVisible();
   await capture(page, info, "discovery-after");
@@ -540,9 +597,11 @@ test("a failed clone retains its repository binding for retry", async ({
   await panel(page)
     .getByRole("button", { name: "Connect repository", exact: true })
     .click();
-  await picker(page)
-    .getByRole("combobox", { name: "Repository", exact: true })
-    .selectOption("8484");
+  await choose(
+    page,
+    picker(page).getByRole("combobox", { name: "Repository", exact: true }),
+    "8484",
+  );
   await picker(page)
     .getByRole("button", { name: "Connect repository", exact: true })
     .click();
@@ -706,20 +765,30 @@ test("accounts and paginated repository discovery retain simple selection", asyn
   await panel(page)
     .getByRole("button", { name: "Connect repository", exact: true })
     .click();
+  await choose(
+    page,
+    picker(page).getByRole("combobox", { name: "GitHub account" }),
+    "18",
+  );
   await picker(page)
-    .getByRole("combobox", { name: "GitHub account" })
-    .selectOption("18");
-  await expect(
-    picker(page).getByRole("option", { name: /team\/web-app/ }),
-  ).toHaveCount(1);
+    .getByRole("combobox", { name: "Repository", exact: true })
+    .click();
+  await expect(page.getByRole("option", { name: /team\/web-app/ })).toHaveCount(
+    1,
+  );
+  await page.keyboard.press("Escape");
   await picker(page).getByRole("button", { name: "More repositories" }).click();
   expect(
     (await calls(page)).filter((call) => call.action === "repositories").at(-1)
       ?.input,
   ).toEqual({ installationId: "18", page: 2 });
-  await expect(
-    picker(page).getByRole("option", { name: /team\/web-app/ }),
-  ).toHaveCount(1);
+  await picker(page)
+    .getByRole("combobox", { name: "Repository", exact: true })
+    .click();
+  await expect(page.getByRole("option", { name: /team\/web-app/ })).toHaveCount(
+    1,
+  );
+  await page.keyboard.press("Escape");
 });
 
 test("existing local folders can be linked without cloning again", async ({
@@ -730,9 +799,11 @@ test("existing local folders can be linked without cloning again", async ({
     .getByRole("button", { name: "Options for private-repo" })
     .click();
   await page.getByRole("button", { name: "Link GitHub repository" }).click();
-  await picker(page)
-    .getByRole("combobox", { name: "Repository", exact: true })
-    .selectOption("8484");
+  await choose(
+    page,
+    picker(page).getByRole("combobox", { name: "Repository", exact: true }),
+    "8484",
+  );
   await expect(
     picker(page).getByText("Change location", { exact: true }),
   ).toHaveCount(0);
@@ -773,7 +844,7 @@ test("account controls and unlinking are tucked into explicit menus", async ({
     .getByRole("button", { name: "Connect repository", exact: true })
     .click();
   await picker(page)
-    .getByRole("button", { name: "GitHub account options" })
+    .getByRole("button", { name: /GitHub account options/ })
     .click();
   await expect(
     page.getByRole("button", { name: "Disconnect GitHub", exact: true }),
@@ -882,10 +953,14 @@ test("missing repositories refresh automatically after GitHub approval", async (
   });
   await expect(
     picker(page).getByRole("combobox", { name: "GitHub account" }),
-  ).toHaveValue("17");
+  ).toHaveText("fixtures");
+  await picker(page)
+    .getByRole("combobox", { name: "Repository", exact: true })
+    .click();
   await expect(
-    picker(page).getByRole("option", { name: /fixtures\/web-app/ }),
+    page.getByRole("option", { name: /fixtures\/web-app/ }),
   ).toHaveCount(1);
+  await page.keyboard.press("Escape");
 });
 
 test("project creation moves directly into repository selection", async ({
@@ -908,10 +983,12 @@ test("project creation moves directly into repository selection", async ({
     .click();
   await expect(
     picker(page).getByRole("combobox", { name: "GitHub account" }),
-  ).toHaveValue("17");
-  await picker(page)
-    .getByRole("combobox", { name: "Repository", exact: true })
-    .selectOption("8484");
+  ).toHaveText("fixtures");
+  await choose(
+    page,
+    picker(page).getByRole("combobox", { name: "Repository", exact: true }),
+    "8484",
+  );
   await capture(page, info, "project-setup-after");
 });
 
@@ -979,7 +1056,7 @@ test("first-run setup opens the same two-field repository picker", async ({
   await expect(picker(page)).toBeVisible();
   await expect(
     picker(page).getByRole("combobox", { name: "GitHub account" }),
-  ).toHaveValue("17");
+  ).toHaveText("fixtures");
   await expect(
     picker(page).getByRole("combobox", { name: "Repository", exact: true }),
   ).toBeVisible();
@@ -1013,4 +1090,186 @@ test("request review still records coordination without granting GitHub access",
   await expect(
     requests.getByRole("button", { name: /Approve|Grant access/ }),
   ).toHaveCount(0);
+});
+
+test("one authorization updates the account after a delayed status response", async ({
+  page,
+}) => {
+  await fixture(page, { github: false, delayedAuthStatus: true });
+  await panel(page)
+    .getByRole("button", { name: "Connect GitHub", exact: true })
+    .click();
+  await picker(page)
+    .getByRole("button", { name: "Connect GitHub", exact: true })
+    .click();
+  await expect(
+    picker(page).getByText("@fixture-owner", { exact: true }),
+  ).toBeVisible({ timeout: 10000 });
+  expect(
+    (await calls(page)).filter((call) => call.action === "begin"),
+  ).toHaveLength(1);
+});
+
+test("a temporary polling failure retains the same authorization and recovers", async ({
+  page,
+}) => {
+  await fixture(page, {
+    github: false,
+    pollFailsOnce: true,
+    delayedAuthStatus: true,
+  });
+  await panel(page)
+    .getByRole("button", { name: "Connect GitHub", exact: true })
+    .click();
+  await picker(page)
+    .getByRole("button", { name: "Connect GitHub", exact: true })
+    .click();
+  await expect(picker(page).getByRole("alert")).toContainText(
+    "Temporary network failure",
+    { timeout: 10000 },
+  );
+  await expect(picker(page).getByText("ABCD-EFGH")).toBeVisible();
+  await expect(
+    picker(page).getByText("GitHub connected", { exact: true }),
+  ).toBeVisible({ timeout: 10000 });
+  expect(
+    (await calls(page)).filter((call) => call.action === "begin"),
+  ).toHaveLength(1);
+});
+
+test("first authorization opens repository access and refreshes on return", async ({
+  page,
+}) => {
+  await fixture(page, { github: false, accounts: 0 });
+  await panel(page)
+    .getByRole("button", { name: "Connect GitHub", exact: true })
+    .click();
+  await picker(page)
+    .getByRole("button", { name: "Connect GitHub", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (await calls(page)).filter(
+          (call) =>
+            call.action === "open-github" &&
+            String(call.input.url).endsWith("/installations/new"),
+        ).length,
+      { timeout: 10000 },
+    )
+    .toBe(1);
+  await expect(
+    picker(page).getByText(
+      "Choose repository access on GitHub, then return to Orka.",
+    ),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    window.repositoryControl.install();
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(
+    picker(page).getByText(
+      "Choose repository access on GitHub, then return to Orka.",
+    ),
+  ).toHaveCount(0);
+  expect(
+    (await calls(page)).filter((call) => call.action === "begin"),
+  ).toHaveLength(1);
+});
+
+test("discovery reuses an existing matching local checkout", async ({
+  page,
+}) => {
+  await fixture(page, { connected: true, unbound: true, localMatch: true });
+  await panel(page)
+    .getByRole("button", { name: "Connect repository", exact: true })
+    .click();
+  await choose(
+    page,
+    picker(page).getByRole("combobox", { name: "Repository", exact: true }),
+    "8484",
+  );
+  await expect(
+    picker(page).getByText(
+      "Your existing folder will be linked to GitHub. No clone is needed.",
+    ),
+  ).toBeVisible();
+  await picker(page)
+    .getByRole("button", { name: "Connect repository", exact: true })
+    .click();
+  await expect(picker(page)).toHaveCount(0);
+  const operations = await calls(page);
+  expect(
+    operations.find((call) => call.action === "bind")?.input,
+  ).toMatchObject({ sourceId: "source", repositoryId: "8484" });
+  expect(
+    operations.filter((call) => ["clone", "add-source"].includes(call.action)),
+  ).toHaveLength(0);
+});
+
+test("choosing another repository clears a previous folder-matching error", async ({
+  page,
+}) => {
+  await fixture(page, { matchingFailsOnce: true });
+  await panel(page)
+    .getByRole("button", { name: "Connect repository", exact: true })
+    .click();
+  const repository = picker(page).getByRole("combobox", {
+    name: "Repository",
+    exact: true,
+  });
+  await choose(page, repository, "8484");
+  await expect(picker(page).getByRole("alert")).toContainText(
+    "More than one connected folder",
+  );
+  await expect(
+    picker(page).getByRole("button", {
+      name: "Connect repository",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await choose(page, repository, "9999");
+  await expect(picker(page).getByRole("alert")).toHaveCount(0);
+  await expect(
+    picker(page).getByRole("button", {
+      name: "Connect repository",
+      exact: true,
+    }),
+  ).toBeEnabled();
+});
+
+test("repository menus support keyboard selection and return focus", async ({
+  page,
+}) => {
+  await fixture(page, { accounts: 2 });
+  await panel(page)
+    .getByRole("button", { name: "Connect repository", exact: true })
+    .click();
+  const account = picker(page).getByRole("combobox", {
+    name: "GitHub account",
+  });
+  await expect(account).toHaveText("fixtures");
+  await account.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("option", { name: "fixtures", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(
+    page.getByRole("option", { name: "team", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(account).toHaveText("team");
+  await expect(account).toBeFocused();
+  const repository = picker(page).getByRole("combobox", {
+    name: "Repository",
+    exact: true,
+  });
+  await repository.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("option", { name: "team/web-app · Private", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(repository).toBeFocused();
 });

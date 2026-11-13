@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "c340b831b49c927898907e0c5a4670ff566a1394",
+  "commit": "e788f0df7f3d13c6d20c75a57d58488075e1e3ea",
   "candidate": false,
-  "sourceTreeSha256": "e0041563b56d7047a1143bc780a4f6e7edd060fb246248208d7488b56c26379c",
+  "sourceTreeSha256": "7c193c309a6da5ca2432e43bc3486b95e7a1ef72fee6e33a2981846abd53980b",
   "files": [
     {
       "path": ".dockerignore",
@@ -166,7 +166,7 @@
     },
     {
       "path": "docs/github-repositories.md",
-      "sha256": "e9b2c172c3ad2a56a539be159d4961d52dbbaa4a03c94ddf57688c77b7796ea8",
+      "sha256": "45bcdf2d590c1c020c4809bb5c158f52813f3a906e96494d1744819d04cebb5b",
       "mode": 420
     },
     {
@@ -186,7 +186,7 @@
     },
     {
       "path": "docs/project-sources.md",
-      "sha256": "2b208d4cc2514dcf1df827638081629a2427e121a402120f582b75f4b0eed147",
+      "sha256": "8ebc9c5309e885ff19f9287c0c08a08d7a3e3a7191951565c81d6a1e0fe3af9c",
       "mode": 420
     },
     {
@@ -216,7 +216,7 @@
     },
     {
       "path": "internal/server/api.go",
-      "sha256": "1bd5b0c72ecc81e88f42308753d027db4a7fb4bd667f3c2a22685ed1e3aba0f2",
+      "sha256": "10d9714452e97a7a1a72282f89c6cdbce0744658f621bb3232481b34435ebd53",
       "mode": 420
     },
     {
@@ -251,7 +251,7 @@
     },
     {
       "path": "internal/server/contracts.json",
-      "sha256": "3944119a838f77bff2a1ba537bfe20eeee28b71edcd92a0d1cbee398d11d2fb0",
+      "sha256": "a902d6ae646b692b0d83f82477c212c371c224c12e1352b856d45ba161104eef",
       "mode": 420
     },
     {
@@ -266,7 +266,7 @@
     },
     {
       "path": "internal/server/env.go",
-      "sha256": "ff3c08f74dde02fd4df316c4ab5d1d4dcf3de1549dc1329754c678fa017c184f",
+      "sha256": "d28ac4c7ec1a612d9c32b3489228044f0862b058dd57cea82870f6a061e46aaf",
       "mode": 420
     },
     {
@@ -276,7 +276,7 @@
     },
     {
       "path": "internal/server/github.go",
-      "sha256": "1e3bd0a9f643ef1e9b972baa919f44ddd63d971bf552287b5c8822d2900f286c",
+      "sha256": "ebc025cc886b075de287febb4ebb7a5be8f6f8cd91a0aea6e3162e88be185db8",
       "mode": 420
     },
     {
@@ -366,7 +366,7 @@
     },
     {
       "path": "internal/server/projects.go",
-      "sha256": "ddc73fc9e9a44663010291b663744cff41b6eb7e72c43eea70ff9061fb1c3813",
+      "sha256": "dbae8c37a9735afaa521f0a7255fdea63dbaf9483d98fb0241ef413dbad8578e",
       "mode": 420
     },
     {
@@ -396,12 +396,12 @@
     },
     {
       "path": "internal/server/source_migration.go",
-      "sha256": "4a0c89175449ffb2ee12a462085b1f1f23788242d2328221118fdac99345047a",
+      "sha256": "3547c873932f0c1585768b0f47443d96e4396332eef604b5a57a94a6ddee1095",
       "mode": 420
     },
     {
       "path": "internal/server/sync.go",
-      "sha256": "0e3d5534afbe648c266ecc84a078986a2f26a4d32b0845d774fb8c15d262f187",
+      "sha256": "945a1f660f4776eb0dec3ae0bf9157a5fdc2b51f17585e2bd669f31b9d6c39ae",
       "mode": 420
     },
     {
@@ -471,7 +471,7 @@
     },
     {
       "path": "package-lock.json",
-      "sha256": "063ae31805eb0d175b050fc2048902880d072e30cb5afa65b6cf3138ab5dd83f",
+      "sha256": "1abca9d7fa163176a454fa0b1abb4301b50e2eae7132009ce46402eac0d96e3e",
       "mode": 420
     },
     {
@@ -491,7 +491,7 @@
     },
     {
       "path": "packages/protocol/package.json",
-      "sha256": "b2a2a7765be5458951d2628b4b8fd1b3ae70bf5e6c6ca048722aa3c9ceaebd91",
+      "sha256": "52b92af9909759c49b417f45a306a7a4bb8433473631b670333800f938b83be6",
       "mode": 420
     },
     {
@@ -501,7 +501,7 @@
     },
     {
       "path": "packages/protocol/src/governance.ts",
-      "sha256": "161fc0cf1c8d4f0b0c16a1742de6b1f15ad79a3f528b44b5c84b20f8ff3dd13d",
+      "sha256": "931ee6cd1e199c1fe50109ea616db37fa7f39b897ea9455ad4fda5a73ff6b26c",
       "mode": 420
     },
     {
@@ -526,7 +526,7 @@
     },
     {
       "path": "packages/protocol/src/sources.ts",
-      "sha256": "c293ae2709893a6b908946368ac63ff4f746e7ceb1537ce4a4cdd17868853e02",
+      "sha256": "0e54c8f84a43ffb382168d6828c4b57f40ea56c4daf40456c5df70757dd89c5f",
       "mode": 420
     },
     {
@@ -550,6 +550,16 @@
       "mode": 420
     },
     {
+      "path": "packages/server-core/migrations/005_source_removal.sql",
+      "sha256": "8a283b3a01e794cf030592b9c051353a0c1c6ef1ab76489801b327824d9b7d88",
+      "mode": 420
+    },
+    {
+      "path": "packages/server-core/migrations/006_github_authorization_completion.sql",
+      "sha256": "3c8d2d9d3df534dba2022ebff28a8aa58848717456e08a0f04e4cea1ad2bd528",
+      "mode": 420
+    },
+    {
       "path": "packages/server-core/migrations/assets.go",
       "sha256": "c251e8ed88aad92c47371cd7fa6f1ccc56bdb7f4660a9f41398b6e0876318127",
       "mode": 420
@@ -566,7 +576,7 @@
     },
     {
       "path": "scripts/check-repository.ts",
-      "sha256": "a38d9b7bb64e41b56864e316b41575f45a998aee4cedc79b0d5df02872835010",
+      "sha256": "ba45421fac1865d173211bd5ac173767dd5b35a2858d459a4a671d5885a185d0",
       "mode": 420
     },
     {
@@ -646,7 +656,7 @@
     },
     {
       "path": "tests/acceptance/integration.ts",
-      "sha256": "b4a1f6b8a59bd9beed34c1b2ae795c7def11cfb6ef9a51bce7e71af207eb63b5",
+      "sha256": "44aaa46c160b2b24287cdfd5848db1f540dadf1933078d3e5c7470f196b138fd",
       "mode": 420
     },
     {
@@ -666,7 +676,7 @@
     },
     {
       "path": "tests/acceptance/self-hosted-e2e.ts",
-      "sha256": "15970dd733341e0feb224ccf81c1fa53bb2040e7bfc7504cc9da5d8f43dfe72f",
+      "sha256": "d387f5653172342e2953d9dd1e0640ad46e52366c887329030372bd91c82056b",
       "mode": 420
     },
     {
@@ -786,7 +796,7 @@
     },
     {
       "path": "tests/github.integration.ts",
-      "sha256": "b142bd75d8cf06142b613e5835e686c862551bf2de83f7d51a76e7bd1f34f78e",
+      "sha256": "b539a654735a0d3d1c3d684cd8248dd2366e1c595e9943f73b0871e83502f75d",
       "mode": 420
     },
     {
@@ -821,7 +831,7 @@
     },
     {
       "path": "tests/migrations.integration.ts",
-      "sha256": "c653219fba9c0c84cb716727089f3d7156843c2982fb0a2c2770f41c65ecadd3",
+      "sha256": "9fc86322867063fd2fbce0a0c3c9bb1ab7cf34854f03ae8169e013f8d9599371",
       "mode": 420
     },
     {
@@ -872,6 +882,11 @@
     {
       "path": "tests/shutdown.integration.ts",
       "sha256": "c2648a27e92191a08970fb5ba778507600b597003059c3fc58662d02cd7ffbb1",
+      "mode": 420
+    },
+    {
+      "path": "tests/source-removal.integration.ts",
+      "sha256": "d1baedc3de1da2fc731088cd781cd9664c8db7aabfa8ef58f16db5630c6c13bb",
       "mode": 420
     },
     {

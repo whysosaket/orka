@@ -68,7 +68,7 @@ func (s *Store) createProject(q *Queries, user, name string, governed bool, remo
 	return id
 }
 func (s *Store) listProjects(q *Queries, user string, archived bool) []Object {
-	return q.Rows(`select p.id,p.name,p.revision,m.role,p.remote_key as "remoteKey",p.last_sync_at as "lastSyncAt",p.archived_at as "archivedAt",p.lifecycle_revision as "lifecycleRevision",p.governed,p.policy_revision as "policyRevision",p.role_policies as "rolePolicies",p.source_model as "sourceModel",coalesce((select jsonb_agg(jsonb_build_object('id',s.id,'name',s.name) || case when r.project_id is not null then jsonb_build_object('repository',case when r.repository ? 'id' then r.repository || jsonb_build_object('revision',r.revision) else null end,'repositoryRevision',r.revision) else '{}'::jsonb end order by s.name,s.id) from orka.project_sources s left join orka.source_repositories r on r.project_id=s.project_id and r.source_id=s.id where s.project_id=p.id),'[]'::jsonb) as sources from orka.projects p join orka.members m on m.project_id=p.id where m.user_id=$1 and ($2 or p.archived_at is null) order by p.name`, user, archived)
+	return q.Rows(`select p.id,p.name,p.revision,m.role,p.remote_key as "remoteKey",p.last_sync_at as "lastSyncAt",p.archived_at as "archivedAt",p.lifecycle_revision as "lifecycleRevision",p.governed,p.policy_revision as "policyRevision",p.role_policies as "rolePolicies",p.source_model as "sourceModel",coalesce((select jsonb_agg(jsonb_build_object('id',s.id,'name',s.name) || case when s.removed_at is not null then jsonb_build_object('removedAt',s.removed_at) else '{}'::jsonb end || case when r.project_id is not null then jsonb_build_object('repository',case when r.repository ? 'id' then r.repository || jsonb_build_object('revision',r.revision) else null end,'repositoryRevision',r.revision) else '{}'::jsonb end order by s.name,s.id) from orka.project_sources s left join orka.source_repositories r on r.project_id=s.project_id and r.source_id=s.id where s.project_id=p.id),'[]'::jsonb) as sources from orka.projects p join orka.members m on m.project_id=p.id where m.user_id=$1 and ($2 or p.archived_at is null) order by p.name`, user, archived)
 }
 func (s *Store) cleanupBlobs(ctx context.Context) {
 	q := &Queries{ctx: ctx, db: s.Pool}
@@ -149,17 +149,48 @@ func (s *Store) addSources(q *Queries, user string, input Object) any {
 	for _, source := range sources {
 		ids = append(ids, text(field(source, "id")))
 	}
-	count := number(q.One("select count(*)::int as count from orka.project_sources where project_id=$1 and id<>all($2::uuid[])", project, ids)["count"])
+	count := number(q.One("select count(*)::int as count from orka.project_sources where project_id=$1 and removed_at is null and id<>all($2::uuid[])", project, ids)["count"])
 	if !q.Require(count+int64(len(sources)) <= 100, 400, "A project can contain at most 100 source folders") {
 		return nil
 	}
 	for _, raw := range sources {
 		source := object(raw)
-		prior := q.One("select name from orka.project_sources where project_id=$1 and id=$2", project, source["id"])
+		prior := q.One("select name,removed_at from orka.project_sources where project_id=$1 and id=$2", project, source["id"])
+		if !q.Require(prior == nil || prior["removed_at"] == nil, 409, "This source folder was removed; add it with a new source ID") {
+			return nil
+		}
 		if !q.Require(prior == nil || prior["name"] == source["name"], 409, "Source ID already belongs to another folder") {
 			return nil
 		}
 		q.Exec("insert into orka.project_sources(project_id,id,name) values($1,$2,$3) on conflict do nothing", project, source["id"], source["name"])
 	}
-	return Object{"sources": values(q.Rows("select id,name from orka.project_sources where project_id=$1 order by name,id", project))}
+	return Object{"sources": values(q.Rows("select id,name from orka.project_sources where project_id=$1 and removed_at is null order by name,id", project))}
+}
+
+func (s *Store) requireActiveSource(q *Queries, project string, source any) bool {
+	if source == nil {
+		return true
+	}
+	row := q.One("select removed_at from orka.project_sources where project_id=$1 and id=$2", project, source)
+	return q.Require(row != nil, 400, "Source folder does not belong to this project") && q.Require(row["removed_at"] == nil, 409, "Source folder was removed from this project")
+}
+
+func (s *Store) removeSource(q *Queries, user string, input Object) any {
+	project, source := text(input["projectId"]), text(input["sourceId"])
+	q.One("select id from orka.projects where id=$1 for update", project)
+	s.member(q, user, project)
+	if !q.Require(q.One("select 1 from orka.members where project_id=$1 and user_id=$2 and role='owner'", project, user) != nil, 403, "Only project owners can remove source folders") {
+		return nil
+	}
+	row := q.One("select removed_at from orka.project_sources where project_id=$1 and id=$2", project, source)
+	if !q.Require(row != nil, 404, "Source folder does not belong to this project") {
+		return nil
+	}
+	if row["removed_at"] == nil {
+		row = q.One("update orka.project_sources set removed_at=now() where project_id=$1 and id=$2 returning removed_at", project, source)
+		q.Exec("update orka.source_repositories set repository='{}'::jsonb,revision=revision+1 where project_id=$1 and source_id=$2", project, source)
+		q.Exec("update orka.repository_access_requests set status='canceled',revision=revision+1,updated_at=now(),note='Source folder removed from project' where project_id=$1 and source_id=$2 and status=any($3::text[])", project, source, githubActive)
+		s.appendLog(q, project, Object{"action": "project.source_removed", "actor": user, "sourceId": source}, true, nil)
+	}
+	return Object{"sourceId": source, "removedAt": row["removed_at"]}
 }

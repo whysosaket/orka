@@ -37,6 +37,7 @@ export async function settingsFixture(
     failSharing?: boolean;
     failBackground?: boolean;
     failRename?: boolean;
+    failSourceRemoval?: boolean;
     cancelPicker?: boolean;
     folderState?: "connected" | "reconnect" | "locate";
     sourceRows?: {
@@ -44,6 +45,7 @@ export async function settingsFixture(
       name: string;
       path: string | null;
       folderState: "connected" | "reconnect" | "locate";
+      removedAt?: string | null;
     }[];
     policyFailure?: "drop" | "offline" | "conflict";
     legacy?: boolean;
@@ -292,7 +294,7 @@ export async function settingsFixture(
             if (args.action === "capabilities")
               return options.olderService
                 ? {}
-                : { rolePolicies: 1, policyOperations: 1 };
+                : { rolePolicies: 1, policyOperations: 1, sourcesRemoval: 1 };
             await wait(controls.delay);
             if (options.devices === "unavailable" || controls.failRefresh)
               throw new Error("Service unavailable");
@@ -451,6 +453,17 @@ export async function settingsFixture(
               }
               project.name = args.input.name;
               project.lifecycleRevision++;
+            }
+            if (args.action === "remove-source") {
+              if (options.failSourceRemoval)
+                throw new Error("Service unavailable. Try again.");
+              const source = project.sources.find(
+                (source) => source.id === args.input.sourceId,
+              )!;
+              Object.assign(source, {
+                removedAt: "2026-11-13T00:00:00Z",
+                path: null,
+              });
             }
             if (args.action === "local_name")
               Object.assign(project, { localName: args.input.name });
