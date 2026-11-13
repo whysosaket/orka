@@ -6,6 +6,7 @@ import type {
   ProjectResource,
   Snapshot,
 } from "../types.js";
+import { bindingResourceId } from "./sync-attention.js";
 
 /** Draft statuses that can still be sent or refreshed from this Mac. */
 export const actionableDraftStatuses = ["local", "stale", "rejected"];
@@ -29,7 +30,7 @@ export function skillBinding(
   resource: Pick<ProjectResource, "resourceId">,
 ): Binding | undefined {
   return (state.bindings ?? []).find(
-    (b) => b.base?.resourceId === resource.resourceId,
+    (b) => bindingResourceId(b) === resource.resourceId,
   );
 }
 

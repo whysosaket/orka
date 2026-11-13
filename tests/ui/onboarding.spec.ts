@@ -299,9 +299,20 @@ async function fixture(
                       id: `draft-${project.id}`,
                       projectId: project.id,
                       status: "local",
+                      createdAt: "2026-11-13T10:00:00Z",
                       resource: {
+                        resourceId: `memory-${project.id}`,
+                        projectId: project.id,
                         kind: "memory",
+                        source: "shared",
+                        logicalPath: "instructions/AGENTS.md",
                         title: "Project instructions",
+                        files: [],
+                        revision: 0,
+                        owner: "user",
+                        updatedBy: "user",
+                        updatedAt: "2026-11-13T10:00:00Z",
+                        deleted: false,
                       },
                     }))
                   : [],
@@ -719,10 +730,10 @@ test("pending memories keep owner review available after setup without claiming 
   await page.getByRole("button", { name: "Open Orka", exact: true }).click();
   await page.getByRole("button", { name: /1 notification/ }).click();
   await expect(
-    page.getByText("1 local changes are ready for review.", { exact: true }),
+    page.getByText("Local changes are ready for review.", { exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Open requests", exact: true })
+    .getByRole("button", { name: "Review changes", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "Changes on this Mac", exact: true }),

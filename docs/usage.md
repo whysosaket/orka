@@ -105,6 +105,23 @@ The footer updates while the panel is open, stays visible below scrolling issues
 and clears when the pass finishes or fails. The header shows **Syncing…** during
 active work, so you can close and reopen the panel without losing progress.
 
+The attention count belongs to the selected project. A resource with a failed
+upload, local edits, and an incoming update appears once, with its related details
+kept together. Requests awaiting your decision contribute to attention; your own
+submissions waiting for another reviewer do not. Completed request decisions and
+session-copy notices remain available in history without keeping the sync warning
+active. Retrying a project's uploads leaves other projects' failed operations
+unchanged. A version conflict still needs review against the current shared
+version.
+
+Older local draft snapshots move to history only when the accepted revision and
+the current local files establish that the installed version is current, with no
+pending operation or conflict requiring those drafts. Their content is retained
+for inspection. Differing files, queued changes, incomplete installations, and
+unresolved session branches stay preserved for review. A matching existing
+instruction file can establish its installation baseline without being rewritten;
+an incoming instruction change still requires local review.
+
 ### Opt-in project sharing
 
 Create and Join offer independent **Share automatically** and **Only when asked**
@@ -146,7 +163,7 @@ Memory uses three-way line diffs: additions and uncontested deletions apply dire
 Legacy projects retain three-way line merging for plans and skill files. Governed
 instructions, skills and plans reject stale publication bases. Authorized shared
 skills install and update automatically when Skills sharing is enabled;
-instructions require explicit local installation review. Snapshots and tombstones
+changed instructions require explicit local installation review. Snapshots and tombstones
 remain available for history and retries; no Git commits are created.
 
 File errors are isolated to the affected item. Unreadable or unsafe skills, stale bindings, missing or corrupt cached uploads, failed downloads, and invalid memory entries remain visible for retry while independent work continues. An unavailable or replaced project folder pauses that project's filesystem work without stopping other projects. Download metadata is saved before blobs are fetched, so missing blobs retry after a restart even when the feed cursor has advanced. Verified source or downloaded bytes repair corrupt cache entries. Queued edits, local files, installation recovery records, and existing path and permission checks are preserved.

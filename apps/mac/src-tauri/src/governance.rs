@@ -241,10 +241,9 @@ pub fn capture(
         params![id, project_id, draft.to_string()],
     )
     .map_err(|e| e.to_string())?;
-    if matches!(resource["kind"].as_str(), Some("memory" | "skill"))
-        && latest.as_ref().is_some_and(|latest| latest["id"] != id)
-    {
-        db.execute("UPDATE drafts SET value=json_remove(json_set(value,'$.status','local','$.resource',json(?),'$.baseRevision',?,'$.precedingDraft',json(?)),'$.submission','$.requestId','$.request','$.dismissalReason','$.conflictReview') WHERE id=? AND project=? AND (json_extract(value,'$.status') IN ('published','approved') OR json_extract(value,'$.dismissalReason')='source_replaced')",params![resource.to_string(),base,preceding.to_string(),id,project_id]).map_err(|error|error.to_string())?;
+    if matches!(resource["kind"].as_str(), Some("memory" | "skill")) {
+        let refresh = latest.as_ref().is_some_and(|latest| latest["id"] != id);
+        db.execute("UPDATE drafts SET value=json_remove(json_set(value,'$.status','local','$.resource',json(?),'$.baseRevision',?,'$.precedingDraft',json(?)),'$.submission','$.requestId','$.request','$.dismissalReason','$.conflictReview','$.archivedAt','$.supersededByRevision') WHERE id=? AND project=? AND ((? AND (json_extract(value,'$.status') IN ('published','approved') OR json_extract(value,'$.dismissalReason')='source_replaced')) OR (json_extract(value,'$.status')='dismissed' AND json_extract(value,'$.dismissalReason')='superseded'))",params![resource.to_string(),base,preceding.to_string(),id,project_id,refresh]).map_err(|error|error.to_string())?;
     }
     if resource["kind"] == "skill" || resource["kind"] == "memory" {
         db.execute(
@@ -675,7 +674,11 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
     if !crate::env::enabled() && (input["class"] == "env" || action == "replace-env") {
         return Err("ENV support is disabled".into());
     }
-    let _lock = if matches!(
+    let _lock = if action == "reconcile-history" {
+        Some(projects::wait_for_lock(std::time::Duration::from_secs(
+            300,
+        ))?)
+    } else if matches!(
         action.as_str(),
         "save-candidate"
             | "refresh-draft"
@@ -716,6 +719,12 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
     } else {
         p
     };
+    if action == "reconcile-history" {
+        if input.get("apply").is_some_and(|apply| !apply.is_boolean()) {
+            return Err("Choose preview or apply for history reconciliation".into());
+        }
+        return crate::attention::reconcile_project(&db, &p, input["apply"] == true);
+    }
     match action.as_str() {
         "drafts"=>return Ok(json!(db::rows(&db,"SELECT value FROM drafts WHERE project=? AND json_extract(value,'$.status')!='dismissed' ORDER BY rowid DESC",&[&project_id])?)),
         "dismiss"=>{

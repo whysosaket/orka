@@ -19,7 +19,7 @@ import {
   hasNativeTextMenu,
   type ItemMenuAction,
 } from "./components/item-menu.js";
-import { ENV_ENABLED, visibleRequest } from "./lib/features.js";
+import { ENV_ENABLED } from "./lib/features.js";
 import { invoke } from "@tauri-apps/api/core";
 import type { Resource } from "@portable/protocol";
 import type { ProjectPage, ProjectResource } from "./types.js";
@@ -69,7 +69,7 @@ import {
   useDesktopUpdates,
 } from "./components/desktop-updates.js";
 import { WorkspaceHeader } from "./components/workspace-header.js";
-import { countSyncIssues, groupSyncIssues } from "./components/sync-issues.js";
+import { projectAttention } from "./components/sync-attention.js";
 import { useDeepLinks } from "./components/use-deep-links.js";
 import { parseProjectInvite } from "./components/project-invite.js";
 import { useIndexFilters } from "./components/use-index-filters.js";
@@ -462,34 +462,9 @@ function WorkspaceApp({
         : { label: "View details", onClick: () => setSyncOpen(true) },
     });
   }, [error, errorFeedback, state.user, setup.dialog, notify, act]);
-  const conflicts = useMemo(
-    () =>
-      state.conflicts.filter((c) =>
-        state.resources.some(
-          (r) => r.resourceId === c.resourceId && r.projectId === project,
-        ),
-      ),
-    [state.conflicts, state.resources, project],
-  );
-  const sessionNotifications = useMemo(
-    () =>
-      state.activity.filter(
-        (item) =>
-          item.notifyOwner === state.user &&
-          state.resources.some(
-            (r) => r.projectId === project && r.resourceId === item.copyId,
-          ),
-      ),
-    [state.activity, state.resources, state.user, project],
-  );
-  const issues = useMemo(
-    () =>
-      groupSyncIssues(
-        { errors: state.errors, resources: state.resources },
-        project,
-        selectedProject ? projectLabel(selectedProject) : undefined,
-      ),
-    [state.errors, state.resources, project, selectedProject],
+  const attention = useMemo(
+    () => projectAttention(state, project),
+    [state, project],
   );
   if (!state.user)
     return (
@@ -741,33 +716,7 @@ function WorkspaceApp({
                 key={project}
                 canConnect={Boolean(selectedProject)}
                 state={state}
-                issues={issues}
-                issueCount={countSyncIssues(issues, state)}
-                conflicts={conflicts}
-                notifications={sessionNotifications}
-                reviewRequests={(state.reviewRequests ?? []).filter(
-                  (r) =>
-                    r.projectId === project && r.unread && visibleRequest(r),
-                )}
-                localUpdates={
-                  state.bindings.filter(
-                    (b) =>
-                      b.base?.projectId === project &&
-                      [
-                        "review_pending",
-                        "update_available",
-                        "locally_modified",
-                      ].includes(b.installationState ?? ""),
-                  ).length
-                }
-                privateDrafts={
-                  (state.drafts ?? []).filter(
-                    (d) =>
-                      d.projectId === project &&
-                      d.status === "local" &&
-                      !d.automaticSharing,
-                  ).length
-                }
+                attention={attention}
                 onReview={() => leaveSettings(() => openManagement("requests"))}
                 busy={busy}
                 actionError={error || refreshError}
@@ -781,11 +730,15 @@ function WorkspaceApp({
                   })
                 }
                 onRetry={() =>
-                  void act(() => invoke("retry_uploads"), {
-                    successTitle: "Upload retry requested",
-                    kind: "queued",
-                    errorTitle: "Couldn’t retry uploads",
-                  })
+                  void act(
+                    () =>
+                      invoke("retry_uploads", { projectId: project || null }),
+                    {
+                      successTitle: "Upload retry requested",
+                      kind: "queued",
+                      errorTitle: "Couldn’t retry uploads",
+                    },
+                  )
                 }
                 onResumeSetup={() =>
                   void act(
@@ -803,7 +756,10 @@ function WorkspaceApp({
                 onOpen={(id) =>
                   leaveSettings(() => {
                     openResource(id);
-                    setTab("session");
+                    const kind = state.resources.find(
+                      (r) => r.resourceId === id,
+                    )?.kind;
+                    if (kind) setTab(kind);
                   })
                 }
               />
@@ -931,7 +887,9 @@ function WorkspaceApp({
                     user={state.user}
                     deviceId={state.deviceId}
                     busy={busy}
-                    conflicts={conflicts}
+                    conflicts={attention.items.flatMap(
+                      (item) => item.conflicts,
+                    )}
                     view={view}
                     act={act}
                     state={state}

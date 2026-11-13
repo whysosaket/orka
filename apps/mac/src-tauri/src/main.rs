@@ -1,4 +1,5 @@
 mod account_profile;
+mod attention;
 mod auth;
 mod bundles;
 mod claude_import;
@@ -114,6 +115,7 @@ fn main() {
                     "request-access",
                     "requests",
                     "request",
+                    "reconcile-history",
                 ]
                 .contains(&action.as_str())
                 {

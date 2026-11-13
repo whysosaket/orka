@@ -592,7 +592,7 @@ for (const publisher of [true, false]) {
       publisher ? "draft-publisher" : "draft-suggester",
     );
     const local = management(page).getByRole("region", {
-      name: "Local changes",
+      name: "Local reviews",
     });
     await local
       .getByRole("button", { name: "Review changes", exact: true })
@@ -1198,7 +1198,7 @@ test("request review loads in place, retries failed reads, and respects review p
     (window as any).requestLoadFailure = true;
   });
   await management(page)
-    .getByRole("button", { name: "Review request", exact: true })
+    .getByRole("button", { name: "View request", exact: true })
     .click();
   const dialog = page.getByRole("dialog", {
     name: "Review request",
@@ -1231,7 +1231,7 @@ test("request review loads in place, retries failed reads, and respects review p
   ]);
 });
 
-test("request decisions keep the prepared review open while submitting and restore its trigger", async ({
+test("request decisions keep the prepared review open and focus the review list when the decided row moves to history", async ({
   page,
 }) => {
   await fixture(page);
@@ -1261,7 +1261,19 @@ test("request decisions keep the prepared review open while submitting and resto
   expect(await calls(page, "decide")).toHaveLength(1);
   await page.evaluate(() => (window as any).finishRequestDecision());
   await expect(dialog).toHaveCount(0);
-  await expect(trigger).toBeFocused();
+  await expect(
+    management(page).getByRole("heading", {
+      name: "Requests to review",
+      exact: true,
+    }),
+  ).toBeFocused();
+  await expect(trigger).toHaveCount(0);
+  await expect(
+    management(page).getByRole("region", {
+      name: "Request history",
+      exact: true,
+    }),
+  ).toBeVisible();
 });
 
 test("instruction previews load directly, recover from failures, and require a fresh review after edits", async ({

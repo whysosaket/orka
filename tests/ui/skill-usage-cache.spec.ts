@@ -184,7 +184,8 @@ test("returning to visible refreshes overdue usage once and cleans up scheduling
     Object.defineProperty(window, "setTimeout", {
       configurable: true,
       value: (handler: TimerHandler, timeout = 0, ...args: unknown[]) => {
-        if (typeof handler !== "function" || timeout < 60_000)
+        // The remaining polling interval can be shorter than a full minute.
+        if (typeof handler !== "function" || timeout < 1000)
           return set(handler, timeout, ...args);
         const id = set(() => {
           timers.delete(id);

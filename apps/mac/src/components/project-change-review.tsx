@@ -24,6 +24,7 @@ export interface SuggestionDetail {
 
 export function ProjectChangeReview({
   detail,
+  readOnly = false,
   busy,
   error,
   onClose,
@@ -31,6 +32,7 @@ export function ProjectChangeReview({
   onSubmit,
 }: {
   detail: SuggestionDetail;
+  readOnly?: boolean;
   busy: boolean;
   error: string;
   onClose: () => void;
@@ -47,7 +49,7 @@ export function ProjectChangeReview({
   return (
     <Overlay
       open
-      title="Review changes"
+      title={readOnly ? "Saved change" : "Review changes"}
       className="changes-review-modal"
       onClose={() => {
         if (!busy) onClose();
@@ -59,12 +61,14 @@ export function ProjectChangeReview({
     >
       <header className="review-header">
         <div className="review-heading">
-          <h2>Review changes</h2>
+          <h2>{readOnly ? "Saved change" : "Review changes"}</h2>
           <div className="review-versions" aria-label="Compared versions">
             <span className="version-pill">{sharedVersion}</span>
             <span aria-hidden="true">to</span>
             <span className="sr-only">compared with</span>
-            <span className="version-pill">This Mac</span>
+            <span className="version-pill">
+              {readOnly ? "Saved snapshot" : "This Mac"}
+            </span>
           </div>
         </div>
         <IconButton
@@ -119,24 +123,26 @@ export function ProjectChangeReview({
         )}
       </div>
       <footer className="review-footer">
-        {["stale", "rejected"].includes(draft.status) && (
+        {!readOnly && ["stale", "rejected"].includes(draft.status) && (
           <Button disabled={busy} onClick={() => void onRefresh()}>
             Review latest and retry
           </Button>
         )}
         <Button variant="tertiary" disabled={busy} onClick={onClose}>
-          Cancel
+          {readOnly ? "Close" : "Cancel"}
         </Button>
-        <Button
-          variant="primary"
-          disabled={
-            busy || draft.status !== "local" || detail.sourceUnavailable
-          }
-          aria-busy={busy}
-          onClick={() => void onSubmit()}
-        >
-          {detail.canPublish ? "Publish update" : "Send for approval"}
-        </Button>
+        {!readOnly && (
+          <Button
+            variant="primary"
+            disabled={
+              busy || draft.status !== "local" || detail.sourceUnavailable
+            }
+            aria-busy={busy}
+            onClick={() => void onSubmit()}
+          >
+            {detail.canPublish ? "Publish update" : "Send for approval"}
+          </Button>
+        )}
       </footer>
     </Overlay>
   );
