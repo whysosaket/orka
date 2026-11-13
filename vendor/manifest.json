@@ -5,7 +5,7 @@
     "toolchain": "1.27.4"
   },
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "30535c645cbf2b09791eab7e58f926dd128fea64",
+  "commit": "333f5404b97432ff4a01c9b1e48a57622a4fd2fa",
   "packages": [
     {
       "name": "@portable/protocol",

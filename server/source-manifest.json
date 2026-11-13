@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "30535c645cbf2b09791eab7e58f926dd128fea64",
+  "commit": "333f5404b97432ff4a01c9b1e48a57622a4fd2fa",
   "candidate": false,
-  "sourceTreeSha256": "749a893599d46fbaceea8ed0c7a79340532af464862f14561eca2fdac9dc9e50",
+  "sourceTreeSha256": "cd1241ff06bd5864070e8f00ba3f6e47b55c32143dc47b345f71a07194fda50e",
   "files": [
     {
       "path": ".dockerignore",
@@ -701,7 +701,12 @@
     },
     {
       "path": "tests/acceptance/image-e2e.ts",
-      "sha256": "e07a48aa14d808dd4240386e97a98fb2cf45a42add411619b12d0c14d2afc4dd",
+      "sha256": "68f92768f1a0e78cfa510a8d66a23dba8601f1e58570ea597324eac6720fe8bf",
+      "mode": 420
+    },
+    {
+      "path": "tests/acceptance/image-ports.ts",
+      "sha256": "0ede1ae064a3a24587e8e73df32dd17829aed4a54d51da4165363ae439029973",
       "mode": 420
     },
     {
@@ -857,6 +862,11 @@
     {
       "path": "tests/governance.integration.ts",
       "sha256": "ea73ff1f90e44295f9f35d698e422af46489893da4397f0e2873d7d5e81b549a",
+      "mode": 420
+    },
+    {
+      "path": "tests/image-ports.test.ts",
+      "sha256": "31aefe24f600bb9a18d88e5297b5a9597b82bcc775abe91ead95a0e292926d4d",
       "mode": 420
     },
     {

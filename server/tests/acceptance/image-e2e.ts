@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { checkMcpImage } from "./mcp-image-check.js";
+import { reserveImagePorts } from "./image-ports.js";
 
 const [
   edition = "oss",
@@ -22,9 +23,10 @@ assert.ok(["oss", "managed"].includes(edition));
 const managed = edition === "managed";
 const root = await mkdtemp(join(tmpdir(), "orka-image-"));
 const name = `orka-image-${randomBytes(5).toString("hex")}`;
-const port = 54000 + Math.floor(Math.random() * 1000);
+const ports = await reserveImagePorts();
+const { port, mailPort } = ports;
 const base = `http://127.0.0.1:${port}`,
-  mailBase = `http://127.0.0.1:${port + 1000}`;
+  mailBase = `http://127.0.0.1:${mailPort}`;
 const compose = resolve(composeFile),
   override = join(root, "test.json"),
   envFile = join(root, ".env");
@@ -151,11 +153,11 @@ await writeFile(
             image: "node:24-bookworm-slim",
             command: ["node", "/capture.mjs"],
             volumes: [`${capture}:/capture.mjs:ro`],
-            ports: [`127.0.0.1:${port + 1000}:8025`],
+            ports: [`127.0.0.1:${mailPort}:8025`],
           }
         : {
             image: "axllent/mailpit:v1.27.8",
-            ports: [`127.0.0.1:${port + 1000}:8025`],
+            ports: [`127.0.0.1:${mailPort}:8025`],
           },
     },
   }),
@@ -625,6 +627,10 @@ try {
   try {
     dc("down", "--volumes", "--remove-orphans");
   } finally {
-    await rm(root, { recursive: true, force: true });
+    try {
+      await rm(root, { recursive: true, force: true });
+    } finally {
+      ports.release();
+    }
   }
 }
