@@ -17,6 +17,9 @@ local-update and local-edit previews. A link does not grant its recipient access
 
 A local item or your local changes can offer **Share snapshot with project…**.
 Review the project, service, exact file list and snapshot before confirming.
+Preparation shows file-checking activity while the snapshot is read, with a
+progress bar and current stage. File totals appear only when known. Files are
+listed with their individual sizes and the snapshot total.
 Sharing keeps the local original and does not change automatic category sharing.
 Later edits or future conversation turns are not included in that snapshot.
 

@@ -8,6 +8,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 use uuid::Uuid;
 use walkdir::WalkDir;
@@ -649,6 +650,17 @@ fn collect_embedded_plan(
 }
 
 pub fn discover(db: &rusqlite::Connection, project: &Value, kind: &str) -> Result<Vec<Value>> {
+    discover_with_progress(db, project, kind, None)
+}
+
+pub(crate) type DiscoveryProgress<'a> = Option<&'a dyn Fn(&str, Option<&Path>)>;
+
+pub(crate) fn discover_with_progress(
+    db: &rusqlite::Connection,
+    project: &Value,
+    kind: &str,
+    progress: DiscoveryProgress<'_>,
+) -> Result<Vec<Value>> {
     let id = project["id"].as_str().ok_or("Missing project")?;
     let generation = Uuid::new_v4().to_string();
     refresh_catalog(
@@ -657,6 +669,7 @@ pub fn discover(db: &rusqlite::Connection, project: &Value, kind: &str) -> Resul
         kind,
         &generation,
         !project["sources"].is_array(),
+        progress,
     )?;
     // Sharing may use fresh discoveries only; incomplete scans retain older
     // entries exclusively for the desktop's private reading catalog.
@@ -698,7 +711,7 @@ pub fn discover_library(
     project: &Value,
     kind: &str,
 ) -> Result<Vec<String>> {
-    refresh_catalog(db, project, kind, &Uuid::new_v4().to_string(), false)
+    refresh_catalog(db, project, kind, &Uuid::new_v4().to_string(), false, None)
 }
 
 fn refresh_catalog(
@@ -707,6 +720,7 @@ fn refresh_catalog(
     kind: &str,
     generation: &str,
     propagate_source_error: bool,
+    progress: DiscoveryProgress<'_>,
 ) -> Result<Vec<String>> {
     if !matches!(kind, "memory" | "skill" | "session" | "plan") {
         return Err("Choose memories, skills, sessions, or plans".into());
@@ -734,7 +748,7 @@ fn refresh_catalog(
         };
         let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
         let previous = db::rows(&tx, "SELECT value FROM local_resources WHERE project=? AND json_extract(value,'$.resource.kind')=? AND coalesce(json_extract(value,'$.resource.sourceId'),'')=?", &[&id,&kind,&source_id])?;
-        let scan = scan_source(&tx, &source, false);
+        let scan = scan_source(&tx, &source, false, progress);
         let failures = db::rows(
             &tx,
             "SELECT json_object('error',error) FROM errors WHERE source GLOB ? OR (? AND source GLOB ?)",
@@ -813,7 +827,7 @@ fn scan_with_status(
 ) -> Result<()> {
     let mut failures = Vec::new();
     for source in crate::sources::views(project) {
-        let result = scan_source(db, &source, report_progress);
+        let result = scan_source(db, &source, report_progress, None);
         let key = format!(
             "{}:source:{}",
             project["id"].as_str().unwrap_or(""),
@@ -832,7 +846,12 @@ fn scan_with_status(
     Ok(())
 }
 
-fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool) -> Result<()> {
+fn scan_source(
+    db: &rusqlite::Connection,
+    project: &Value,
+    report_progress: bool,
+    progress: DiscoveryProgress<'_>,
+) -> Result<()> {
     let Some(raw) = project["path"].as_str() else {
         return Ok(());
     };
@@ -842,6 +861,9 @@ fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool
     }
     let root = root.canonicalize().map_err(|e| e.to_string())?;
     let report_file = |path: &Path| -> Result<()> {
+        if let Some(progress) = progress {
+            progress("Checking local files", Some(path));
+        }
         if report_progress {
             let relative = path.strip_prefix(&root).ok();
             let path = relative
@@ -1343,6 +1365,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool
     if crate::projects::sharing_allowed(project, "session")
         || crate::projects::sharing_allowed(project, "plan")
     {
+        let mut last_history_progress = None;
         for (tool, directory) in [
             ("codex", codex.join("sessions")),
             ("claude", claude.join("projects")),
@@ -1364,6 +1387,14 @@ fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool
                     history::UNATTRIBUTED_SESSION_PREFIX,
                     e.path().display()
                 );
+                if let Some(progress) = progress {
+                    if last_history_progress
+                        .is_none_or(|last: Instant| last.elapsed() >= Duration::from_millis(100))
+                    {
+                        progress("Reading local history", None);
+                        last_history_progress = Some(Instant::now());
+                    }
+                }
                 let bytes = match history::read_session(e.path()) {
                     Ok(bytes) => {
                         if unattributed_paths.contains(&unattributed) {

@@ -5,14 +5,23 @@ import {
   type LibraryWindow,
 } from "./fixtures/resource-library.js";
 import { skillFixture } from "./fixtures/skill-detail.js";
-import type { Snapshot } from "../../apps/mac/src/types.js";
+import type { Snapshot, SyncProgress } from "../../apps/mac/src/types.js";
 
 interface MenuControls {
   shareStatus: string;
   deleteStatus: string;
   deleteFailures: number;
   deferPreview: boolean;
+  previewFailures: number;
+  previewTitle?: string;
+  previewFiles?: { path: string; size: number }[];
+  previewProgress?: (progress: SyncProgress) => void;
+  previewProgresses: ((progress: SyncProgress) => void)[];
   finishPreview?: () => void;
+  finishPreviews: (() => void)[];
+  deferShare: boolean;
+  shareProgress?: (progress: SyncProgress) => void;
+  finishShare?: () => void;
   resourceVersion: number;
   deleted: string[];
 }
@@ -38,6 +47,10 @@ async function menuFixture(
       deleteStatus: "deleted",
       deleteFailures: 0,
       deferPreview: false,
+      previewFailures: 0,
+      previewProgresses: [],
+      finishPreviews: [],
+      deferShare: false,
       resourceVersion: 0,
       deleted: [],
     };
@@ -51,13 +64,24 @@ async function menuFixture(
           previewToken?: string;
         };
         const action = String(args.action);
+        const onProgress = args.onProgress as
+          { onmessage: (value: SyncProgress) => void } | undefined;
         if (action.startsWith("preview-")) {
+          controls.previewProgress = onProgress?.onmessage;
+          if (onProgress) controls.previewProgresses.push(onProgress.onmessage);
+          if (controls.previewFailures > 0) {
+            controls.previewFailures -= 1;
+            throw new Error("Local folder temporarily unavailable");
+          }
+          const files = controls.previewFiles ?? [
+            { path: "content.md", size: 20 },
+          ];
           const preview = {
             previewToken: `frozen-${action}-${input.resourceId}`,
-            title: `Reviewed ${input.resourceId}`,
+            title: controls.previewTitle ?? `Reviewed ${input.resourceId}`,
             kind: input.resourceId.split("-")[0],
-            files: [{ path: "content.md", size: 20 }],
-            totalBytes: 20,
+            files,
+            totalBytes: files.reduce((total, file) => total + file.size, 0),
             paths: ["/synthetic/library/content.md"],
             note:
               action === "preview-delete"
@@ -67,10 +91,19 @@ async function menuFixture(
           if (controls.deferPreview)
             return new Promise((resolve) => {
               controls.finishPreview = () => resolve(preview);
+              controls.finishPreviews.push(controls.finishPreview);
             });
           return preview;
         }
-        if (action === "share") return { status: controls.shareStatus };
+        if (action === "share") {
+          controls.shareProgress = onProgress?.onmessage;
+          if (controls.deferShare)
+            return new Promise((resolve) => {
+              controls.finishShare = () =>
+                resolve({ status: controls.shareStatus });
+            });
+          return { status: controls.shareStatus };
+        }
         if (action === "delete") {
           if (controls.deleteFailures > 0) {
             controls.deleteFailures -= 1;
@@ -153,13 +186,17 @@ test("resource row right-click and ellipsis share actions without opening, with 
     page.getByRole("region", { name: "Plan details", exact: true }),
   ).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await row
-    .getByRole("button", { name: "Actions for My shared plan", exact: true })
-    .click();
+  await expect(opener).toBeFocused();
+  const more = row.getByRole("button", {
+    name: "Actions for My shared plan",
+    exact: true,
+  });
+  await more.click();
   expect(
     await page.getByRole("menu").getByRole("menuitem").allTextContents(),
   ).toEqual(actions);
   await page.keyboard.press("Escape");
+  await expect(more).toBeFocused();
   await opener.focus();
   await opener.press("Shift+F10");
   await expect(
@@ -356,6 +393,337 @@ test("snapshot sharing requires review and submits the exact frozen token withou
         call.command === "project_command" || call.command === "configure",
     ),
   ).toEqual([]);
+});
+
+for (const viewport of [
+  { width: 1160, height: 800 },
+  { width: 900, height: 640 },
+]) {
+  test(`snapshot review groups files and reports actual preparation progress at ${viewport.width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await menuFixture(page);
+    await page.evaluate(() => {
+      const controls = (window as unknown as MenuWindow).resourceMenu;
+      controls.deferPreview = true;
+      controls.previewTitle =
+        "Review the project navigation, session sharing and resource menus before the next release. Keep the existing workspace and sharing choices intact while checking long session titles.";
+      controls.previewFiles = [{ path: "session.jsonl", size: 8_284_522 }];
+    });
+    await collection(page, "Sessions");
+    await resourceMenu(
+      page,
+      "Private session notes",
+      "Share snapshot with project…",
+    );
+    const dialog = page.getByRole("dialog", {
+      name: "Share snapshot with project",
+      exact: true,
+    });
+    const confirm = dialog.getByRole("button", {
+      name: "Share this snapshot",
+      exact: true,
+    });
+    const bar = dialog.getByRole("progressbar");
+    await expect(confirm).toBeDisabled();
+    await expect(bar).toHaveCount(1);
+    await expect(bar).not.toHaveAttribute("aria-valuenow");
+    await expect(bar.locator("span")).toHaveCSS("animation-name", "none");
+    await page.evaluate(() => {
+      (window as unknown as MenuWindow).resourceMenu.previewProgress?.({
+        label: "Checking local files",
+        detail: "session.jsonl",
+      });
+    });
+    await expect(bar).toHaveAttribute("aria-label", "Checking local files");
+    await expect(bar).not.toHaveAttribute("aria-valuenow");
+    await expect(dialog.getByRole("status")).toContainText("session.jsonl");
+    await page.screenshot({
+      path: testInfo.outputPath(`snapshot-loading-${viewport.width}.png`),
+    });
+    await page.evaluate(() => {
+      (window as unknown as MenuWindow).resourceMenu.previewProgress?.({
+        label: "Checking local files",
+        detail: "session.jsonl",
+        completed: 3,
+        total: null,
+      });
+    });
+    await expect(bar).not.toHaveAttribute("aria-valuenow");
+    await expect(dialog.getByRole("status")).toContainText("3 checked");
+    await page.evaluate(() => {
+      (window as unknown as MenuWindow).resourceMenu.previewProgress?.({
+        label: "Freezing reviewed snapshot",
+        detail: "session.jsonl",
+        completed: 1,
+        total: 2,
+      });
+    });
+    await expect(bar).toHaveAttribute("aria-valuenow", "1");
+    await expect(bar).toHaveAttribute("aria-valuemax", "2");
+    await expect(bar.locator("span")).toHaveCSS(
+      "width",
+      await bar.evaluate((el) => `${el.clientWidth / 2}px`),
+    );
+    await page.evaluate(() =>
+      (window as unknown as MenuWindow).resourceMenu.finishPreview?.(),
+    );
+    await expect(confirm).toBeEnabled();
+    await expect(bar).toHaveCount(0);
+    const files = dialog.getByRole("list", {
+      name: "Snapshot files",
+      exact: true,
+    });
+    await expect(files.getByRole("listitem")).toHaveCount(1);
+    await expect(files).toContainText("session.jsonl");
+    await expect(files).toContainText("8.3 MB");
+    await expect(
+      dialog.getByRole("region", { name: "Selected item", exact: true }),
+    ).toContainText("Review the project navigation");
+    await expect(dialog.locator("h2").last()).toHaveCSS("font-size", "20px");
+    await expect(
+      dialog.getByRole("region", { name: "Snapshot contents", exact: true }),
+    ).toHaveCSS("border-top-width", "1px");
+    expect(
+      await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth),
+    ).toBe(true);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    expect(
+      (
+        await new AxeBuilder({ page })
+          .include(".resource-command-dialog")
+          .analyze()
+      ).violations,
+    ).toEqual([]);
+    await page.screenshot({
+      path: testInfo.outputPath(`snapshot-ready-${viewport.width}.png`),
+    });
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(
+      resourceRow(page, "Private session notes").getByRole("button", {
+        name: "Private session notes",
+        exact: true,
+      }),
+    ).toBeFocused();
+  });
+}
+
+test("snapshot file review bounds long manifests in a compact window", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 900, height: 640 });
+  await menuFixture(page);
+  await page.evaluate(() => {
+    const controls = (window as unknown as MenuWindow).resourceMenu;
+    controls.previewTitle = "Complete project review package";
+    controls.previewFiles = Array.from({ length: 18 }, (_, index) => ({
+      path: `references/${"long-review-filename-".repeat(8)}${index}.md`,
+      size: 12_500 + index,
+    }));
+  });
+  await collection(page, "Memories");
+  await resourceMenu(
+    page,
+    "Private memory notes",
+    "Share snapshot with project…",
+  );
+  const dialog = page.getByRole("dialog", {
+    name: "Share snapshot with project",
+    exact: true,
+  });
+  const files = dialog.getByRole("list", {
+    name: "Snapshot files",
+    exact: true,
+  });
+  await expect(files.getByRole("listitem")).toHaveCount(18);
+  expect(
+    await files.evaluate(
+      (el) => el.scrollHeight > el.clientHeight && el.clientHeight <= 200,
+    ),
+  ).toBe(true);
+  await files.focus();
+  await files.press("End");
+  await expect
+    .poll(() => files.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(0);
+  await files.press("Home");
+  expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Share this snapshot", exact: true }),
+  ).toBeEnabled();
+  expect(
+    await dialog.evaluate((el) => {
+      const confirm = el.querySelector(".actions button:last-child")!;
+      return (
+        confirm.getBoundingClientRect().bottom <=
+        el.getBoundingClientRect().bottom - 20
+      );
+    }),
+  ).toBe(true);
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .include(".resource-command-dialog")
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+  await page.screenshot({
+    path: testInfo.outputPath("snapshot-files-900.png"),
+  });
+});
+
+test("snapshot retry and submission ignore earlier progress channels", async ({
+  page,
+}) => {
+  await menuFixture(page);
+  await collection(page, "Memories");
+  await page.evaluate(() => {
+    (window as unknown as MenuWindow).resourceMenu.previewFailures = 1;
+  });
+  await resourceMenu(
+    page,
+    "Private memory notes",
+    "Share snapshot with project…",
+  );
+  const dialog = page.getByRole("dialog", {
+    name: "Share snapshot with project",
+    exact: true,
+  });
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Local folder temporarily unavailable",
+  );
+  await page.evaluate(() => {
+    const controls = (window as unknown as MenuWindow).resourceMenu;
+    controls.deferPreview = true;
+    controls.deferShare = true;
+  });
+  await dialog.getByRole("button", { name: "Try again", exact: true }).click();
+  await page.evaluate(() => {
+    const controls = (window as unknown as MenuWindow).resourceMenu;
+    controls.previewProgresses[0]?.({
+      label: "Stale failed preview",
+      completed: 99,
+      total: 100,
+    });
+    controls.previewProgress?.({
+      label: "Checking fresh files",
+      detail: "content.md",
+    });
+  });
+  await expect(dialog.getByRole("progressbar")).toHaveAttribute(
+    "aria-label",
+    "Checking fresh files",
+  );
+  await expect(dialog).not.toContainText("Stale failed preview");
+  await page.evaluate(() =>
+    (window as unknown as MenuWindow).resourceMenu.finishPreview?.(),
+  );
+  const confirm = dialog.getByRole("button", {
+    name: "Share this snapshot",
+    exact: true,
+  });
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(
+    dialog.getByRole("button", { name: "Working…", exact: true }),
+  ).toBeDisabled();
+  await expect(dialog.getByRole("progressbar")).toHaveAttribute(
+    "aria-label",
+    "Sharing reviewed snapshot…",
+  );
+  await page.evaluate(() => {
+    const controls = (window as unknown as MenuWindow).resourceMenu;
+    controls.previewProgress?.({
+      label: "Late finished preview",
+      completed: 1,
+      total: 1,
+    });
+  });
+  await expect(dialog.getByRole("progressbar")).toHaveAttribute(
+    "aria-label",
+    "Sharing reviewed snapshot…",
+  );
+  await page.evaluate(() => {
+    (window as unknown as MenuWindow).resourceMenu.shareProgress?.({
+      label: "Uploading reviewed files",
+      detail: "content.md",
+      completed: 1,
+      total: 2,
+    });
+  });
+  await expect(dialog.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "1",
+  );
+  await expect(dialog.getByRole("progressbar")).toHaveAttribute(
+    "aria-label",
+    "Uploading reviewed files",
+  );
+  await page.evaluate(() =>
+    (window as unknown as MenuWindow).resourceMenu.finishShare?.(),
+  );
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByText("Snapshot sharing queued", { exact: true }),
+  ).toBeVisible();
+  expect(await resourceCalls(page, "share")).toHaveLength(1);
+});
+
+test("canceled snapshot preparation cannot update a reopened review", async ({
+  page,
+}) => {
+  await menuFixture(page);
+  await collection(page, "Memories");
+  await page.evaluate(() => {
+    (window as unknown as MenuWindow).resourceMenu.deferPreview = true;
+  });
+  await resourceMenu(
+    page,
+    "Private memory notes",
+    "Share snapshot with project…",
+  );
+  const dialog = page.getByRole("dialog", {
+    name: "Share snapshot with project",
+    exact: true,
+  });
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await resourceMenu(
+    page,
+    "Private memory notes",
+    "Share snapshot with project…",
+  );
+  await page.evaluate(() => {
+    const controls = (window as unknown as MenuWindow).resourceMenu;
+    controls.previewProgresses[0]?.({ label: "Canceled preview progress" });
+    controls.finishPreviews[0]?.();
+    controls.previewProgress?.({
+      label: "Reading current snapshot",
+      detail: "content.md",
+    });
+  });
+  await expect(dialog.getByRole("progressbar")).toHaveAttribute(
+    "aria-label",
+    "Reading current snapshot",
+  );
+  await expect(dialog).not.toContainText("Canceled preview progress");
+  const confirm = dialog.getByRole("button", {
+    name: "Share this snapshot",
+    exact: true,
+  });
+  await expect(confirm).toBeDisabled();
+  await page.evaluate(() =>
+    (window as unknown as MenuWindow).resourceMenu.finishPreview?.(),
+  );
+  await expect(confirm).toBeEnabled();
+  expect(await resourceCalls(page, "share")).toEqual([]);
 });
 
 for (const [status, notice] of [

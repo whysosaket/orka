@@ -9,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+use tauri::ipc::{Channel, JavaScriptChannelId};
 use uuid::Uuid;
 
 pub(crate) fn context(db: &Connection, input: &Value) -> Result<Value> {
@@ -423,7 +424,13 @@ pub(crate) fn complete_delete(
     Ok(result)
 }
 
-async fn run(action: &str, input: &Value) -> Result<Value> {
+fn report_progress(progress: Option<&Channel<Value>>, value: Value) {
+    if let Some(progress) = progress {
+        let _ = progress.send(value);
+    }
+}
+
+async fn run(action: &str, input: &Value, progress: Option<&Channel<Value>>) -> Result<Value> {
     if action == "share" {
         {
             let _lock = projects::lock()?;
@@ -444,6 +451,7 @@ async fn run(action: &str, input: &Value) -> Result<Value> {
                 return Err("This share preview belongs to another item.".into());
             }
         }
+        report_progress(progress, json!({"label":"Sharing reviewed snapshot"}));
         return crate::selective_sharing::command("share_selected", input).await;
     }
     let _lock = projects::lock()?;
@@ -470,7 +478,14 @@ async fn run(action: &str, input: &Value) -> Result<Value> {
                 return Err("Copy this teammate's item before sharing a continuation.".into());
             }
             let kind = resource["kind"].as_str().ok_or("Missing item category")?;
-            let discovered = indexer::discover(&db, &project, kind)?;
+            report_progress(progress, json!({"label":"Checking local files"}));
+            let report = |label: &str, path: Option<&Path>| {
+                let detail = path
+                    .and_then(|path| path.file_name())
+                    .map(|name| name.to_string_lossy());
+                report_progress(progress, json!({"label":label,"detail":detail}));
+            };
+            let discovered = indexer::discover_with_progress(&db, &project, kind, Some(&report))?;
             let local = discovered
                 .into_iter()
                 .find(|entry| {
@@ -487,7 +502,9 @@ async fn run(action: &str, input: &Value) -> Result<Value> {
             let mut selected = input.clone();
             selected["kind"] = json!(kind);
             selected["resourceId"] = local["resource"]["resourceId"].clone();
-            let preview = crate::selective_sharing::preview(&db, &project, &selected)?;
+            report_progress(progress, json!({"label":"Preparing snapshot for review"}));
+            let preview =
+                crate::selective_sharing::preview_from_local(&db, &project, &selected, &local)?;
             let key = format!(
                 "share-preview:{}",
                 preview["previewToken"]
@@ -497,9 +514,15 @@ async fn run(action: &str, input: &Value) -> Result<Value> {
             let mut saved = db::get(&db, &key)?;
             saved["desktopResourceId"] = input["resourceId"].clone();
             db::set(&db, &key, &saved)?;
+            let files = preview["files"].as_array().map_or(0, Vec::len);
+            report_progress(
+                progress,
+                json!({"label":"Snapshot ready for review","completed":files,"total":files}),
+            );
             Ok(preview)
         }
         "preview-delete" => {
+            report_progress(progress, json!({"label":"Checking service permissions"}));
             require_delete_service(&db, &project, input).await?;
             preview_delete(&db, &project, input)
         }
@@ -511,6 +534,10 @@ async fn run(action: &str, input: &Value) -> Result<Value> {
             require_delete_service(&db, &project, input).await?;
             let preview = delete_request(&db, &project, input)?;
             let config = db::get(&db, "config")?;
+            report_progress(
+                progress,
+                json!({"label":"Waiting for deletion confirmation"}),
+            );
             let receipt = sync::api_at(input["accountId"].as_str().ok_or("Sign in required")?, config["apiUrl"].as_str().ok_or("Choose a service")?, "POST", "/v2/sync/push", Some(&preview["request"])).await.map_err(|error| if error == "Cloud unavailable; local work stays queued" { "The deletion could not be confirmed. Reconnect and retry this reviewed deletion; it has not been queued.".into() } else { error })?;
             context(&db, input)?;
             complete_delete(&db, input, &preview, &receipt)
@@ -520,9 +547,32 @@ async fn run(action: &str, input: &Value) -> Result<Value> {
 }
 
 #[tauri::command]
-pub async fn resource_command(action: String, input: Value) -> Result<Value> {
+pub async fn resource_command(
+    action: String,
+    input: Value,
+    on_progress: Option<JavaScriptChannelId>,
+    webview: tauri::Webview,
+) -> Result<Value> {
+    run_command(action, input, on_progress.map(|id| id.channel_on(webview))).await
+}
+
+pub(crate) async fn run_command(
+    action: String,
+    input: Value,
+    on_progress: Option<Channel<Value>>,
+) -> Result<Value> {
+    let label = match action.as_str() {
+        "preview-share" => Some("Preparing snapshot review"),
+        "preview-delete" => Some("Preparing deletion review"),
+        "share" => Some("Preparing to share snapshot"),
+        "delete" => Some("Preparing reviewed deletion"),
+        _ => None,
+    };
+    if let Some(label) = label {
+        report_progress(on_progress.as_ref(), json!({"label":label}));
+    }
     tauri::async_runtime::spawn_blocking(move || {
-        tauri::async_runtime::block_on(run(&action, &input))
+        tauri::async_runtime::block_on(run(&action, &input, on_progress.as_ref()))
     })
     .await
     .map_err(|error| error.to_string())?
