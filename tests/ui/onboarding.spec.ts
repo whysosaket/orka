@@ -911,6 +911,17 @@ for (const size of [
   }) => {
     await page.setViewportSize(size);
     await fixture(page, { step: "discover", repositoryEnabled: true });
+    const steps = page.getByRole("list", { name: "Onboarding steps" });
+    expect((await steps.boundingBox())!.y).toBeGreaterThanOrEqual(64);
+    const draggableBackgrounds = await page.evaluate(() =>
+      [
+        [120, 48],
+        [600, 12],
+      ].map(([x, y]) =>
+        document.elementFromPoint(x, y)?.getAttribute("data-tauri-drag-region"),
+      ),
+    );
+    expect(draggableBackgrounds).toEqual(["true", "true"]);
     const choices = page.locator(".onboarding-flow__discovery-actions");
     await expect(choices.getByRole("button")).toHaveText([
       "Find my projects",
