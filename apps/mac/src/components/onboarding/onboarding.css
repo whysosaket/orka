@@ -310,6 +310,44 @@
 .onboarding-flow__discovery-actions .ui-button--secondary {
   background: var(--interaction-hover);
 }
+.onboarding-flow__source-methods {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.onboarding-flow__source-methods .ui-button {
+  flex: 1;
+  white-space: nowrap;
+}
+.onboarding-flow__repository {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 520px;
+  max-width: 100%;
+  min-width: 0;
+}
+.onboarding-flow__repository form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.onboarding-flow__repository > label {
+  gap: 8px;
+  margin: 0;
+  font-size: var(--label-sm-font-size);
+}
+.onboarding-flow__repository select {
+  min-height: 40px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--surface-stroke);
+  border-radius: var(--radius-control);
+  padding: 8px 12px;
+  background: var(--surface-tertiary);
+  font-size: var(--body-sm-font-size);
+}
 .onboarding-flow__selection,
 .onboarding-flow__sync,
 .onboarding-flow__invitations {

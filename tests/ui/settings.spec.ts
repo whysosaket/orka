@@ -869,7 +869,7 @@ test("delayed policy responses cannot grant Owner controls in a different projec
   ).toHaveLength(0);
 });
 
-test("migration exposes legacy suggestion rules and requires explicit acknowledgement", async ({
+test("migration explains existing and new-item access and requires explicit acknowledgement", async ({
   page,
 }) => {
   const settings = await settingsFixture(page, { legacy: true });
@@ -880,8 +880,32 @@ test("migration exposes legacy suggestion rules and requires explicit acknowledg
     name: "Review role migration",
     exact: true,
   });
-  await expect(dialog).toContainText("suggest / suggest");
-  await expect(dialog).toContainText("instructions");
+  const instructions = dialog.getByRole("row").filter({
+    has: page.getByText("Project instructions", { exact: true }),
+  });
+  await expect(instructions.getByRole("cell").nth(1)).toContainText(
+    "Existing items: Suggest changes for approval",
+  );
+  await expect(instructions.getByRole("cell").nth(1)).toContainText(
+    "New items: Suggest for approval",
+  );
+  await expect(instructions.getByRole("cell").nth(2)).toContainText(
+    "Existing items: Read only",
+  );
+  await expect(instructions.locator("[data-changed]")).toHaveCount(2);
+  const sessions = dialog.getByRole("row").filter({
+    has: page.getByText("Sessions", { exact: true }),
+  });
+  await expect(sessions.getByRole("cell").nth(1)).toContainText(
+    "Existing items: Read and write",
+  );
+  await expect(sessions.getByRole("cell").nth(1)).toContainText(
+    "New items: Publish directly",
+  );
+  await expect(dialog).not.toContainText("legacy / legacy");
+  await expect(dialog).toContainText(
+    "Restricted files and sources can further limit",
+  );
   const migrate = dialog.getByRole("button", {
     name: "Confirm migration",
     exact: true,
@@ -895,6 +919,187 @@ test("migration exposes legacy suggestion rules and requires explicit acknowledg
   );
   expect(saved).toHaveLength(1);
   expect(saved[0].args.input.migrationHash).toBe("a".repeat(64));
+});
+
+test("migration uses each current role and personal exceptions in the comparison", async ({
+  page,
+}) => {
+  const settings = await settingsFixture(page, { legacy: true });
+  await page.evaluate(() => {
+    const bridge = (window as any).__TAURI_INTERNALS__;
+    const invoke = bridge.invoke;
+    bridge.invoke = async (command: string, args: any) => {
+      const result = await invoke(command, args);
+      if (
+        command === "governance_command" &&
+        args.action === "migration-preview"
+      ) {
+        result.previous.members.push({ user_id: "admin", role: "admin" });
+        result.previous.memberRules.push({
+          user_id: "member",
+          class: "plan",
+          rule: { mode: "hidden", create: "suggest", canShare: false },
+        });
+      }
+      return result;
+    };
+  });
+  await button(settings, "Permissions").click();
+  await button(settings, "Review access changes").click();
+  const dialog = page.getByRole("dialog", { name: "Review role migration" });
+  const admin = dialog
+    .getByRole("row")
+    .filter({ hasText: "Alex Chen" })
+    .filter({
+      has: page.getByText("Project instructions", { exact: true }),
+    });
+  await expect(admin.getByRole("cell").nth(2)).toContainText(
+    "Existing items: Read and write",
+  );
+  await expect(admin.getByRole("cell").nth(2)).toContainText(
+    "New items: Publish directly",
+  );
+  const member = dialog
+    .getByRole("row")
+    .filter({ hasText: "Jamie Rivera" })
+    .filter({
+      has: page.getByText("Plans", { exact: true }),
+    });
+  await expect(member.getByRole("cell").nth(1)).toContainText(
+    "Existing items: No access",
+  );
+  await expect(member.getByRole("cell").nth(1)).toContainText(
+    "New items: Suggest for approval",
+  );
+  await expect(member.getByRole("cell").nth(2)).toContainText(
+    "New items: Publish directly",
+  );
+  await expect(dialog).toContainText("People keep their current roles");
+  await dialog.getByRole("button", { name: "Stay", exact: true }).click();
+  expect(
+    (await settingsCalls(page)).filter(
+      (call) => call.args.action === "save-role-policy",
+    ),
+  ).toHaveLength(0);
+});
+
+for (const viewport of [
+  { width: 1160, height: 800 },
+  { width: 900, height: 640 },
+])
+  for (const legacy of [false, true])
+    test(`permission comparison keeps actions visible at ${viewport.width}×${viewport.height} (${legacy ? "migration" : "conflict"})`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      const settings = await settingsFixture(
+        page,
+        legacy ? { legacy: true } : { policyFailure: "conflict" },
+      );
+      await button(settings, "Permissions").click();
+      if (legacy) await button(settings, "Review access changes").click();
+      else {
+        await choose(settings, "Member Memories access", "Add only");
+        await button(settings, "Save changes").click();
+      }
+      const review = page.getByRole("dialog", {
+        name: legacy ? "Review role migration" : "Review latest permissions",
+      });
+      await expect(review).toBeVisible();
+      const body = review.getByRole("region", {
+        name: legacy ? "Migration comparison" : "Permission comparison",
+      });
+      const action = review.getByRole("button", {
+        name: legacy ? "Confirm migration" : "Use reviewed values",
+        exact: true,
+      });
+      const bounds = await review.boundingBox();
+      expect(bounds!.width).toBeCloseTo(850, 0);
+      expect(bounds!.height).toBeLessThanOrEqual(viewport.height * 0.85 + 1);
+      await expect(action).toBeInViewport({ ratio: 1 });
+      const before = await action.boundingBox();
+      await body.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      const after = await action.boundingBox();
+      expect(after!.y).toBeCloseTo(before!.y, 0);
+      await expect(action).toBeInViewport({ ratio: 1 });
+      const scroll = await body.evaluate((element) => ({
+        top: element.scrollTop,
+        width: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+      }));
+      expect(scroll.scrollWidth).toBeLessThanOrEqual(scroll.width + 1);
+      if (legacy || viewport.height === 640)
+        expect(scroll.top).toBeGreaterThan(0);
+      expect(
+        await review.evaluate(
+          (element) => element.scrollHeight - element.clientHeight,
+        ),
+      ).toBeLessThanOrEqual(1);
+    });
+
+test("retained restrictions resolve content and source names with readable access and safe fallbacks", async ({
+  page,
+}) => {
+  const settings = await settingsFixture(page);
+  await page.evaluate(() => {
+    const current = window as any;
+    current.settingsCatalog.resourceRules = [
+      { resourceId: "known-memory", userId: "member", rule: { mode: "read" } },
+      { resourceId: "source-one", userId: "admin", rule: { mode: "hidden" } },
+      {
+        resourceId: "unavailable-resource",
+        userId: "missing-member",
+        rule: { mode: "suggest" },
+      },
+    ];
+    const resource = {
+      resourceId: "known-memory",
+      sourceId: "source-one",
+      kind: "memory",
+      source: "shared",
+      logicalPath: "memory/deployment.md",
+      title: "Deployment notes",
+      projectId: "one",
+      revision: 1,
+      files: [],
+      owner: "owner",
+      updatedBy: "owner",
+      updatedAt: "2026-11-13T00:00:00Z",
+      hash: "a".repeat(64),
+      deleted: false,
+    };
+    current.settingsState.resources = [
+      { ...resource, projectId: "two", title: "Other project content" },
+      resource,
+    ];
+  });
+  await button(settings, "Permissions").click();
+  await settings
+    .getByText("Retained file and source restrictions (3)", { exact: true })
+    .click();
+  const list = settings.locator(".settings-restrictions");
+  const memory = list
+    .getByRole("listitem")
+    .filter({ hasText: "Deployment notes" });
+  await expect(memory).toBeVisible({ timeout: 10000 });
+  await expect(memory).toContainText("orka · memory/deployment.md");
+  await expect(memory).toContainText("Jamie Rivera");
+  await expect(memory).toContainText("Read only");
+  const source = list
+    .getByRole("listitem")
+    .filter({ hasText: "Source folder" });
+  await expect(source.getByText("orka", { exact: true })).toBeVisible();
+  await expect(source).toContainText("Alex Chen");
+  await expect(source).toContainText("No access");
+  const unavailable = list
+    .getByRole("listitem")
+    .filter({ hasText: "Content unavailable" });
+  await expect(unavailable).toContainText("Name unavailable on this Mac");
+  await expect(unavailable).toContainText("ID: unavailable-resource");
+  await expect(unavailable).toContainText("Suggest changes for approval");
+  await expect(list).not.toContainText("Other project content");
 });
 
 for (const navigateAway of [false, true])
@@ -1312,7 +1517,10 @@ test("failed email invitation preserves the address and offers a joining link", 
   await expect(dialog.getByLabel("Email address")).toHaveValue(
     "teammate@example.com",
   );
-  await button(dialog, "Use joining link").click();
+  await dialog
+    .getByRole("group", { name: "Invitation method", exact: true })
+    .getByRole("button", { name: "Link", exact: true })
+    .click();
   await button(dialog, "Copy joining link").click();
   await expect(dialog.getByLabel("Joining link")).toHaveValue(
     "https://test.orka/join/join-once",

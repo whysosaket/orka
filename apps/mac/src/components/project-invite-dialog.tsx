@@ -5,6 +5,7 @@ import { Button } from "./button.js";
 import { IconButton } from "./icon-button.js";
 import { Overlay } from "./overlay.js";
 import { TextField } from "./text-field.js";
+import { SegmentedControl } from "./segmented-control.js";
 
 export function ProjectInviteDialog({
   title = "Invite member",
@@ -70,9 +71,7 @@ export function ProjectInviteDialog({
           throw new Error(
             "Email invitations are unavailable. Use a joining link.",
           );
-        setMessage(
-          `Invitation sent to ${result.email}. It expires in 24 hours.`,
-        );
+        setMessage(`Invitation sent to ${result.email}.`);
         setEmail("");
       } else {
         let link = joiningLink;
@@ -88,9 +87,7 @@ export function ProjectInviteDialog({
           setJoiningLink(link);
         }
         await navigator.clipboard.writeText(link);
-        setMessage(
-          "Joining link copied. It can be used once and expires in 24 hours.",
-        );
+        setMessage("Link copied.");
       }
     } catch (cause) {
       setError(String(cause).replace(/^Error:\s*/, ""));
@@ -131,6 +128,22 @@ export function ProjectInviteDialog({
         </div>
         <div className="create-project-fields">
           <p>Invite a teammate to {projectName}.</p>
+          {emailAvailable && (
+            <SegmentedControl
+              label="Invitation method"
+              value={mode}
+              options={[
+                { value: "email", label: "Email" },
+                { value: "link", label: "Link" },
+              ]}
+              disabled={busy}
+              onChange={(value) => {
+                setMode(value);
+                setError("");
+                setMessage("");
+              }}
+            />
+          )}
           {emailAvailable === null ? (
             <p role="status">Checking invitation options…</p>
           ) : mode === "email" ? (
@@ -146,14 +159,14 @@ export function ProjectInviteDialog({
               value={email}
               disabled={busy}
               onChange={(event) => setEmail(event.target.value)}
-              hint="They’ll need to sign in with this email address to accept. Invitations expire after 24 hours."
+              hint="They’ll sign in with this address. Expires in 24 hours."
             />
           ) : (
             <>
               <p>
                 {emailAvailable
-                  ? "Share a one-use joining link with your teammate."
-                  : "Email invitations aren’t available on this service. Share a joining link instead."}
+                  ? "Anyone with the link can join once. Expires in 24 hours."
+                  : "Email is unavailable. Share a one-use link that expires in 24 hours."}
               </p>
               {joiningLink && (
                 <TextField
@@ -161,26 +174,12 @@ export function ProjectInviteDialog({
                   value={joiningLink}
                   readOnly
                   onFocus={(event) => event.target.select()}
-                  hint="Anyone with this link can use it once. It expires after 24 hours."
                 />
               )}
             </>
           )}
           {message && <p role="status">{message}</p>}
           {error && <p role="alert">{error}</p>}
-          {emailAvailable && (
-            <Button
-              variant="tertiary"
-              disabled={busy}
-              onClick={() => {
-                setMode(mode === "email" ? "link" : "email");
-                setError("");
-                setMessage("");
-              }}
-            >
-              {mode === "email" ? "Use joining link" : "Invite by email"}
-            </Button>
-          )}
         </div>
         <div className="create-project-footer">
           <Button variant="tertiary" disabled={busy} onClick={onClose}>

@@ -100,6 +100,7 @@ async function fixture(
     pauseCheckpoints?: boolean;
     pauseInvites?: boolean;
     emailInvites?: boolean;
+    repositoryEnabled?: boolean;
   } = {},
 ) {
   await page.addInitScript(
@@ -348,6 +349,11 @@ async function fixture(
                 resourceCount: 0,
                 requests: [],
               };
+            if (
+              command === "repository_command" &&
+              args.action === "capabilities"
+            )
+              return { enabled: options.repositoryEnabled ?? false };
             if (command === "auth_capabilities")
               return {
                 version: 1,
@@ -710,9 +716,7 @@ test("pending memories keep owner review available after setup without claiming 
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByRole("button", { name: "Not now", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Go to Dashboard", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Open Orka", exact: true }).click();
   await page.getByRole("button", { name: /1 notification/ }).click();
   await expect(
     page.getByText("1 local changes are ready for review.", { exact: true }),
@@ -858,9 +862,7 @@ test("sync can continue inside Orka after dismissing the progress overlay", asyn
     .click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
-  await page
-    .getByRole("button", { name: "Continue to Orka", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Open Orka", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Syncing your projects", exact: true }),
   ).toHaveCount(0);
@@ -888,6 +890,51 @@ test("a failed profile save preserves edits and does not advance", async ({
     page.getByRole("heading", { name: "Set up your profile" }),
   ).toBeVisible();
 });
+
+for (const size of [
+  { width: 1160, height: 800 },
+  { width: 900, height: 640 },
+]) {
+  test(`discovery groups source methods before the quiet exit at ${size.width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(size);
+    await fixture(page, { step: "discover", repositoryEnabled: true });
+    const choices = page.locator(".onboarding-flow__discovery-actions");
+    await expect(choices.getByRole("button")).toHaveText([
+      "Find my projects",
+      "Choose a folder instead",
+      "Connect a GitHub repository",
+      "Set up later",
+    ]);
+    const sources = choices.getByRole("group", {
+      name: "Choose a project source",
+    });
+    await expect(sources.getByRole("button")).toHaveCount(2);
+    await expect(choices.locator(".ui-button--primary")).toHaveText(
+      "Find my projects",
+    );
+    const defer = choices.getByRole("button", {
+      name: "Set up later",
+      exact: true,
+    });
+    await expect(defer).toHaveClass(/ui-button--tertiary/);
+    await expect(defer).toBeInViewport();
+    await choices
+      .getByRole("button", { name: "Find my projects", exact: true })
+      .focus();
+    await page.keyboard.press("Tab");
+    await expect(
+      sources.getByRole("button", { name: "Choose a folder instead" }),
+    ).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(
+      sources.getByRole("button", { name: "Connect a GitHub repository" }),
+    ).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(defer).toBeFocused();
+  });
+}
 
 for (const width of [1440, 900])
   test(`discovery selection stays accurate and uses native commands at ${width}px`, async ({
@@ -1105,14 +1152,12 @@ test("profile, projects, sync, background choice, and fresh one-use invites reac
   await page
     .getByRole("button", { name: "Copy joining link", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("Joining link copied");
+  await expect(page.getByRole("status")).toContainText("Link copied.");
   await page.getByRole("button", { name: "Done", exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => (window as any).onboardingClipboard.length))
     .toBe(1);
-  await page
-    .getByRole("button", { name: "Go to Dashboard", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Open Orka", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Settings", exact: true }),
   ).toBeVisible();
@@ -1227,9 +1272,7 @@ test("live sync shows completed, active, and queued projects without claiming al
     animations: "disabled",
     path: info.outputPath("partial-sync-reference.png"),
   });
-  await page
-    .getByRole("button", { name: "Continue to Orka", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Open Orka", exact: true }).click();
   expect(
     (await calls(page)).some((call) => call.args.action === "batch-sync"),
   ).toBe(false);
@@ -1508,7 +1551,7 @@ test("email invites are primary during onboarding", async ({ page }) => {
   ).toEqual([]);
   await dialog.getByRole("button", { name: "Done", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Go to Dashboard", exact: true }),
+    page.getByRole("button", { name: "Open Orka", exact: true }),
   ).toBeEnabled();
 });
 
@@ -1540,7 +1583,7 @@ test("pending invitation blocks closing and duplicate submissions", async ({
     (await calls(page)).filter((call) => call.args.action === "invite"),
   ).toHaveLength(1);
   await page.evaluate(() => (window as any).inviteControls.release());
-  await expect(dialog.getByRole("status")).toContainText("Joining link copied");
+  await expect(dialog.getByRole("status")).toContainText("Link copied.");
 });
 
 test("clipboard failure retries the same invite instead of creating another", async ({
@@ -1565,7 +1608,7 @@ test("clipboard failure retries the same invite instead of creating another", as
   await dialog
     .getByRole("button", { name: "Copy joining link", exact: true })
     .click();
-  await expect(dialog.getByRole("status")).toContainText("Joining link copied");
+  await expect(dialog.getByRole("status")).toContainText("Link copied.");
   expect(
     (await calls(page)).filter((call) => call.args.action === "invite"),
   ).toHaveLength(1);
@@ -1689,7 +1732,7 @@ for (const width of [1440, 900])
       page.getByRole("button", { name: "Invite teammate", exact: true }),
     ).toHaveCount(2);
     await expect(
-      page.getByRole("button", { name: "Go to Dashboard", exact: true }),
+      page.getByRole("button", { name: "Open Orka", exact: true }),
     ).toBeInViewport();
     await page.screenshot({
       animations: "disabled",
@@ -1744,7 +1787,7 @@ test("the sync overlay exposes completion count and continues into the workspace
   await expect(dialog.getByRole("status")).toContainText(
     "1 of 3 projects synced",
   );
-  await dialog.getByRole("button", { name: "Continue to Orka" }).click();
+  await dialog.getByRole("button", { name: "Open Orka" }).click();
   await page.getByRole("button", { name: /Sync stopped/ }).click();
   await expect(page.getByText("Initial project sync")).toBeVisible();
   await expect(page.getByText("1 of 3 projects synced")).toBeVisible();

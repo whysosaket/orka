@@ -13,6 +13,7 @@ import {
 } from "@primer/octicons-react";
 import { Overlay } from "./overlay.js";
 import { ProjectSharingChoices } from "./project-sharing.js";
+import { SegmentedControl } from "./segmented-control.js";
 import type { ProjectSharing } from "../types.js";
 import { SourceFolders, type useSourceFolders } from "./source-folders.js";
 
@@ -103,27 +104,21 @@ export function ProjectSetupDialog({
                 onChange={(event) => onChange(event.target.value)}
               />
               {repositoryEnabled && (
-                <fieldset className="repository-source-choice">
-                  <legend>Repository</legend>
-                  <label>
-                    <input
-                      type="radio"
-                      name="source-kind"
-                      checked={sourceMode === "github"}
-                      onChange={() => onSourceMode?.("github")}
-                    />
-                    GitHub repository
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      name="source-kind"
-                      checked={sourceMode === "folder"}
-                      onChange={() => onSourceMode?.("folder")}
-                    />
-                    Local folder
-                  </label>
-                </fieldset>
+                <div className="repository-source-choice">
+                  <span className="repository-source-choice-label">
+                    Repository
+                  </span>
+                  <SegmentedControl
+                    label="Repository source"
+                    value={sourceMode}
+                    options={[
+                      { value: "github", label: "GitHub repository" },
+                      { value: "folder", label: "Local folder" },
+                    ]}
+                    disabled={busy}
+                    onChange={(value) => onSourceMode?.(value)}
+                  />
+                </div>
               )}
               {sourceMode === "github" ? (
                 <p className="create-project-source-hint">

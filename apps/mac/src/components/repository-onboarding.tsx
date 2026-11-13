@@ -60,19 +60,22 @@ export function RepositoryOnboarding({
     }
   };
   return (
-    <main className="repository-onboarding">
-      <h1>Connect a repository</h1>
-      <p>
+    <section
+      className="onboarding-flow__repository"
+      aria-label="Repository setup"
+    >
+      <p className="onboarding-flow__setup-note">
         {project
           ? `Add a repository to ${project.name}.`
           : "Choose a project, then connect your repository."}
       </p>
-      {state.projects.length > 1 && (
+      {state.projects.length > 0 && (
         <label>
           Orka project
           <select
             aria-label="Orka project"
             value={projectId}
+            disabled={busy}
             onChange={(event) => setProjectId(event.target.value)}
           >
             <option value="">Create or join another project</option>
@@ -145,7 +148,7 @@ export function RepositoryOnboarding({
         />
       )}
       {error && <p role="alert">{error}</p>}
-      <div className="actions">
+      <div className="onboarding-flow__actions">
         <Button disabled={busy} onClick={onBack}>
           Back
         </Button>
@@ -155,10 +158,10 @@ export function RepositoryOnboarding({
             variant="primary"
             onClick={() => onComplete(project.id)}
           >
-            Continue to workspace
+            Open Orka
           </Button>
         )}
       </div>
-    </main>
+    </section>
   );
 }

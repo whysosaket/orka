@@ -331,22 +331,24 @@ export function RepositoryPicker({
             <div className="repository-authorization" role="status">
               <p>Enter this code on GitHub:</p>
               <strong>{authorization.userCode}</strong>
-              <p>Waiting for GitHub authorization…</p>
-              <p>After authorization, continue with repository access.</p>
+              <p>Waiting for authorization…</p>
               {authorizationError && <p role="alert">{authorizationError}</p>}
-              <Button
-                onClick={() =>
-                  void run(() => openGitHub(authorization.verificationUrl))
-                }
-              >
-                Open GitHub
-              </Button>
-              <Button
-                disabled={busy}
-                onClick={() => void run(controller.checkAuthorization)}
-              >
-                I’ve authorized GitHub
-              </Button>
+              <div className="actions">
+                <Button
+                  onClick={() =>
+                    void run(() => openGitHub(authorization.verificationUrl))
+                  }
+                >
+                  Open GitHub
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={busy}
+                  onClick={() => void run(controller.checkAuthorization)}
+                >
+                  I’ve authorized GitHub
+                </Button>
+              </div>
             </div>
           ) : (
             <Button
@@ -519,20 +521,22 @@ export function RepositoryPicker({
                     Give Orka access to the repository on GitHub. Organization
                     owners may need to approve it.
                   </p>
-                  <Button
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void run(manageAccess)}
-                  >
-                    Manage GitHub access
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => setRefreshVersion((value) => value + 1)}
-                  >
-                    Refresh repositories
-                  </Button>
+                  <div className="actions">
+                    <Button
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void run(manageAccess)}
+                    >
+                      Manage GitHub access
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => setRefreshVersion((value) => value + 1)}
+                    >
+                      Refresh repositories
+                    </Button>
+                  </div>
                 </details>
               )}
             </div>

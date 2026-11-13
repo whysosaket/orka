@@ -124,10 +124,11 @@ export function ProjectChangeReview({
             Review latest and retry
           </Button>
         )}
-        <Button variant="secondary" disabled={busy} onClick={onClose}>
+        <Button variant="tertiary" disabled={busy} onClick={onClose}>
           Cancel
         </Button>
         <Button
+          variant="primary"
           disabled={
             busy || draft.status !== "local" || detail.sourceUnavailable
           }

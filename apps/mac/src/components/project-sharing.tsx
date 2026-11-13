@@ -106,8 +106,8 @@ export function ProjectSharingChoices({
       {context === "setup" && <legend>Share from this Mac</legend>}
       {context === "setup" && (
         <p id={`${id}-help`} className="project-sharing-help">
-          Choose what to share automatically. Ask the Orka plugin to share
-          individual items at any time.
+          Choose automatic sharing below. Share individual items with the Orka
+          plugin.
         </p>
       )}
       <div className="project-sharing-choices">

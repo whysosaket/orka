@@ -96,7 +96,7 @@ async function fixture(
         policyRevision: 1,
         previewHash: "reviewed-hash",
         createdAt: "2026-10-18T00:00:00Z",
-        canReview: true,
+        canReview: mode !== "request-viewer",
         unread: true,
       };
       const envRequests = envData
@@ -379,8 +379,17 @@ async function fixture(
                     rules: [],
                   };
                 case "request":
+                  if ((window as any).holdRequestLoad)
+                    await new Promise<void>((resolve) => {
+                      (window as any).finishRequestLoad = resolve;
+                    });
+                  if ((window as any).requestLoadFailure)
+                    throw new Error("Could not load this request");
                   return {
-                    request,
+                    request:
+                      catalog.requests.find(
+                        (item) => item.id === args.input?.id,
+                      ) ?? request,
                     files: {
                       "SKILL.md": removed
                         ? "Previous version\n"
@@ -393,9 +402,19 @@ async function fixture(
                   request.unread = false;
                   return { ok: true };
                 case "decide":
+                  if ((window as any).holdRequestDecision)
+                    await new Promise<void>((resolve) => {
+                      (window as any).finishRequestDecision = resolve;
+                    });
                   request.status = "stale";
                   return request;
                 case "preview-install":
+                  if ((window as any).holdInstallPreview)
+                    await new Promise<void>((resolve) => {
+                      (window as any).finishInstallPreview = resolve;
+                    });
+                  if ((window as any).installPreviewFailure)
+                    throw new Error("Could not prepare the comparison");
                   return {
                     token: "local-preview",
                     revision: 2,
@@ -590,6 +609,15 @@ for (const publisher of [true, false]) {
     await expect(
       dialog.getByRole("heading", { name: "content.md", exact: true }),
     ).toBeVisible();
+    await expect(
+      dialog.getByRole("button", {
+        name: publisher ? "Publish update" : "Send for approval",
+        exact: true,
+      }),
+    ).toHaveClass(/ui-button--primary/);
+    await expect(
+      dialog.getByRole("button", { name: "Cancel", exact: true }),
+    ).toHaveClass(/ui-button--tertiary/);
     await dialog
       .getByRole("button", {
         name: publisher ? "Publish update" : "Send for approval",
@@ -879,9 +907,10 @@ for (const local of [false, true]) {
         exact: true,
       })
       .click();
-    const review = local
-      ? page.getByRole("dialog", { name: "Review changes", exact: true })
-      : management(page);
+    const review = page.getByRole("dialog", {
+      name: local ? "Review changes" : "Review request",
+      exact: true,
+    });
     await expect(review.locator(".diff-card-removed")).toHaveText("Removed");
     await expect(
       review.getByRole("group", { name: "File changes", exact: true }),
@@ -914,10 +943,14 @@ test("request approval sends the exact reviewed hash and reports stale proposals
   await screen
     .getByRole("button", { name: "Review request", exact: true })
     .click();
-  await expect(screen.getByLabel("File changes")).toContainText(
+  const dialog = page.getByRole("dialog", {
+    name: "Review request",
+    exact: true,
+  });
+  await expect(dialog.getByLabel("File changes")).toContainText(
     "Reviewed candidate",
   );
-  await screen
+  await dialog
     .getByRole("button", { name: "Approve request", exact: true })
     .click();
   await expect(
@@ -999,19 +1032,18 @@ for (const removed of [false, true]) {
         exact: true,
       }),
     ).toBeVisible();
-    expect(await calls(page, "preview-install")).toEqual([]);
-    await dialog
-      .getByRole("button", {
+    await expect(
+      dialog.getByRole("button", {
         name: removed ? "Review local removal" : "Review local update",
         exact: true,
-      })
-      .click();
+      }),
+    ).toHaveCount(0);
     await expect(dialog.getByLabel("File changes")).toContainText(
       "Local edits",
     );
     await expect(
       dialog.getByText(
-        "Your local edits will be saved privately on this Mac before installation.",
+        `Your local edits will be saved privately on this Mac before ${removed ? "removal" : "installation"}.`,
       ),
     ).toBeVisible();
     expect(await calls(page, "preview-install")).toEqual([
@@ -1019,9 +1051,7 @@ for (const removed of [false, true]) {
     ]);
     await dialog
       .getByRole("button", {
-        name: removed
-          ? "Preserve edits and remove reviewed version"
-          : "Preserve edits and install reviewed version",
+        name: removed ? "Keep edits and remove" : "Keep edits and install",
         exact: true,
       })
       .click();
@@ -1082,4 +1112,267 @@ test("a member with no shared access can request a collection from its empty pag
     mode: "read",
     projectId: "project",
   });
+});
+
+for (const viewport of [
+  { width: 900, height: 640 },
+  { width: 1160, height: 800 },
+]) {
+  test(`request review stays visible above twelve requests at ${viewport.width}px and restores focus`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await fixture(page, true, false, "many");
+    const screen = management(page);
+    await screen
+      .getByRole("button", { name: "View more requests", exact: true })
+      .click();
+    await screen
+      .getByRole("button", { name: "View more requests", exact: true })
+      .click();
+    const trigger = screen
+      .getByRole("button", { name: "Review request", exact: true })
+      .first();
+    for (const close of ["Cancel", "Close review request", "Escape"]) {
+      await trigger.click();
+      const dialog = page.getByRole("dialog", {
+        name: "Review request",
+        exact: true,
+      });
+      await expect(
+        dialog.getByRole("heading", { name: "Request 1", exact: true }),
+      ).toBeInViewport();
+      await expect(dialog.getByLabel("File changes")).toContainText(
+        "Reviewed candidate",
+      );
+      await expect(
+        dialog.getByRole("button", { name: "Approve request", exact: true }),
+      ).toBeInViewport();
+      await expect
+        .poll(() =>
+          dialog.evaluate((element) =>
+            element.contains(document.activeElement),
+          ),
+        )
+        .toBe(true);
+      await expect(
+        dialog.getByRole("button", { name: "Approve request", exact: true }),
+      ).toBeEnabled();
+      await dialog
+        .getByRole("button", { name: "Approve request", exact: true })
+        .focus();
+      await page.keyboard.press("Tab");
+      const feedback = dialog.getByRole("button", {
+        name: "Start feedback mode",
+        exact: true,
+      });
+      if (await feedback.isVisible()) {
+        await expect(feedback).toBeFocused();
+        await page.keyboard.press("Tab");
+      }
+      await expect(
+        dialog.getByRole("button", {
+          name: "Close review request",
+          exact: true,
+        }),
+      ).toBeFocused();
+      if (close === "Escape") await page.keyboard.press("Escape");
+      else
+        await dialog.getByRole("button", { name: close, exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+    }
+    expect(await calls(page, "decide")).toEqual([]);
+    expect(await calls(page, "request")).toEqual(
+      Array(3).fill({ projectId: "project", id: "request-0" }),
+    );
+  });
+}
+
+test("request review loads in place, retries failed reads, and respects review permission", async ({
+  page,
+}) => {
+  await fixture(page, true, false, "request-viewer");
+  await page.evaluate(() => {
+    (window as any).holdRequestLoad = true;
+    (window as any).requestLoadFailure = true;
+  });
+  await management(page)
+    .getByRole("button", { name: "Review request", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review request",
+    exact: true,
+  });
+  await expect(dialog.getByRole("status")).toHaveText("Loading request…");
+  await page.evaluate(() => (window as any).finishRequestLoad());
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Could not load this request",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Try again", exact: true }),
+  ).toBeEnabled();
+  await page.evaluate(() => {
+    (window as any).holdRequestLoad = false;
+    (window as any).requestLoadFailure = false;
+  });
+  await dialog.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(dialog.getByLabel("File changes")).toContainText(
+    "Reviewed candidate",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Approve request", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: "Reject", exact: true }),
+  ).toHaveCount(0);
+  expect(await calls(page, "read-notification")).toEqual([
+    { projectId: "project", id: "request" },
+  ]);
+});
+
+test("request decisions keep the prepared review open while submitting and restore its trigger", async ({
+  page,
+}) => {
+  await fixture(page);
+  const trigger = management(page).getByRole("button", {
+    name: "Review request",
+    exact: true,
+  });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review request",
+    exact: true,
+  });
+  await page.evaluate(() => {
+    (window as any).holdRequestDecision = true;
+  });
+  await dialog
+    .getByRole("button", { name: "Approve request", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "Cancel", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "Approve request", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  expect(await calls(page, "decide")).toHaveLength(1);
+  await page.evaluate(() => (window as any).finishRequestDecision());
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+test("instruction previews load directly, recover from failures, and require a fresh review after edits", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 640 });
+  await fixture(page, true, false, "instructions");
+  await page.evaluate(() => {
+    (window as any).holdInstallPreview = true;
+    (window as any).installPreviewFailure = true;
+  });
+  const trigger = management(page).getByRole("button", {
+    name: "Review update",
+    exact: true,
+  });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review local update",
+    exact: true,
+  });
+  await expect(dialog.getByRole("status")).toHaveText("Loading update…");
+  await page.evaluate(() => (window as any).finishInstallPreview());
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Could not prepare the comparison",
+  );
+  await page.evaluate(() => {
+    (window as any).holdInstallPreview = false;
+    (window as any).installPreviewFailure = false;
+  });
+  await dialog.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(dialog.getByLabel("File changes")).toContainText(
+    "Approved instructions",
+  );
+  const install = dialog.getByRole("button", {
+    name: "Keep edits and install",
+    exact: true,
+  });
+  await expect(install).toBeInViewport();
+  await expect(install).toHaveAccessibleDescription(
+    "Your local edits will be saved privately on this Mac before installation.",
+  );
+  const header = await dialog.locator(".review-header").evaluate((element) => {
+    const heading = element.querySelector("h2")!;
+    const close = element.querySelector("button")!;
+    const h = heading.getBoundingClientRect();
+    const c = close.getBoundingClientRect();
+    return {
+      fontSize: getComputedStyle(heading).fontSize,
+      offset: Math.abs(h.y + h.height / 2 - c.y - c.height / 2),
+    };
+  });
+  expect(header.fontSize).toBe("20px");
+  expect(header.offset).toBeLessThanOrEqual(1);
+  await page.evaluate(() => {
+    (window as any).governanceStale = true;
+  });
+  await install.click();
+  await expect(dialog.getByRole("status")).toContainText(
+    "Files changed since this preview",
+  );
+  await expect(install).toHaveCount(0);
+  await page.evaluate(() => {
+    (window as any).governanceStale = false;
+  });
+  await dialog
+    .getByRole("button", { name: "Review latest", exact: true })
+    .click();
+  await expect(install).toBeVisible();
+  expect(await calls(page, "preview-install")).toHaveLength(3);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(trigger).toBeFocused();
+});
+
+test("legacy activation keeps the consequence visible and migration details available on demand", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 640 });
+  await fixture(page, false);
+  const activation = management(page).getByRole("region", {
+    name: "Enable project permissions",
+    exact: true,
+  });
+  await expect(activation).toContainText(
+    "Shared memory and skill changes will need approval unless you allow editing.",
+  );
+  const button = activation.getByRole("button", {
+    name: "Enable project permissions",
+    exact: true,
+  });
+  await expect(button).toBeInViewport();
+  await expect(button).toHaveClass(/ui-button--primary/);
+  await expect(
+    activation.getByText(/queued changes on this Mac keep their content/),
+  ).not.toBeVisible();
+  await activation
+    .getByText("What happens to existing work?", { exact: true })
+    .click();
+  await expect(
+    activation.getByText(/queued changes on this Mac keep their content/),
+  ).toBeVisible();
+  await expect(activation).toContainText("Existing Macs need an updated app.");
+  await expect(activation).toContainText(
+    "Project instructions need local review before installation.",
+  );
+  await button.click();
+  expect(await calls(page, "activate")).toEqual([
+    {
+      projectId: "project",
+      expectedPolicyRevision: 0,
+      rules: defaultProjectRules,
+    },
+  ]);
+  await expect(activation).toHaveCount(0);
 });

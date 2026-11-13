@@ -12,6 +12,7 @@ import {
 import type { RepositoryAccessRequest } from "@portable/protocol";
 import type { Project, Snapshot } from "../types.js";
 import { Button } from "./button.js";
+import { PermissionSelect } from "./permission-select.js";
 import { IconButton } from "./icon-button.js";
 import { TextField } from "./text-field.js";
 import { Overlay } from "./overlay.js";
@@ -520,6 +521,9 @@ export function RepositoryRequests({
     [error, setError] = useState("");
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [reviewStatuses, setReviewStatuses] = useState<Record<string, string>>(
+    {},
+  );
   const load = useCallback(
     async (offset = 0) => {
       const value = await call<{
@@ -570,9 +574,14 @@ export function RepositoryRequests({
       setBusy(false);
     }
   };
+  const reviewStatus = (request: RepositoryAccessRequest) =>
+    reviewStatuses[request.id] ??
+    (request.status === "invitation_pending"
+      ? "invitation_pending"
+      : "waiting_on_github");
   return (
     <section
-      className="repository-panel"
+      className="repository-panel repository-requests"
       aria-label="Repository access requests"
     >
       <h3>Repository access requests</h3>
@@ -582,6 +591,7 @@ export function RepositoryRequests({
       </p>
       <Button
         size="sm"
+        variant="tertiary"
         disabled={busy}
         onClick={() => void load().catch((e) => setError(String(e)))}
       >
@@ -594,7 +604,12 @@ export function RepositoryRequests({
             {request.fullName} · @{request.githubLogin}
           </h3>
           <p>{request.reason}</p>
-          <p>Status: {request.status.replaceAll("_", " ")}</p>
+          <p>
+            Status:{" "}
+            {request.status === "waiting_on_github"
+              ? "Waiting on GitHub"
+              : request.status.replaceAll("_", " ")}
+          </p>
           {request.note && <p>{request.note}</p>}
           {["requested", "waiting_on_github", "invitation_pending"].includes(
             request.status,
@@ -613,9 +628,45 @@ export function RepositoryRequests({
                 </Button>
               </div>
               {request.canReview && (
-                <>
+                <form
+                  className="repository-request-review"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!busy && notes[request.id]?.trim())
+                      void review(request, reviewStatus(request));
+                  }}
+                >
+                  <div className="repository-request-status">
+                    <span className="ui-field__label">Request status</span>
+                    <PermissionSelect
+                      label={`Request status for ${request.githubLogin}`}
+                      value={reviewStatus(request)}
+                      disabled={busy}
+                      options={[
+                        {
+                          value: "waiting_on_github",
+                          label: "Waiting on GitHub",
+                        },
+                        {
+                          value: "invitation_pending",
+                          label: "Invitation sent",
+                        },
+                        { value: "rejected", label: "Rejected" },
+                      ]}
+                      onChange={(value) =>
+                        setReviewStatuses((previous) => ({
+                          ...previous,
+                          [request.id]: value,
+                        }))
+                      }
+                    />
+                  </div>
                   <TextField
-                    label={`Review note for ${request.githubLogin}`}
+                    label="Note"
+                    aria-label={`Review note for ${request.githubLogin}`}
+                    hint="Required when updating the request."
+                    required
+                    disabled={busy}
                     value={notes[request.id] ?? ""}
                     maxLength={1000}
                     onChange={(event) =>
@@ -626,22 +677,16 @@ export function RepositoryRequests({
                     }
                   />
                   <div className="actions">
-                    {[
-                      ["waiting_on_github", "Coordinate in GitHub"],
-                      ["invitation_pending", "Invitation sent"],
-                      ["rejected", "Reject request"],
-                    ].map(([status, label]) => (
-                      <Button
-                        key={status}
-                        size="sm"
-                        disabled={busy || !notes[request.id]?.trim()}
-                        onClick={() => void review(request, status)}
-                      >
-                        {label}
-                      </Button>
-                    ))}
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="primary"
+                      disabled={busy || !notes[request.id]?.trim()}
+                    >
+                      {busy ? "Updating…" : "Update request"}
+                    </Button>
                   </div>
-                </>
+                </form>
               )}
               {request.requester === state.user && (
                 <Button

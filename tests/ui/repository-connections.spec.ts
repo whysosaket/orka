@@ -923,6 +923,18 @@ test("GitHub authorization is shown only when needed and can be canceled", async
     .getByRole("button", { name: "Connect GitHub", exact: true })
     .click();
   await expect(picker(page).getByText("ABCD-EFGH")).toBeVisible();
+  await expect(
+    picker(page).getByRole("button", {
+      name: "I’ve authorized GitHub",
+      exact: true,
+    }),
+  ).toHaveClass(/ui-button--primary/);
+  const surface = await picker(page).evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
+  await expect(
+    picker(page).getByRole("button", { name: "Open GitHub", exact: true }),
+  ).not.toHaveCSS("background-color", surface);
   await picker(page)
     .getByRole("button", { name: "Close repository connection" })
     .click();
@@ -989,8 +1001,10 @@ test("project creation moves directly into repository selection", async ({
     exact: true,
   });
   await expect(
-    create.getByRole("radio", { name: "GitHub repository" }),
-  ).toBeChecked();
+    create
+      .getByRole("group", { name: "Repository source" })
+      .getByRole("button", { name: "GitHub repository", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await create
     .getByRole("textbox", { name: "Project name", exact: true })
     .fill("New product");
@@ -1062,28 +1076,85 @@ test("disabled integration keeps ordinary local folder setup", async ({
   ).toBeVisible();
 });
 
-test("first-run setup opens the same two-field repository picker", async ({
-  page,
-}) => {
-  await fixture(page, { onboarding: true, empty: true });
-  await page
-    .getByRole("button", { name: "Connect a GitHub repository" })
-    .click();
-  await expect(picker(page)).toBeVisible();
-  await expect(
-    picker(page).getByRole("combobox", { name: "GitHub account" }),
-  ).toHaveText("fixtures");
-  await expect(
-    picker(page).getByRole("combobox", { name: "Repository", exact: true }),
-  ).toBeVisible();
-  await picker(page)
-    .getByRole("button", { name: "Close repository connection" })
-    .click();
-  await page.getByRole("button", { name: "Continue to workspace" }).click();
-  await expect(
-    page.getByRole("button", { name: "Settings", exact: true }),
-  ).toBeVisible();
-});
+for (const size of [
+  { width: 1160, height: 800 },
+  { width: 900, height: 640 },
+]) {
+  test(`first-run repository setup keeps its shell and picker at ${size.width}`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize(size);
+    await fixture(page, { onboarding: true, empty: true });
+    await page
+      .getByRole("button", { name: "Connect a GitHub repository" })
+      .click();
+    await expect(picker(page)).toBeVisible();
+    await expect(
+      picker(page).getByRole("combobox", { name: "GitHub account" }),
+    ).toHaveText("fixtures");
+    await expect(
+      picker(page).getByRole("combobox", { name: "Repository", exact: true }),
+    ).toBeVisible();
+    await picker(page)
+      .getByRole("button", { name: "Close repository connection" })
+      .click();
+    await expect(page.getByRole("main")).toHaveCount(1);
+    await expect(
+      page.getByRole("list", { name: "Onboarding steps" }),
+    ).toBeVisible();
+    await expect(
+      page.locator('.onboarding-flow__sidebar li[aria-current="step"]'),
+    ).toContainText("Add your projects");
+    await expect(
+      page.locator(".onboarding-flow__steps-progress"),
+    ).toBeVisible();
+    await expect(
+      page.locator(".onboarding-flow__illustration img"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Connect a repository", exact: true }),
+    ).toBeVisible();
+    const setup = page.getByRole("region", { name: "Repository setup" });
+    const canvas = await page.locator(".onboarding-flow__canvas").boundingBox();
+    const setupBounds = await setup.boundingBox();
+    expect(
+      Math.abs(
+        setupBounds!.x +
+          setupBounds!.width / 2 -
+          (canvas!.x + canvas!.width / 2),
+      ),
+    ).toBeLessThan(1);
+    await expect(
+      setup.getByRole("button", { name: "Open Orka", exact: true }),
+    ).toBeInViewport();
+    await page.screenshot({
+      path: info.outputPath(`repository-shell-${size.width}.png`),
+    });
+    await setup
+      .getByRole("combobox", { name: "Orka project" })
+      .selectOption("");
+    await expect(
+      setup.getByRole("textbox", { name: "Project name", exact: true }),
+    ).toBeVisible();
+    await expect(setup.getByRole("combobox", { name: /sharing$/ })).toHaveCount(
+      4,
+    );
+    await setup.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "Add Project", exact: true }),
+    ).toBeFocused();
+    await page
+      .getByRole("button", { name: "Connect a GitHub repository" })
+      .click();
+    await picker(page)
+      .getByRole("button", { name: "Close repository connection" })
+      .click();
+    await page.getByRole("button", { name: "Open Orka", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Settings", exact: true }),
+    ).toBeVisible();
+  });
+}
 
 test("request review still records coordination without granting GitHub access", async ({
   page,
@@ -1096,13 +1167,46 @@ test("request review still records coordination without granting GitHub access",
   const requests = page.getByRole("region", {
     name: "Repository access requests",
   });
+  await expect(
+    requests.getByRole("button", { name: "Update request", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    requests.getByText("Required when updating the request.", { exact: true }),
+  ).toBeVisible();
   await requests
     .getByRole("textbox", { name: "Review note for fixture-member" })
     .fill("Administrator will add you to the team");
-  await requests.getByRole("button", { name: "Coordinate in GitHub" }).click();
+  const before = (await calls(page)).filter(
+    (call) => call.action === "open-github",
+  ).length;
+  await requests
+    .getByRole("button", { name: "Update request", exact: true })
+    .click();
   await expect(
-    requests.getByText("Status: waiting on github", { exact: true }),
+    requests.getByText("Status: Waiting on GitHub", { exact: true }),
   ).toBeVisible();
+  expect(
+    (await calls(page)).filter((call) => call.action === "open-github"),
+  ).toHaveLength(before);
+  await requests
+    .getByRole("combobox", {
+      name: "Request status for fixture-member",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("option", { name: "Invitation sent", exact: true })
+    .click();
+  await requests
+    .getByRole("button", { name: "Update request", exact: true })
+    .click();
+  expect(
+    (await calls(page)).filter((call) => call.action === "review").at(-1)
+      ?.input,
+  ).toMatchObject({
+    status: "invitation_pending",
+    note: "Administrator will add you to the team",
+  });
   await expect(
     requests.getByRole("button", { name: /Approve|Grant access/ }),
   ).toHaveCount(0);
