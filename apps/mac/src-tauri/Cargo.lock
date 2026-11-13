@@ -3270,7 +3270,7 @@ dependencies = [
 
 [[package]]
 name = "portable-workspace-mac"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "age",
  "base64 0.23.1",
