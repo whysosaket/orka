@@ -152,7 +152,10 @@ test("source picker cancellation and disconnect confirmation preserve unrelated 
   });
   await button(settings, "Options for orka").click();
   await page
-    .getByRole("button", { name: "Disconnect folder on this Mac", exact: true })
+    .getByRole("menuitem", {
+      name: "Disconnect folder on this Mac",
+      exact: true,
+    })
     .click();
   await page
     .getByRole("dialog", { name: "Disconnect folder?" })
@@ -175,7 +178,7 @@ test("queued writes block disconnect while reconnect remains usable", async ({
   });
   await button(settings, "Options for orka").click();
   await expect(
-    page.getByRole("button", {
+    page.getByRole("menuitem", {
       name: "Disconnect folder on this Mac",
       exact: true,
     }),
@@ -243,7 +246,7 @@ test("folder recovery states expose paths in name tooltips and reconnect the sel
   );
   await button(folders, "Options for documentation").click();
   await expect(
-    page.getByRole("button", {
+    page.getByRole("menuitem", {
       name: "Disconnect folder on this Mac",
       exact: true,
     }),
@@ -261,7 +264,7 @@ test("folder recovery states expose paths in name tooltips and reconnect the sel
   await button(folders, "Locate Folder for documentation").click();
   await button(folders, "Options for documentation").click();
   await expect(
-    page.getByRole("button", {
+    page.getByRole("menuitem", {
       name: "Disconnect folder on this Mac",
       exact: true,
     }),
@@ -609,7 +612,9 @@ test("members create a join link, promote explicitly, and confirm removal", asyn
   await choose(settings, "Role for Jamie Rivera", "Admin");
   await expect(settings.getByText("Role updated.")).toBeVisible();
   await button(settings, "Actions for Jamie Rivera").click();
-  await page.getByRole("button", { name: "Remove Admin", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "Remove Admin", exact: true })
+    .click();
   const confirm = page.getByRole("dialog", {
     name: "Remove member?",
     exact: true,

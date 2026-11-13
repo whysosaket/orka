@@ -814,7 +814,7 @@ test("existing local folders can be linked without cloning again", async ({
   await panel(page)
     .getByRole("button", { name: "Options for private-repo" })
     .click();
-  await page.getByRole("button", { name: "Link GitHub repository" }).click();
+  await page.getByRole("menuitem", { name: "Link GitHub repository" }).click();
   await choose(
     page,
     picker(page).getByRole("combobox", { name: "Repository", exact: true }),
@@ -841,12 +841,12 @@ test("account controls and unlinking are tucked into explicit menus", async ({
 }) => {
   await fixture(page, { connected: true });
   await expect(
-    page.getByRole("button", { name: "Remove GitHub link" }),
+    page.getByRole("menuitem", { name: "Remove GitHub link" }),
   ).toHaveCount(0);
   await panel(page)
     .getByRole("button", { name: "Options for private-repo" })
     .click();
-  await page.getByRole("button", { name: "Remove GitHub link" }).click();
+  await page.getByRole("menuitem", { name: "Remove GitHub link" }).click();
   await expect(
     panel(page).getByRole("img", { name: "GitHub access verified" }),
   ).toHaveCount(0);
@@ -1392,4 +1392,33 @@ test("repository menus support keyboard selection and return focus", async ({
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(repository).toBeFocused();
+});
+
+test("linked source context and ellipsis menus share actions and open the correct GitHub repository", async ({
+  page,
+}) => {
+  await fixture(page, { connected: true });
+  const source = panel(page).locator(".repository-card-row");
+  await source.click({ button: "right" });
+  const menu = page.getByRole("menu", {
+    name: "Options for private-repo",
+    exact: true,
+  });
+  const contextActions = await menu.getByRole("menuitem").allTextContents();
+  await expect(
+    menu.getByRole("menuitem", { name: "Show in Finder", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await panel(page)
+    .getByRole("button", { name: "Options for private-repo", exact: true })
+    .click();
+  expect(await menu.getByRole("menuitem").allTextContents()).toEqual(
+    contextActions,
+  );
+  await menu
+    .getByRole("menuitem", { name: "Open repository on GitHub", exact: true })
+    .click();
+  expect(
+    (await calls(page)).find((call) => call.action === "open-github")?.input,
+  ).toEqual({ url: "https://github.com/fixtures/private-repo" });
 });

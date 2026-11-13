@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "333f5404b97432ff4a01c9b1e48a57622a4fd2fa",
+  "commit": "07ab09a68289dafdd3e693b7899ba360bf01de48",
   "candidate": false,
-  "sourceTreeSha256": "cd1241ff06bd5864070e8f00ba3f6e47b55c32143dc47b345f71a07194fda50e",
+  "sourceTreeSha256": "518bd5fe899fb0d3cfe62c17dbe125dcebac2695ed099e20bd1c48427d2c52b5",
   "files": [
     {
       "path": ".dockerignore",
@@ -151,7 +151,7 @@
     },
     {
       "path": "docs/compatibility.md",
-      "sha256": "82c13bb4119bb8c67a6ec18871b62fc28e5d87d525826e8b4e3d448457dbcb3a",
+      "sha256": "55f65035be3f47fbe6cf76be82aa54dccf82cce549d00b2a75524b53dfea7925",
       "mode": 420
     },
     {
@@ -246,7 +246,7 @@
     },
     {
       "path": "internal/server/api.go",
-      "sha256": "e1911f29dfd1426ced61b2c148e33c57b2e7599cc865e849f19f27e701b9c6e2",
+      "sha256": "37fda7c6483b607bfff7a4115d92650fba2b322b143315c61e726b51e5632354",
       "mode": 420
     },
     {
@@ -446,7 +446,7 @@
     },
     {
       "path": "internal/server/sync.go",
-      "sha256": "945a1f660f4776eb0dec3ae0bf9157a5fdc2b51f17585e2bd669f31b9d6c39ae",
+      "sha256": "8cb2d00c702cbf8b06ebe19c4b58b7f458a499f3be1b6eed0ee79524e0e9df75",
       "mode": 420
     },
     {
@@ -711,7 +711,7 @@
     },
     {
       "path": "tests/acceptance/integration.ts",
-      "sha256": "6ab0f298317c4423c25ecbebeffca4a44df34726d7a19f251238bf5c8f572812",
+      "sha256": "3c7844a25c470dfe423d79e542dcf0ac12f8c2613c43ee388ecbb59eac7c9025",
       "mode": 420
     },
     {
@@ -922,6 +922,11 @@
     {
       "path": "tests/protocol.test.ts",
       "sha256": "a68923d637785ff5d2a0472c1e46ac801cccae01e4a264c9018138c5d6285db9",
+      "mode": 420
+    },
+    {
+      "path": "tests/resource-deletion.integration.ts",
+      "sha256": "0dfb673b3a4518723a2ee24976afc8843e0e9ddb6ca82860b68e9e3145d7775f",
       "mode": 420
     },
     {

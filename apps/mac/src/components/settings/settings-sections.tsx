@@ -5,9 +5,12 @@ import {
   FileDirectoryIcon,
   PlusIcon,
   XIcon,
-  KebabHorizontalIcon,
 } from "@primer/octicons-react";
-import { ActionPopover } from "../resource-actions.js";
+import {
+  ItemContextMenu,
+  ItemMenuButton,
+  type ItemMenuAction,
+} from "../item-menu.js";
 import { RepositoryConnections } from "../repository-connections.js";
 import { CopyLinkButton } from "../copy-link-button.js";
 import type { Project, Snapshot } from "../../types.js";
@@ -18,6 +21,7 @@ import { TextField } from "../text-field.js";
 import { connectProject } from "../use-project-setup.js";
 import { activeSources } from "../project-sources.js";
 import { useSettingsQuery } from "./use-settings-query.js";
+import { useToastNotice } from "../toasts.js";
 
 export function SettingsGeneral({
   project,
@@ -109,6 +113,7 @@ export function SettingsFolder({
 }) {
   const user = state.user,
     service = state.config?.apiUrl;
+  const notice = useToastNotice();
   const loadCapabilities = useCallback(async () => {
     const capabilities = await invoke<{ sourcesRemoval?: number }>(
       "settings_command",
@@ -176,105 +181,158 @@ export function SettingsFolder({
                         ),
                       )
                     : onConnect();
+                const actions: ItemMenuAction[] = [];
+                if (folderState !== "connected")
+                  actions.push({
+                    id: "connect",
+                    label:
+                      folderState === "locate"
+                        ? "Locate Folder"
+                        : "Reconnect folder",
+                    disabled: busy,
+                    onSelect: connect,
+                  });
+                if (source.id && source.path) {
+                  const input = {
+                    accountId: state.user,
+                    serviceOrigin: state.config?.apiUrl,
+                    projectId: project.id,
+                    sourceId: source.id,
+                  };
+                  actions.push(
+                    {
+                      id: "reveal",
+                      label: "Show in Finder",
+                      disabled: busy,
+                      onSelect: () =>
+                        void run(() =>
+                          invoke("resource_command", {
+                            action: "reveal",
+                            input,
+                          }),
+                        ),
+                    },
+                    {
+                      id: "copy-path",
+                      label: "Copy folder path",
+                      disabled: busy,
+                      onSelect: () =>
+                        void run(async () => {
+                          const result = await invoke<{ paths: string[] }>(
+                            "resource_command",
+                            { action: "paths", input },
+                          );
+                          await navigator.clipboard.writeText(
+                            result.paths.join("\n"),
+                          );
+                          notice("Folder path copied");
+                        }),
+                    },
+                  );
+                }
+                if (source.id && enabled && project.role === "owner")
+                  actions.push({
+                    id: "link",
+                    label: "Link GitHub repository",
+                    disabled: busy,
+                    onSelect: () => onLink(source),
+                  });
+                actions.push({
+                  id: "disconnect",
+                  label: "Disconnect folder on this Mac",
+                  disabled: busy || queued > 0 || !source.path,
+                  reason:
+                    queued > 0
+                      ? "Sync queued changes before disconnecting"
+                      : !source.path
+                        ? "Connect this folder before disconnecting"
+                        : undefined,
+                  separator: actions.length > 0,
+                  onSelect: () =>
+                    source.id ? onDisconnectSource(source.id) : onDisconnect(),
+                });
+                if (canRemove && source.id)
+                  actions.push({
+                    id: "remove",
+                    label: "Remove source folder",
+                    danger: true,
+                    disabled: busy || queued > 0,
+                    reason:
+                      queued > 0
+                        ? "Sync queued changes before removing a source"
+                        : undefined,
+                    onSelect: () => onRemoveSource(source.id),
+                  });
                 return (
-                  <div className="settings-folder-row" key={source.id}>
-                    <div className="settings-folder-identity">
-                      <Icon
-                        icon={FileDirectoryIcon}
-                        className="settings-folder-icon"
-                      />
-                      <span
-                        className="settings-folder-name"
-                        title={source.path ?? undefined}
-                      >
-                        {source.name}
-                      </span>
-                    </div>
-                    <div className="settings-folder-actions">
-                      {folderState !== "connected" && (
-                        <Button
-                          variant={
-                            folderState === "locate" ? "primary" : "secondary"
-                          }
-                          size="sm"
-                          className={
-                            folderState === "reconnect"
-                              ? "settings-folder-reconnect"
-                              : undefined
-                          }
-                          disabled={busy}
-                          aria-label={`${folderState === "locate" ? "Locate Folder for" : "Reconnect"} ${source.name}${folderState === "locate" ? "" : " folder"}`}
-                          onClick={connect}
+                  <ItemContextMenu
+                    key={source.id}
+                    actions={actions}
+                    label={`Options for ${source.name}`}
+                  >
+                    <div className="settings-folder-row">
+                      <div className="settings-folder-identity">
+                        <Icon
+                          icon={FileDirectoryIcon}
+                          className="settings-folder-icon"
+                        />
+                        <span
+                          className="settings-folder-name"
+                          title={source.path ?? undefined}
                         >
-                          {folderState === "locate"
-                            ? "Locate Folder"
-                            : "Reconnect"}
-                        </Button>
-                      )}
-                      {source.id ? (
-                        <ActionPopover
-                          label={`Options for ${source.name}`}
-                          trigger={
-                            <IconButton
-                              icon={KebabHorizontalIcon}
-                              variant="secondary"
-                              size="sm"
-                              className="repository-source-options"
-                              title={`Options for ${source.name}`}
-                              aria-label={`Options for ${source.name}`}
-                              disabled={busy}
-                            />
-                          }
-                        >
-                          {enabled && project.role === "owner" && (
-                            <Button size="sm" onClick={() => onLink(source)}>
-                              Link GitHub repository
-                            </Button>
-                          )}
+                          {source.name}
+                        </span>
+                      </div>
+                      <div className="settings-folder-actions">
+                        {folderState !== "connected" && (
                           <Button
+                            variant={
+                              folderState === "locate" ? "primary" : "secondary"
+                            }
                             size="sm"
+                            className={
+                              folderState === "reconnect"
+                                ? "settings-folder-reconnect"
+                                : undefined
+                            }
+                            disabled={busy}
+                            aria-label={`${folderState === "locate" ? "Locate Folder for" : "Reconnect"} ${source.name}${folderState === "locate" ? "" : " folder"}`}
+                            onClick={connect}
+                          >
+                            {folderState === "locate"
+                              ? "Locate Folder"
+                              : "Reconnect"}
+                          </Button>
+                        )}
+                        {source.id ? (
+                          <ItemMenuButton
+                            actions={actions}
+                            label={`Options for ${source.name}`}
+                            disabled={busy}
+                          />
+                        ) : (
+                          <IconButton
+                            icon={XIcon}
+                            variant="tertiary"
+                            size="sm"
+                            aria-label={`Disconnect ${source.name} folder`}
+                            title={
+                              !source.path
+                                ? "Connect this folder before disconnecting"
+                                : queued > 0
+                                  ? "Sync queued changes before disconnecting"
+                                  : "Disconnect folder on this Mac"
+                            }
                             disabled={busy || queued > 0 || !source.path}
                             onClick={() =>
                               source.id
                                 ? onDisconnectSource(source.id)
                                 : onDisconnect()
                             }
-                          >
-                            Disconnect folder on this Mac
-                          </Button>
-                          {canRemove && (
-                            <Button
-                              size="sm"
-                              disabled={busy || queued > 0}
-                              onClick={() => onRemoveSource(source.id)}
-                            >
-                              Remove source folder
-                            </Button>
-                          )}
-                        </ActionPopover>
-                      ) : (
-                        <IconButton
-                          icon={XIcon}
-                          variant="tertiary"
-                          size="sm"
-                          aria-label={`Disconnect ${source.name} folder`}
-                          title={
-                            !source.path
-                              ? "Connect this folder before disconnecting"
-                              : queued > 0
-                                ? "Sync queued changes before disconnecting"
-                                : "Disconnect folder on this Mac"
-                          }
-                          disabled={busy || queued > 0 || !source.path}
-                          onClick={() =>
-                            source.id
-                              ? onDisconnectSource(source.id)
-                              : onDisconnect()
-                          }
-                        />
-                      )}
+                          />
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  </ItemContextMenu>
                 );
               })}
             {!enabled && sources.length === 0 && project.role !== "owner" && (

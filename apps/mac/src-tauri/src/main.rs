@@ -26,6 +26,7 @@ mod profiles;
 mod projects;
 mod repair;
 mod repositories;
+mod resource_commands;
 mod selective_sharing;
 mod session_forks;
 mod session_launcher;
@@ -256,6 +257,7 @@ fn main() {
             profiles::profile_events,
             commands::snapshot,
             local_resources::local_resource_catalog,
+            resource_commands::resource_command,
             projects::project_command,
             settings::settings_command,
             commands::configure,

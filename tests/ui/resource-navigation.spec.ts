@@ -232,7 +232,7 @@ test("session deep links reset memory diff mode and keep the segmented modes", a
     .getByRole("button", { name: "More resource actions", exact: true })
     .click();
   await page
-    .getByRole("button", {
+    .getByRole("menuitem", {
       name: "Compare with previous revision",
       exact: true,
     })
@@ -245,7 +245,7 @@ test("session deep links reset memory diff mode and keep the segmented modes", a
     .getByRole("button", { name: "More resource actions", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Show content", exact: true }),
+    page.getByRole("menuitem", { name: "Show content", exact: true }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await page.evaluate(() =>
@@ -277,7 +277,7 @@ test("session deep links reset memory diff mode and keep the segmented modes", a
     .getByRole("button", { name: "More resource actions", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Show Markdown", exact: true })
+    .getByRole("menuitem", { name: "Show Markdown", exact: true })
     .click();
   await expect(conversation.locator("pre.content").first()).toBeVisible();
 });
@@ -391,7 +391,10 @@ test("skills switch files from the rail or the compact selector", async ({
   await expect(grid).toContainText("2 files");
   await expect.poll(columns).toBe(3);
   await expect(page.locator(".inspector")).toHaveCount(0);
-  await page.getByRole("button", { name: /Review checklist/ }).click();
+  await page
+    .locator(".skill-card")
+    .filter({ hasText: "Review checklist" })
+    .click();
   const view = page.locator(".resource-detail--skill");
   await expect(view.locator("h2").first()).toHaveText("Review checklist");
   await expect(view.locator(".skill-description")).toHaveText("How we write.");
@@ -425,7 +428,10 @@ test("a failed file read clears old content and retries only on request", async 
   await page.clock.install();
   await resourceFixture(page);
   await page.getByRole("button", { name: /^Skills/ }).click();
-  await page.getByRole("button", { name: /Review checklist/ }).click();
+  await page
+    .locator(".skill-card")
+    .filter({ hasText: "Review checklist" })
+    .click();
   const view = page.locator(".resource-detail--skill");
   await expect(view).toContainText("Some content");
   await page.evaluate(() => {
@@ -483,7 +489,10 @@ for (const outcome of ["success", "failure"] as const)
     await page.emulateMedia({ reducedMotion: "reduce" });
     await resourceFixture(page);
     await page.getByRole("button", { name: /^Skills/ }).click();
-    await page.getByRole("button", { name: /Review checklist/ }).click();
+    await page
+      .locator(".skill-card")
+      .filter({ hasText: "Review checklist" })
+      .click();
     const view = page.locator(".resource-detail--skill");
     await expect(view).toContainText("Some content");
     await page.evaluate((outcome) => {

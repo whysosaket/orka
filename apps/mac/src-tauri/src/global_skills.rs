@@ -407,9 +407,15 @@ pub fn local_skill(db: &Connection, id: &str) -> Result<Option<Value>> {
         return Ok(None);
     };
     let project = governance::project(db, project_id)?;
-    Ok(local_skills(db, &project)?
-        .into_iter()
-        .find(|skill| skill["resourceId"] == id))
+    for source in crate::sources::views(&project) {
+        if let Some(skill) = local_skills(db, &source)?
+            .into_iter()
+            .find(|skill| skill["resourceId"] == id)
+        {
+            return Ok(Some(skill));
+        }
+    }
+    Ok(None)
 }
 
 #[tauri::command]

@@ -163,7 +163,8 @@ func (s *Store) change(q *Queries, user string, input Object, options ChangeOpti
 	}
 	s.verifyFiles(q, project, user, array(incoming["files"]))
 	s.sourcePermissions(q, user, project, incoming, existing, options.Preview)
-	if flag(access["governed"]) && existing != nil && includes([]string{"instructions", "skill", "plan"}, policyClass(existing)) && !q.Require(number(input["baseRevision"]) == number(existing["revision"]), 409, "Resource changed; refresh and review the exact version again") {
+	exactVersion := flag(incoming["deleted"]) && text(incoming["kind"]) != "session" || flag(access["governed"]) && includes([]string{"instructions", "skill", "plan"}, policyClass(existing))
+	if existing != nil && exactVersion && !q.Require(number(input["baseRevision"]) == number(existing["revision"]), 409, "Resource changed; refresh and review the exact version again") {
 		return nil
 	}
 	if text(incoming["kind"]) == "plan" && !flag(incoming["deleted"]) {

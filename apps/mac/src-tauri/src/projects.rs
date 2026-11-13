@@ -296,7 +296,7 @@ pub fn remove_local(db: &Connection, id: &str) -> Result<()> {
         .map_err(|e| e.to_string())?;
     // Keep signed trust pins, but discard encrypted pending publications for this project.
     tx.execute("DELETE FROM meta WHERE key LIKE 'env:%' AND (json_extract(value,'$.header.manifest.projectId')=? OR json_extract(value,'$.projectId')=?)",[id,id]).map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM meta WHERE (key LIKE 'share-preview:%' OR key LIKE 'selected-share:%') AND json_extract(value,'$.projectId')=?",[id]).map_err(|e|e.to_string())?;
+    tx.execute("DELETE FROM meta WHERE (key LIKE 'share-preview:%' OR key LIKE 'selected-share:%' OR key LIKE 'resource-delete:%') AND json_extract(value,'$.projectId')=?",[id]).map_err(|e|e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     env::clear();
     Ok(())

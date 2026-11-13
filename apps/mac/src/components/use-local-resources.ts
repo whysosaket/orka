@@ -51,7 +51,10 @@ export function useLocalResources({
   const [, setVersion] = useState(0);
   const [retry, setRetry] = useState(0);
   const refresh = useCallback(() => {
-    if (kind && catalogs[kind]) catalogs[kind].updatedAt = 0;
+    // Home mutations can affect any cached collection in this project.
+    for (const entry of kind ? [catalogs[kind]] : Object.values(catalogs)) {
+      if (entry) entry.updatedAt = 0;
+    }
     setRetry((value) => value + 1);
   }, [catalogs, kind]);
   useEffect(() => {

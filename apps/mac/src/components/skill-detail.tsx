@@ -6,6 +6,11 @@ import React, {
   type MouseEvent,
 } from "react";
 import Markdown from "react-markdown";
+import {
+  ResourceItemMenu,
+  ResourceMenuButton,
+  resourceViewMenuActions,
+} from "./resource-menu.js";
 import remarkGfm from "remark-gfm";
 import {
   ChecklistIcon,
@@ -330,6 +335,12 @@ export function SkillDetail({
   });
   const infoActions = (
     <div className="skill-info-actions">
+      <ResourceMenuButton
+        resource={resource}
+        file={view.file}
+        extraActions={resourceViewMenuActions(view, false)}
+        label="More skill actions"
+      />
       {review.incoming && (
         <SkillActionTooltip label="Review local update">
           <span className="skill-action-badge">
@@ -462,225 +473,233 @@ export function SkillDetail({
   );
 
   return (
-    <section
-      ref={rootRef}
-      className="resource-detail resource-detail--skill skill-detail"
-      data-layout={compact ? "compact" : "wide"}
-      aria-label="Skill details"
+    <ResourceItemMenu
+      resource={resource}
+      file={view.file}
+      extraActions={resourceViewMenuActions(view, false)}
     >
-      <div className="skill-reader">
-        <div className="skill-title-card">
-          {status && (
-            <span className={`skill-status skill-status--${status.tone}`}>
-              {status.label}
-            </span>
-          )}
-          {resource.local && (
-            <span
-              className={`skill-status skill-status--${resource.sharing === "approval" ? "warning" : "neutral"}`}
-            >
-              {sharing.label}
-            </span>
-          )}
-          <div className="skill-title-row">
-            <h2 className="skill-title">{title}</h2>
-            {resource.global && (
-              <span className="skill-origin-badge">Global</span>
-            )}
-          </div>
-          {description && (
-            <p
-              ref={descriptionRef}
-              className={`skill-description${
-                compact && !expanded ? " skill-description--clamped" : ""
-              }`}
-            >
-              {description}
-            </p>
-          )}
-          {compact && (overflowing || expanded) && (
-            <Button
-              size="sm"
-              variant="tertiary"
-              aria-expanded={expanded}
-              onClick={() => setExpanded((value) => !value)}
-            >
-              {expanded ? "Show less" : "Show more"}
-            </Button>
-          )}
-        </div>
-        {compact && (
-          <>
-            <p className="skill-meta">
-              Updated by {author} · {metaDate(resource.updatedAt)} ·{" "}
-              {resource.local ? sharing.label : `Version ${versionLabel}`}
-            </p>
-            {(sharedAccessRequest || localNote) && (
-              <div className="skill-compact-notes">
-                {sharedAccessRequest}
-                {localNote}
+      {() => (
+        <section
+          ref={rootRef}
+          className="resource-detail resource-detail--skill skill-detail"
+          data-layout={compact ? "compact" : "wide"}
+          aria-label="Skill details"
+        >
+          <div className="skill-reader">
+            <div className="skill-title-card">
+              {status && (
+                <span className={`skill-status skill-status--${status.tone}`}>
+                  {status.label}
+                </span>
+              )}
+              {resource.local && (
+                <span
+                  className={`skill-status skill-status--${resource.sharing === "approval" ? "warning" : "neutral"}`}
+                >
+                  {sharing.label}
+                </span>
+              )}
+              <div className="skill-title-row">
+                <h2 className="skill-title">{title}</h2>
+                {resource.global && (
+                  <span className="skill-origin-badge">Global</span>
+                )}
               </div>
-            )}
-            <div className="skill-compact-actions">
-              <div className="skill-actions-inline">{primaryActions}</div>
-              {infoActions}
+              {description && (
+                <p
+                  ref={descriptionRef}
+                  className={`skill-description${
+                    compact && !expanded ? " skill-description--clamped" : ""
+                  }`}
+                >
+                  {description}
+                </p>
+              )}
+              {compact && (overflowing || expanded) && (
+                <Button
+                  size="sm"
+                  variant="tertiary"
+                  aria-expanded={expanded}
+                  onClick={() => setExpanded((value) => !value)}
+                >
+                  {expanded ? "Show less" : "Show more"}
+                </Button>
+              )}
             </div>
-          </>
-        )}
-        {!editorPath && (
-          <p className="skill-context">
-            Reconnect the project folder in Settings to open files in your
-            editor.
-          </p>
-        )}
-        {rawForced && (
-          <p className="skill-context">
-            Couldn’t read skill metadata. Showing the original file.
-          </p>
-        )}
-        {(segmented || compact) && (
-          <div
-            className="skill-file-tabs"
-            data-forced-markdown={rawForced || undefined}
-            data-unavailable={
-              contentPending ||
-              !!view.inspectionError ||
-              !fileListed ||
-              undefined
-            }
-          >
-            <div className="skill-file-tabs-start">{segmented}</div>
-            {compact && files.length > 0 && (
-              <ActionPopover
-                label="Files"
-                align="end"
-                className="skill-files-popover"
-                trigger={
-                  <Button
-                    size="sm"
-                    variant="tertiary"
-                    aria-label={`Files, ${files.length}`}
-                  >
-                    Files · {files.length}
-                  </Button>
-                }
-              >
-                <ul className="skill-file-list">{fileRows}</ul>
-              </ActionPopover>
-            )}
-          </div>
-        )}
-        <div className="skill-document">
-          <LoadingRegion
-            id="skill-content"
-            label="Loading content…"
-            data={view.inspection}
-            sample={sampleInspection}
-            skeleton={
-              <div className="skill-content-skeleton" aria-hidden="true">
-                {[74, 100, 95, 90, 64, 100, 96, 88].map((width, index) => (
-                  <span key={index} style={{ width: `${width}%` }} />
-                ))}
-              </div>
-            }
-            error={
-              view.inspectionError || !fileListed
-                ? errorState(view.inspectionError)
-                : undefined
-            }
-          >
-            {(inspection) => (
-              <SkillDocument
-                inspection={inspection}
-                file={view.file}
-                changes={view.changes}
-                rawMarkdown={view.rawMarkdown}
-              />
-            )}
-          </LoadingRegion>
-        </div>
-      </div>
-      {!compact && (
-        <aside className="skill-rail" aria-label="Skill information">
-          {sharedAccessRequest}
-          <section
-            className="skill-rail-card skill-info"
-            aria-labelledby={infoHeadingId}
-          >
-            <div className="skill-info-body">
-              <div className="skill-info-heading">
-                <h2 id={infoHeadingId} className="skill-card-label">
-                  Skill info
-                </h2>
-                {infoActions}
-              </div>
-              <dl className="skill-facts">
-                <div className="skill-fact">
-                  <dt>Updated by</dt>
-                  <dd>{author}</dd>
-                </div>
-                <div className="skill-fact">
-                  <dt>Updated at</dt>
-                  <dd>
-                    <time dateTime={resource.updatedAt}>
-                      {factDate(resource.updatedAt)}
-                    </time>
-                  </dd>
-                </div>
-                {firstApproval ? null : resource.local ? (
-                  <div className="skill-fact">
-                    <dt>Source</dt>
-                    <dd>{sharing.label}</dd>
-                  </div>
-                ) : (
-                  <div className="skill-fact">
-                    <dt>Version</dt>
-                    <dd>{versionLabel}</dd>
+            {compact && (
+              <>
+                <p className="skill-meta">
+                  Updated by {author} · {metaDate(resource.updatedAt)} ·{" "}
+                  {resource.local ? sharing.label : `Version ${versionLabel}`}
+                </p>
+                {(sharedAccessRequest || localNote) && (
+                  <div className="skill-compact-notes">
+                    {sharedAccessRequest}
+                    {localNote}
                   </div>
                 )}
-              </dl>
-              {localNote}
+                <div className="skill-compact-actions">
+                  <div className="skill-actions-inline">{primaryActions}</div>
+                  {infoActions}
+                </div>
+              </>
+            )}
+            {!editorPath && (
+              <p className="skill-context">
+                Reconnect the project folder in Settings to open files in your
+                editor.
+              </p>
+            )}
+            {rawForced && (
+              <p className="skill-context">
+                Couldn’t read skill metadata. Showing the original file.
+              </p>
+            )}
+            {(segmented || compact) && (
+              <div
+                className="skill-file-tabs"
+                data-forced-markdown={rawForced || undefined}
+                data-unavailable={
+                  contentPending ||
+                  !!view.inspectionError ||
+                  !fileListed ||
+                  undefined
+                }
+              >
+                <div className="skill-file-tabs-start">{segmented}</div>
+                {compact && files.length > 0 && (
+                  <ActionPopover
+                    label="Files"
+                    align="end"
+                    className="skill-files-popover"
+                    trigger={
+                      <Button
+                        size="sm"
+                        variant="tertiary"
+                        aria-label={`Files, ${files.length}`}
+                      >
+                        Files · {files.length}
+                      </Button>
+                    }
+                  >
+                    <ul className="skill-file-list">{fileRows}</ul>
+                  </ActionPopover>
+                )}
+              </div>
+            )}
+            <div className="skill-document">
+              <LoadingRegion
+                id="skill-content"
+                label="Loading content…"
+                data={view.inspection}
+                sample={sampleInspection}
+                skeleton={
+                  <div className="skill-content-skeleton" aria-hidden="true">
+                    {[74, 100, 95, 90, 64, 100, 96, 88].map((width, index) => (
+                      <span key={index} style={{ width: `${width}%` }} />
+                    ))}
+                  </div>
+                }
+                error={
+                  view.inspectionError || !fileListed
+                    ? errorState(view.inspectionError)
+                    : undefined
+                }
+              >
+                {(inspection) => (
+                  <SkillDocument
+                    inspection={inspection}
+                    file={view.file}
+                    changes={view.changes}
+                    rawMarkdown={view.rawMarkdown}
+                  />
+                )}
+              </LoadingRegion>
             </div>
-            <div className="skill-actions">{primaryActions}</div>
-          </section>
-          <section
-            className="skill-rail-card skill-files"
-            aria-labelledby={filesHeadingId}
-          >
-            <div className="skill-files-heading">
-              <h2 id={filesHeadingId}>Files</h2>
-              <span className="skill-files-count">
-                <span className="sr-only">
-                  {files.length} {files.length === 1 ? "file" : "files"}
-                </span>
-                <span aria-hidden="true">{files.length}</span>
-              </span>
-            </div>
-            <ul className="skill-file-list">{fileRows}</ul>
-          </section>
-        </aside>
+          </div>
+          {!compact && (
+            <aside className="skill-rail" aria-label="Skill information">
+              {sharedAccessRequest}
+              <section
+                className="skill-rail-card skill-info"
+                aria-labelledby={infoHeadingId}
+              >
+                <div className="skill-info-body">
+                  <div className="skill-info-heading">
+                    <h2 id={infoHeadingId} className="skill-card-label">
+                      Skill info
+                    </h2>
+                    {infoActions}
+                  </div>
+                  <dl className="skill-facts">
+                    <div className="skill-fact">
+                      <dt>Updated by</dt>
+                      <dd>{author}</dd>
+                    </div>
+                    <div className="skill-fact">
+                      <dt>Updated at</dt>
+                      <dd>
+                        <time dateTime={resource.updatedAt}>
+                          {factDate(resource.updatedAt)}
+                        </time>
+                      </dd>
+                    </div>
+                    {firstApproval ? null : resource.local ? (
+                      <div className="skill-fact">
+                        <dt>Source</dt>
+                        <dd>{sharing.label}</dd>
+                      </div>
+                    ) : (
+                      <div className="skill-fact">
+                        <dt>Version</dt>
+                        <dd>{versionLabel}</dd>
+                      </div>
+                    )}
+                  </dl>
+                  {localNote}
+                </div>
+                <div className="skill-actions">{primaryActions}</div>
+              </section>
+              <section
+                className="skill-rail-card skill-files"
+                aria-labelledby={filesHeadingId}
+              >
+                <div className="skill-files-heading">
+                  <h2 id={filesHeadingId}>Files</h2>
+                  <span className="skill-files-count">
+                    <span className="sr-only">
+                      {files.length} {files.length === 1 ? "file" : "files"}
+                    </span>
+                    <span aria-hidden="true">{files.length}</span>
+                  </span>
+                </div>
+                <ul className="skill-file-list">{fileRows}</ul>
+              </section>
+            </aside>
+          )}
+          {overlay && (
+            <SkillReviewOverlay
+              mode={overlay}
+              project={project}
+              resource={resource}
+              state={state}
+              onClose={() => setOverlay(null)}
+              onRefresh={onRefresh}
+              onNotice={onNotice}
+              onCloseAutoFocus={(event) => {
+                // Return focus to the opener explicitly: WebKit does not focus a
+                // clicked button, so the captured active element can be the body.
+                const trigger =
+                  overlay === "incoming"
+                    ? incomingRef.current
+                    : outgoingRef.current;
+                event.preventDefault();
+                (trigger?.isConnected ? trigger : editorRef.current)?.focus();
+              }}
+            />
+          )}
+        </section>
       )}
-      {overlay && (
-        <SkillReviewOverlay
-          mode={overlay}
-          project={project}
-          resource={resource}
-          state={state}
-          onClose={() => setOverlay(null)}
-          onRefresh={onRefresh}
-          onNotice={onNotice}
-          onCloseAutoFocus={(event) => {
-            // Return focus to the opener explicitly: WebKit does not focus a
-            // clicked button, so the captured active element can be the body.
-            const trigger =
-              overlay === "incoming"
-                ? incomingRef.current
-                : outgoingRef.current;
-            event.preventDefault();
-            (trigger?.isConnected ? trigger : editorRef.current)?.focus();
-          }}
-        />
-      )}
-    </section>
+    </ResourceItemMenu>
   );
 }
