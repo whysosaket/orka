@@ -1,5 +1,5 @@
 use super::*;
-use crate::{context_sharing, governance};
+use crate::{context_sharing, governance, projects};
 
 fn fixture(mode: &str) -> Fixture {
     let mut f = Fixture::new();
@@ -27,6 +27,177 @@ fn native_memory(f: &Fixture, text: &str) -> PathBuf {
 
 fn queued(f: &Fixture) -> Value {
     db::rows(&f.db, "SELECT json_object('id',id,'project',project,'path',path,'value',json(value)) FROM outbox ORDER BY rowid", &[]).unwrap().remove(0)
+}
+
+fn source_project(f: &Fixture) -> (Value, String, String) {
+    let removed = uuid::Uuid::new_v4().to_string();
+    let active = uuid::Uuid::new_v4().to_string();
+    let mut project = f.project.clone();
+    project["sources"] = json!([
+        {"id":removed,"name":"Removed","path":f.root,"folderIdentity":f.project["folderIdentity"]},
+        {"id":active,"name":"Offline","path":null,"folderIdentity":null}
+    ]);
+    db::upsert(
+        &f.db,
+        "projects",
+        project["id"].as_str().unwrap(),
+        "",
+        &project,
+    )
+    .unwrap();
+    (project, removed, active)
+}
+
+fn source_memory(source: &str) -> Value {
+    json!({"resourceId":uuid::Uuid::new_v4().to_string(),"sourceId":source,"kind":"memory","source":"claude","logicalPath":"claude/MEMORY.md","title":"Saved learning","deleted":false,"files":[{"path":"content.md","hash":db::blob(b"Saved learning\n").unwrap(),"size":15,"executable":false}]})
+}
+
+#[test]
+fn removed_sources_keep_deferred_context_private_without_blocking_other_saved_snapshots() {
+    for (mode, sharing) in [
+        ("owner", true),
+        ("suggest", true),
+        ("owner", false),
+        ("suggest", false),
+    ] {
+        let f = fixture(mode);
+        let (mut project, removed, active) = source_project(&f);
+        let resource = source_memory(&removed);
+        let id = governance::capture(&f.db, &project, &resource, &json!([])).unwrap();
+        project["deferAutomaticSharing"] = json!(true);
+        context_sharing::queue_automatic(&f.db, &project, &id).unwrap();
+        assert!(f.outbox().is_empty());
+        project
+            .as_object_mut()
+            .unwrap()
+            .remove("deferAutomaticSharing");
+        project["sharing"]["memory"] = json!(sharing);
+        db::upsert(
+            &f.db,
+            "projects",
+            project["id"].as_str().unwrap(),
+            "",
+            &project,
+        )
+        .unwrap();
+        project["sources"][0]["removedAt"] = json!("2026-11-13T00:00:00Z");
+        projects::merge_catalog(&f.db, &json!([project])).unwrap();
+        let mut project = governance::project(&f.db, f.project["id"].as_str().unwrap()).unwrap();
+        assert_eq!(project["sharing"]["memory"], sharing);
+        for _ in 0..3 {
+            context_sharing::queue_waiting(&f.db, &project).unwrap();
+        }
+        assert!(f.outbox().is_empty());
+        let drafts = db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap();
+        assert_eq!(drafts.len(), 1);
+        assert_eq!(drafts[0]["resource"], resource);
+        assert_eq!(drafts[0]["automaticSharing"], false);
+        assert_eq!(
+            drafts[0]["sourceRemoval"],
+            json!({"sourceId":removed,"removedAt":"2026-11-13T00:00:00Z"})
+        );
+        assert!(context_sharing::queue(&f.db, &project, &id).is_err());
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let input = json!({"projectId":project["id"],"id":id});
+        let detail = runtime
+            .block_on(governance::governance_command(
+                "draft".into(),
+                input.clone(),
+            ))
+            .unwrap();
+        assert_eq!(detail["sourceUnavailable"], true);
+        assert_eq!(detail["files"]["content.md"], "Saved learning\n");
+        assert!(runtime
+            .block_on(governance::governance_command("submit-draft".into(), input))
+            .is_err());
+        assert!(f.outbox().is_empty());
+        project["sharing"]["memory"] = json!(true);
+        db::upsert(
+            &f.db,
+            "projects",
+            project["id"].as_str().unwrap(),
+            "",
+            &project,
+        )
+        .unwrap();
+        let healthy = source_memory(&active);
+        let healthy_id = governance::capture(&f.db, &project, &healthy, &json!([])).unwrap();
+        context_sharing::queue_automatic(&f.db, &project, &healthy_id).unwrap();
+        assert_eq!(
+            f.outbox().len(),
+            1,
+            "offline but registered sources retain durable publication"
+        );
+        assert_eq!(queued(&f)["value"]["resource"]["sourceId"], active);
+    }
+}
+
+#[test]
+fn removed_sources_stop_own_pending_approvals_and_preserve_recovery_metadata() {
+    let f = fixture("owner");
+    let (mut project, removed, active) = source_project(&f);
+    let owner = db::get(&f.db, "user").unwrap();
+    let mut requests = Vec::new();
+    let mut removed_draft = String::new();
+    let mut removed_queue = Value::Null;
+    for source in [&removed, &active] {
+        let resource = source_memory(source);
+        let id = governance::capture(&f.db, &project, &resource, &json!([])).unwrap();
+        context_sharing::queue_automatic(&f.db, &project, &id).unwrap();
+        let entry = queued(&f);
+        let request = json!({"id":entry["id"],"projectId":project["id"],"resourceId":entry["value"]["resource"]["resourceId"],"status":"pending","author":owner,"canReview":true,"previewHash":"exact-version"});
+        context_sharing::complete(&f.db, &entry, &json!({"proposal":request})).unwrap();
+        f.db.execute(
+            "DELETE FROM outbox WHERE id=?",
+            [entry["id"].as_str().unwrap()],
+        )
+        .unwrap();
+        requests.push(request);
+        if source == &removed {
+            removed_draft = id;
+            removed_queue = entry;
+        }
+    }
+    project["sources"][0]["removedAt"] = json!("2026-11-13T00:00:00Z");
+    projects::merge_catalog(&f.db, &json!([project])).unwrap();
+    let project = governance::project(&f.db, f.project["id"].as_str().unwrap()).unwrap();
+    let catalog = json!({"requests":requests,"policyRevision":1});
+    assert_eq!(
+        context_sharing::pending_publications(&f.db, owner.as_str().unwrap(), &project, &catalog)
+            .unwrap(),
+        json!([requests[1]]).as_array().unwrap().clone()
+    );
+    let mut draft = db::rows(
+        &f.db,
+        "SELECT value FROM drafts WHERE id=?",
+        &[&removed_draft],
+    )
+    .unwrap()
+    .remove(0);
+    assert_eq!(draft["automaticSharing"], false);
+    draft["sourceRemoval"]["queued"] = removed_queue;
+    db::upsert(
+        &f.db,
+        "drafts",
+        &removed_draft,
+        project["id"].as_str().unwrap(),
+        &draft,
+    )
+    .unwrap();
+    for _ in 0..3 {
+        context_sharing::pending_publications(&f.db, owner.as_str().unwrap(), &project, &catalog)
+            .unwrap();
+    }
+    assert_eq!(
+        db::rows(
+            &f.db,
+            "SELECT value FROM drafts WHERE id=?",
+            &[&removed_draft]
+        )
+        .unwrap()[0],
+        draft
+    );
+    assert!(f.outbox().is_empty());
 }
 
 #[test]

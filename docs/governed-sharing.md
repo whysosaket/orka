@@ -63,6 +63,9 @@ Review remaining private candidates under **Manage → Requests → Changes on t
 changes, using per-file additions, deletions, and permission changes. Closing the
 modal keeps the private changes. A readable text diff remains available on older
 supported versions of macOS.
+If its source folder is removed, the saved preview stays readable on this Mac;
+automatic publication and approval stop, and the removed snapshot cannot be sent
+again from the review modal.
 Publishing permission offers **Publish update** without a second approval step.
 Own pending memory and skill requests from older clients finish automatically
 while their category's automatic sharing is enabled and the server permits review.

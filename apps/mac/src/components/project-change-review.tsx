@@ -19,6 +19,7 @@ export interface SuggestionDetail {
   before?: Record<string, string>;
   manifest?: FileManifestEntry[];
   beforeManifest?: FileManifestEntry[];
+  sourceUnavailable?: boolean;
 }
 
 export function ProjectChangeReview({
@@ -89,6 +90,12 @@ export function ProjectChangeReview({
           <p>Supersedes: {resource.memory!.supersedes.join(", ")}</p>
         )}
         {error && <p role="alert">{error}</p>}
+        {detail.sourceUnavailable && (
+          <p role="status">
+            This source is no longer available in this project. The saved
+            changes remain private on this Mac.
+          </p>
+        )}
         <FileReview
           files={resource.deleted ? {} : detail.files}
           before={detail.before}
@@ -121,7 +128,9 @@ export function ProjectChangeReview({
           Cancel
         </Button>
         <Button
-          disabled={busy || draft.status !== "local"}
+          disabled={
+            busy || draft.status !== "local" || detail.sourceUnavailable
+          }
           aria-busy={busy}
           onClick={() => void onSubmit()}
         >
