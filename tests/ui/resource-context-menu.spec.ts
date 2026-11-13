@@ -286,15 +286,15 @@ test("snapshot sharing requires review and submits the exact frozen token withou
   ).toEqual([]);
 });
 
-test("approval-required and conflict share receipts are not reported as publication", async ({
-  page,
-}) => {
-  await menuFixture(page);
-  await collection(page, "Memories");
-  for (const [status, notice] of [
-    ["approval_required", "Snapshot sent for approval"],
-    ["conflict", "Snapshot needs conflict review"],
-  ]) {
+for (const [status, notice] of [
+  ["approval_required", "Snapshot sent for approval"],
+  ["conflict", "Snapshot needs conflict review"],
+]) {
+  test(`${status} share receipt is not reported as publication`, async ({
+    page,
+  }) => {
+    await menuFixture(page);
+    await collection(page, "Memories");
     await page.evaluate((status) => {
       (window as unknown as MenuWindow).resourceMenu.shareStatus = status;
     }, status);
@@ -315,8 +315,9 @@ test("approval-required and conflict share receipts are not reported as publicat
     await expect(
       page.getByText("Snapshot shared", { exact: true }),
     ).toHaveCount(0);
-  }
-});
+    expect(await resourceCalls(page, "share")).toHaveLength(1);
+  });
+}
 
 test("shared deletion retries a network failure with the same reviewed token before acknowledged success", async ({
   page,
@@ -445,7 +446,31 @@ test("app chrome suppresses webview menus while text fields and selected resourc
     }),
   ).toBe(true);
   await expect(page.getByRole("menu")).toHaveCount(0);
+  await text.focus();
+  await text.press("Shift+F10");
+  await expect(page.getByRole("menu")).toHaveCount(0);
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  await text.click();
+  await page
+    .getByRole("region", { name: "Memory details", exact: true })
+    .evaluate((element) => {
+      const link = document.createElement("a");
+      link.href = "https://example.com/notes";
+      link.textContent = "Read linked notes";
+      element.append(link);
+      const input = document.createElement("input");
+      input.setAttribute("aria-label", "Local note text");
+      element.append(input);
+    });
+  for (const target of [
+    page.getByRole("link", { name: "Read linked notes" }),
+    page.getByRole("textbox", { name: "Local note text" }),
+  ]) {
+    await target.focus();
+    await target.press("Shift+F10");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(target).toBeFocused();
+  }
 });
 
 test("read-only shared skills retain copy and export but omit sharing and deletion", async ({

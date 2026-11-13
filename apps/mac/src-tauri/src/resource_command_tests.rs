@@ -656,3 +656,220 @@ async fn item_actions_resolve_project_local_skills_in_multi_repository_projects(
     assert_eq!(preview["files"].as_array().unwrap().len(), 1);
     assert!(f.outbox().is_empty());
 }
+
+fn enable_automatic(f: &mut Fixture, kind: &str) {
+    f.project["sharing"][kind] = json!(true);
+    db::upsert(
+        &f.db,
+        "projects",
+        f.project["id"].as_str().unwrap(),
+        "",
+        &f.project,
+    )
+    .unwrap();
+    db::set(
+        &f.db,
+        &format!("governance:{}", f.project["id"].as_str().unwrap()),
+        &json!({"owner":true}),
+    )
+    .unwrap();
+}
+
+fn acknowledge_deletion(f: &Fixture, mut input: Value, resource: &Value) -> Value {
+    input["resourceId"] = resource["resourceId"].clone();
+    let preview = actions::preview_delete(&f.db, &f.project, &input).unwrap();
+    input["previewToken"] = preview["previewToken"].clone();
+    let frozen = actions::delete_request(&f.db, &f.project, &input).unwrap();
+    let mut deleted = resource.clone();
+    deleted["revision"] = json!(resource["revision"].as_u64().unwrap() + 1);
+    deleted["deleted"] = json!(true);
+    deleted["files"] = json!([]);
+    deleted["updatedAt"] = json!(db::now());
+    assert_eq!(
+        actions::complete_delete(
+            &f.db,
+            &input,
+            &frozen,
+            &json!({"conflict":false,"event":{"resource":deleted,"conflicts":[]}})
+        )
+        .unwrap()["status"],
+        "deleted"
+    );
+    deleted
+}
+
+fn deferred_preflight(f: &Fixture) {
+    let mut preflight = f.project.clone();
+    preflight["deferAutomaticSharing"] = json!(true);
+    indexer::scan(&f.db, &preflight).unwrap();
+    crate::context_sharing::queue_waiting(&f.db, &f.project).unwrap();
+}
+
+fn draft_history(f: &Fixture) -> Vec<Value> {
+    db::rows(&f.db, "SELECT value FROM drafts", &[])
+        .unwrap()
+        .into_iter()
+        .map(|mut draft| {
+            draft.as_object_mut().unwrap().remove("updatedAt");
+            draft
+        })
+        .collect()
+}
+
+#[test]
+fn acknowledged_skill_deletion_survives_preflight_without_inventing_local_changes() {
+    let mut f = Fixture::new();
+    let input = prepare(&mut f);
+    enable_automatic(&mut f, "skill");
+    let resource = published(&f, "skill");
+    let id = resource["resourceId"].as_str().unwrap();
+    assert_eq!(
+        indexer::scoped_resource_id(&f.db, &f.project, "skill", "example").unwrap(),
+        id
+    );
+    let mut binding = indexer::binding(&f.db, id).unwrap();
+    binding["lastSeenHash"] = json!(indexer::manifest_hash(&resource["files"]));
+    db::upsert(
+        &f.db,
+        "bindings",
+        id,
+        f.project["id"].as_str().unwrap(),
+        &binding,
+    )
+    .unwrap();
+    assert!(db::rows(&f.db, "SELECT value FROM drafts", &[])
+        .unwrap()
+        .is_empty());
+    deferred_preflight(&f);
+    assert!(f.outbox().is_empty(), "pre-delete outbox");
+    assert!(
+        db::rows(&f.db, "SELECT value FROM drafts", &[])
+            .unwrap()
+            .is_empty(),
+        "pre-delete drafts"
+    );
+    let deleted = acknowledge_deletion(&f, input, &resource);
+    deferred_preflight(&f);
+    let materialized = sync::materialize(&f.db, &f.project, &deleted);
+    let drafts = db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap();
+    assert!(materialized.is_ok());
+    assert!(!f.root.join(".agents/skills/example").exists());
+    assert!(!f.root.join(".claude/skills/example").exists());
+    assert!(
+        drafts.is_empty(),
+        "Unchanged installed bytes are not new private edits: {drafts:?}"
+    );
+    assert!(f.outbox().is_empty());
+
+    // Recreating the same bytes after deletion has finished is a real restoration.
+    let restored = f.root.join(".agents/skills/example");
+    fs::create_dir_all(&restored).unwrap();
+    fs::write(restored.join("SKILL.md"), "# Accepted skill").unwrap();
+    deferred_preflight(&f);
+    let restored_drafts = draft_history(&f);
+    assert_eq!(restored_drafts.len(), 1);
+    assert_eq!(
+        restored_drafts[0]["resource"]["resourceId"],
+        resource["resourceId"]
+    );
+    assert_eq!(restored_drafts[0]["baseRevision"], deleted["revision"]);
+    assert_ne!(restored_drafts[0]["conflictReview"], true);
+    assert_eq!(f.outbox().len(), 1);
+}
+
+#[test]
+fn acknowledged_skill_deletion_keeps_real_edits_for_review() {
+    let mut f = Fixture::new();
+    let input = prepare(&mut f);
+    enable_automatic(&mut f, "skill");
+    let resource = published(&f, "skill");
+    deferred_preflight(&f);
+    assert!(draft_history(&f).is_empty());
+    assert!(f.outbox().is_empty());
+    let deleted = acknowledge_deletion(&f, input, &resource);
+    let native = f.root.join(".agents/skills/example/SKILL.md");
+    fs::write(&native, "# Private edit after deletion receipt\n").unwrap();
+    deferred_preflight(&f);
+    let drafts = draft_history(&f);
+    assert_eq!(drafts.len(), 1);
+    assert_eq!(drafts[0]["resource"]["resourceId"], resource["resourceId"]);
+    assert_eq!(drafts[0]["status"], "local");
+    assert_eq!(drafts[0]["conflictReview"], true);
+    assert_eq!(drafts[0]["automaticSharing"], false);
+    assert_ne!(drafts[0]["resource"]["files"], resource["files"]);
+    assert!(f.outbox().is_empty());
+    assert!(sync::materialize(&f.db, &f.project, &deleted).is_err());
+    assert_eq!(
+        fs::read_to_string(&native).unwrap(),
+        "# Private edit after deletion receipt\n"
+    );
+    assert!(f.root.join(".claude/skills/example/SKILL.md").is_file());
+}
+
+#[test]
+fn acknowledged_memory_deletion_does_not_republish_its_unchanged_personal_origin() {
+    let mut f = Fixture::new();
+    let input = prepare(&mut f);
+    let native = indexer::claude_memory(&f.root).unwrap().join("MEMORY.md");
+    fs::create_dir_all(native.parent().unwrap()).unwrap();
+    fs::write(&native, "Personal learned memory remains local\n").unwrap();
+    enable_automatic(&mut f, "memory");
+    indexer::scan(&f.db, &f.project).unwrap();
+    let queued = db::rows(
+        &f.db,
+        "SELECT json_object('id',id,'project',project,'path',path,'value',json(value)) FROM outbox",
+        &[],
+    )
+    .unwrap()
+    .remove(0);
+    let mut resource = queued["value"]["resource"].clone();
+    resource["projectId"] = f.project["id"].clone();
+    resource["owner"] = input["accountId"].clone();
+    resource["revision"] = json!(7);
+    resource["updatedAt"] = json!(db::now());
+    resource["access"] = json!({"mode":"publish"});
+    resource["updatedBy"] = input["accountId"].clone();
+    crate::context_sharing::complete(
+        &f.db,
+        &queued,
+        &json!({"event":{"resource":resource,"conflicts":[]}}),
+    )
+    .unwrap();
+    f.db.execute("DELETE FROM outbox WHERE id=?", [queued["id"].as_str()])
+        .unwrap();
+    sync::materialize(&f.db, &f.project, &resource).unwrap();
+    let accepted_drafts = draft_history(&f);
+    assert_eq!(accepted_drafts.len(), 1);
+    assert_eq!(accepted_drafts[0]["status"], "published");
+    deferred_preflight(&f);
+    assert!(f.outbox().is_empty(), "pre-delete outbox");
+    assert_eq!(
+        draft_history(&f),
+        accepted_drafts,
+        "pre-delete draft history"
+    );
+    let deleted = acknowledge_deletion(&f, input, &resource);
+    deferred_preflight(&f);
+    let materialized = sync::materialize(&f.db, &f.project, &deleted);
+    let drafts = draft_history(&f);
+    assert_eq!(
+        fs::read_to_string(&native).unwrap(),
+        "Personal learned memory remains local\n"
+    );
+    assert!(
+        f.outbox().is_empty(),
+        "An unchanged preserved native source must not queue a replacement: {:?}",
+        f.outbox()
+    );
+    assert!(materialized.is_ok());
+    assert!(!f
+        .root
+        .join(".orka/memory/resources")
+        .join(resource["resourceId"].as_str().unwrap())
+        .join("content.md")
+        .exists());
+    assert!(
+        drafts == accepted_drafts,
+        "The retained source is not a new local edit: {drafts:?}"
+    );
+}

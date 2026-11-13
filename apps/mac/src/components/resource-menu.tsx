@@ -95,6 +95,8 @@ export function ResourceMenuProvider({
 }) {
   const currentResources = useRef(resources);
   currentResources.current = resources;
+  const scope = useRef(props.scope);
+  scope.current = props.scope;
   const active = useRef(true);
   useEffect(() => {
     active.current = true;
@@ -105,9 +107,14 @@ export function ResourceMenuProvider({
   const [request, setRequest] = useState<{
     kind: "share" | "delete" | "launch";
     resource: ProjectResource;
+    scope: string;
   } | null>(null);
+  useEffect(() => {
+    setRequest(null);
+  }, [props.scope]);
   const isCurrent = (resource: ProjectResource) =>
     active.current &&
+    scope.current === props.scope &&
     currentResources.current.some(
       (item) => !item.deleted && identity(item) === identity(resource),
     );
@@ -115,13 +122,14 @@ export function ResourceMenuProvider({
     ...props,
     isCurrent,
     request: (kind, resource) => {
-      if (isCurrent(resource)) setRequest({ kind, resource });
+      if (isCurrent(resource))
+        setRequest({ kind, resource, scope: props.scope });
     },
   };
   return (
     <ResourceMenuContext.Provider value={context}>
       {children}
-      {request && (
+      {request && request.scope === props.scope && (
         <ResourceCommandDialog
           key={`${props.scope}:${request.kind}:${identity(request.resource)}`}
           kind={request.kind}

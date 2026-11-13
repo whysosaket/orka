@@ -555,8 +555,8 @@ function WorkspaceApp({
     ) : undefined;
   return (
     <ResourceMenuProvider
-      key={`${workspaceScope}:${project}`}
-      scope={workspaceScope}
+      key={workspaceScope}
+      scope={JSON.stringify([workspaceScope, project])}
       state={state}
       resources={catalogResources}
       busy={busy}

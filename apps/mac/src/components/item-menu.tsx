@@ -125,6 +125,7 @@ export function ItemContextMenu({
         onKeyDown={(event) => {
           if (
             !disabled &&
+            !hasNativeTextMenu(event.target) &&
             (event.key === "ContextMenu" ||
               (event.shiftKey && event.key === "F10"))
           ) {
