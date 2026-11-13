@@ -516,6 +516,10 @@ test("resource skeletons keep the reader header and navigation usable", async ({
   await expect(
     view.locator("[skullet-layer] [skullet-rect]").first(),
   ).toBeVisible();
+  await expect(view.locator("[skullet-layer]")).toHaveCSS(
+    "mask-image",
+    "linear-gradient(rgb(0, 0, 0) 35%, rgba(0, 0, 0, 0))",
+  );
   await expect(
     page.getByRole("button", { name: "Back to Memories", exact: true }),
   ).toBeEnabled();
@@ -528,6 +532,9 @@ test("resource skeletons keep the reader header and navigation usable", async ({
     "aria-busy",
     "true",
   );
+  await expect(
+    view.getByRole("article", { name: "Rendered Markdown" }),
+  ).toHaveCSS("mask-image", "none");
   expect(await title.boundingBox()).toEqual(before);
 });
 
@@ -602,6 +609,10 @@ test("conversation skeletons give way to virtualized turns and paging preserves 
     "true",
   );
   await expect(view.getByRole("article")).toHaveCount(0);
+  await expect(view.locator("[skullet-layer]")).toHaveCSS(
+    "mask-image",
+    "linear-gradient(rgb(0, 0, 0) 35%, rgba(0, 0, 0, 0))",
+  );
   await page.screenshot({ path: "artifacts/conversation-loading.png" });
   await page.evaluate(() => (window as any).finishMessageLoad());
   await expect(page.getByText("Message 0", { exact: true })).toBeVisible();
@@ -616,6 +627,7 @@ test("conversation skeletons give way to virtualized turns and paging preserves 
     "true",
   );
   await expect(view.getByText("Message 39", { exact: true })).toBeVisible();
+  await expect(view.locator(".session-turns")).toHaveCSS("mask-image", "none");
   await page.evaluate(() => (window as any).finishMessageLoad());
   await view.evaluate((element) => {
     element.scrollTop = element.scrollHeight;

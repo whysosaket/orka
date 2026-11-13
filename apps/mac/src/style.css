@@ -12,6 +12,93 @@
   min-width: 0;
 }
 
+.loading-region [skullet-layer],
+.loading-fade {
+  filter: blur(0.75px);
+}
+
+.loading-region [skullet-layer],
+.loading-region [skullet-own],
+.loading-fade {
+  -webkit-mask-image: linear-gradient(#000 35%, transparent);
+  mask-image: linear-gradient(#000 35%, transparent);
+}
+
+.collection-skeleton-rows {
+  overflow: hidden;
+  border: 1px solid var(--surface-stroke);
+  border-radius: var(--radius-surface);
+}
+
+.collection-skeleton-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, 96px);
+  align-items: center;
+  gap: 32px;
+  height: 56px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--surface-stroke);
+}
+
+.collection-skeleton-title {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.collection-skeleton-row span,
+.skill-content-skeleton span {
+  display: block;
+  height: 10px;
+  border-radius: var(--radius-control);
+  background: var(--surface-stroke);
+  filter: blur(0.75px);
+}
+
+.collection-skeleton-title span + span {
+  height: 6px;
+  opacity: 0.5;
+}
+
+.collection-skeleton-source {
+  width: 64px;
+}
+
+.collection-skeleton-author {
+  width: 56px;
+}
+
+.collection-skeleton-date {
+  width: 48px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .collection-skeleton-rows,
+  .loading-fade,
+  .skill-content-skeleton {
+    animation: loading-breathe 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes loading-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (max-width: 1000px) {
+  .collection-skeleton-row {
+    grid-template-columns: minmax(0, 1fr) repeat(3, 64px);
+    gap: 16px;
+    padding-inline: 16px;
+  }
+}
+
 /* Keep measurement geometry without painting samples on Safari 15, which
    ignores Skullet's @scope masking. The skeleton layer remains visible. */
 .loading-region [skullet-ghost],

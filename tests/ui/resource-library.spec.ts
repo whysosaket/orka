@@ -253,8 +253,56 @@ test("new private session turns refresh without a published revision", async ({
   await page.evaluate(() => {
     (window as unknown as LibraryWindow).library.tail = 1;
   });
-  await page.clock.runFor(30_100);
+  await page.clock.runFor(60_100);
   await expect(page.getByLabel("Conversation", { exact: true })).toContainText(
     "Private session conversation 1",
   );
+});
+
+test("configured sync timing refreshes local-only rows without clearing collection counts", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await resourceLibraryFixture(page);
+  const sessions = page.getByRole("button", { name: /^Sessions/ });
+  await sessions.click();
+  const table = page.getByRole("table");
+  await expect(table.locator("tbody tr")).toHaveCount(4);
+  await expect(sessions).toContainText("4");
+  const catalogs = () =>
+    page.evaluate(() =>
+      (window as unknown as LibraryWindow).library.calls.filter(
+        (call) => call.command === "local_resource_catalog",
+      ),
+    );
+  await page.evaluate(() => {
+    (window as unknown as LibraryWindow).library.syncMinutes = 5;
+  });
+  await page.clock.runFor(63_100);
+  expect(await catalogs()).toHaveLength(1);
+  await page.evaluate(() => {
+    const library = (window as unknown as LibraryWindow).library;
+    library.deferCatalog = true;
+    library.syncMinutes = 1;
+  });
+  await page.clock.runFor(3_100);
+  await expect.poll(async () => (await catalogs()).length).toBe(2);
+  await expect(table.locator("tbody tr")).toHaveCount(4);
+  await expect(sessions).toContainText("4");
+  await expect(
+    page.getByRole("button", { name: "Private session notes", exact: true }),
+  ).toBeEnabled();
+  const calls = await page.evaluate(
+    () => (window as unknown as LibraryWindow).library.calls,
+  );
+  expect(
+    calls.filter((call) =>
+      /^(sync_now|cloud_action|set_project_sharing)$/.test(call.command),
+    ),
+  ).toEqual([]);
+  await page.evaluate(() =>
+    (window as unknown as LibraryWindow).library.finishCatalog?.(),
+  );
+  await expect(table.locator("tbody tr")).toHaveCount(4);
+  await expect(sessions).toContainText("4");
 });

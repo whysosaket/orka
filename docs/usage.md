@@ -117,6 +117,10 @@ under either choice.
 Automatic publication indexes only selected ordinary categories. Browsing Sessions,
 Memories, and Plans also discovers local content in a separate private catalog,
 without enabling sharing, queuing uploads, or creating review requests.
+Switching projects or collections reuses recently loaded local items. Local
+discovery and skill-usage refreshes follow the interval in Settings, independently
+of sharing choices. Changing the interval updates that timing; manual refresh
+remains immediate. Existing items and counts stay visible while updates load.
 In governed projects, automatic
 memory and skill sharing publishes discovered changes for owners and publishers,
 or submits them for approval for suggesters. Read-only content remains local.

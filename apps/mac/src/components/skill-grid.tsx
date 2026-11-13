@@ -8,6 +8,7 @@ import { SourceLabel } from "./source-label.js";
 import { SkillUsageCount } from "./skill-usage.js";
 import { skillSharing } from "./skill-sharing.js";
 import { RepositoryLabel } from "./repository-label.js";
+import "./skill-grid.css";
 
 export function SkillGrid({
   skills,
@@ -28,6 +29,13 @@ export function SkillGrid({
 }) {
   return (
     <div className="skill-grid">
+      {skills.some(
+        (skill) => summaries[skillSummaryKey(skill)] === undefined,
+      ) && (
+        <span className="sr-only" role="status">
+          Loading skill descriptions…
+        </span>
+      )}
       {skills.map((skill) => {
         const summary = summaries[skillSummaryKey(skill)];
         const title = displayTitle(skill);
@@ -52,11 +60,20 @@ export function SkillGrid({
                       {skill.logicalPath.split("/").slice(-2).join("/")}
                     </small>
                   )}
-                  {summary?.description && (
+                  {summary === undefined ? (
+                    <span
+                      className="skill-card-description-skeleton loading-fade"
+                      aria-hidden="true"
+                    >
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                  ) : summary?.description ? (
                     <p className="skill-card-description">
                       {summary.description}
                     </p>
-                  )}
+                  ) : null}
                   {conflicted.has(skill.resourceId) && (
                     <span className="resource-conflict">
                       <AlertIcon size={12} aria-hidden="true" />
