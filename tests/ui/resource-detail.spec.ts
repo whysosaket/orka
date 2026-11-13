@@ -532,10 +532,9 @@ test("resource skeletons keep the reader header and navigation usable", async ({
     "aria-busy",
     "true",
   );
-  await expect(view.locator(".markdown-content")).toHaveCSS(
-    "mask-image",
-    "none",
-  );
+  await expect(
+    view.getByRole("article", { name: "Rendered Markdown" }),
+  ).toHaveCSS("mask-image", "none");
   expect(await title.boundingBox()).toEqual(before);
 });
 
