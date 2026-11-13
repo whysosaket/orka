@@ -49,13 +49,27 @@ the interval before the receiving transcript is indexed.
 
 ## Personal learning and promotion
 
-Enabling Memories permits discovery into private candidates. It never publishes
-new native memory automatically. Codex and Claude keep updating their own stores.
+Enabling automatic Memories or Skills sharing discovers and queues local changes.
+Owners and members with publishing permission publish directly. Members with
+suggestion permission send changes for publisher approval automatically; read-only
+or hidden resources remain local. Disabling automatic sharing keeps local content
+private until explicitly shared. Codex and Claude keep updating their own stores.
 Incoming knowledge lives at
 `<project>/.orka/memory/resources/<resourceId>/content.md`, outside native memory.
 Legacy Orka cache copies are detached, retaining edits as private drafts.
 
-Review discovered candidates under **Manage → Requests → Changes on this Mac**.
+Review remaining private candidates under **Manage → Requests → Changes on this Mac**.
+**Review changes** opens a modal comparing the shared version with this Mac's
+changes, using per-file additions, deletions, and permission changes. Closing the
+modal keeps the private changes. A readable text diff remains available on older
+supported versions of macOS.
+If its source folder is removed, the saved preview stays readable on this Mac;
+automatic publication and approval stop, and the removed snapshot cannot be sent
+again from the review modal.
+Publishing permission offers **Publish update** without a second approval step.
+Own pending memory and skill requests from older clients finish automatically
+while their category's automatic sharing is enabled and the server permits review.
+Other members' suggestions still require a publisher's decision.
 There is no manual memory-topic form or separate Drafts view. Native agents can
 still save scoped Markdown candidates and identify a same-scope accepted entry to
 supersede through the existing JSON bridge. Related entries and exact duplicates use bounded
@@ -121,7 +135,8 @@ to the same local account as the hook. Pass JSON on stdin:
 Operations: `catalog`, `resource` (effective access), `context`, `drafts`, `draft`, `save-candidate`, `submit-draft`,
 `refresh-draft`, `request-access`, `requests`, `request`. Candidates accept `topic`,
 `scope`, `content`, `provider`, optional `supersedes`, `contextToken` and `sessionId`.
-Saving returns a private ID; submission explicitly sends that ID. Authentication
+Saving returns a private ID; submission queues publication for publishers or
+sends that ID for review for suggesters. Authentication
 stays in Orka. Agent operations provide no administration or installation authority.
 
 ## ENV and rollout

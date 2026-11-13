@@ -445,6 +445,7 @@ export function MembersPage({
                   call={call}
                   run={run}
                   busy={busy}
+                  error={error}
                   setMessage={setMessage}
                   onReviewFile={onReviewFile}
                 />

@@ -1,10 +1,15 @@
 import React, { useState } from "react";
 import type { ReviewRequest, Resource } from "@portable/protocol";
-import type { LocalDraft, Project, Snapshot } from "../types.js";
+import type { Project, Snapshot } from "../types.js";
 import { displayText } from "./resource-presentation.js";
 import { Button } from "./button.js";
 import { FileReview } from "./file-review.js";
+import {
+  ProjectChangeReview,
+  type SuggestionDetail,
+} from "./project-change-review.js";
 import { visibleRequest } from "../lib/features.js";
+import type { FileManifestEntry } from "./diff-model.js";
 import {
   accessNames,
   memberLabel,
@@ -18,11 +23,8 @@ interface RequestDetail {
   before?: Record<string, string>;
   audience?: string[];
   content?: { resource?: Resource };
-}
-interface SuggestionDetail {
-  draft: LocalDraft;
-  files: Record<string, string>;
-  related: { resource: Resource; duplicate: boolean }[];
+  manifest?: FileManifestEntry[];
+  beforeManifest?: FileManifestEntry[];
 }
 export function ProjectRequests({
   project,
@@ -31,6 +33,7 @@ export function ProjectRequests({
   call,
   run,
   busy,
+  error,
   setMessage,
   onReviewFile,
 }: {
@@ -40,6 +43,7 @@ export function ProjectRequests({
   call: ProjectCall;
   run: (fn: () => Promise<void>) => Promise<void>;
   busy: boolean;
+  error: string;
   setMessage: (value: string) => void;
   onReviewFile: (id: string) => void;
 }) {
@@ -49,7 +53,7 @@ export function ProjectRequests({
   const suggestions = (state.drafts ?? []).filter(
     (d) =>
       d.projectId === project.id &&
-      !["dismissed", "published"].includes(d.status) &&
+      !["dismissed", "published", "approved"].includes(d.status) &&
       !d.automaticSharing,
   );
   const updates = state.bindings.filter(
@@ -128,7 +132,16 @@ export function ProjectRequests({
               </p>
             )}
             {request.files && (
-              <FileReview files={request.files} before={request.before} />
+              <FileReview
+                files={request.content?.resource?.deleted ? {} : request.files}
+                before={request.before}
+                beforeManifest={request.beforeManifest}
+                afterManifest={
+                  request.content?.resource?.deleted
+                    ? []
+                    : (request.manifest ?? request.content?.resource?.files)
+                }
+              />
             )}
             <p>
               {request.request.type === "access"
@@ -197,8 +210,8 @@ export function ProjectRequests({
         <section aria-label="Local changes">
           <h3>Changes on this Mac</h3>
           <p>
-            These changes are private until you review and send them for
-            approval. Personal memory continues to update normally.
+            Share selected changes here. Publishing permission lets you share
+            directly; suggested changes need a publisher’s approval.
           </p>
           {suggestions.map((d) => (
             <div className="governance-row" key={d.id}>
@@ -242,70 +255,39 @@ export function ProjectRequests({
             </div>
           ))}
           {suggestion && (
-            <section>
-              <h4>{displayText(suggestion.draft.resource.title)}</h4>
-              <p>
-                Scope: {suggestion.draft.resource.memory?.scope || "Project"} ·
-                Provider:{" "}
-                {suggestion.draft.resource.memory?.provider ??
-                  suggestion.draft.resource.source}
-              </p>
-              <p>
-                Known source context:{" "}
-                {suggestion.draft.resource.contextSources?.length ?? 0}{" "}
-                resources. Sharing keeps their audience restrictions.
-              </p>
-              {(suggestion.draft.resource.memory?.supersedes?.length ?? 0) >
-                0 && (
-                <p>
-                  Supersedes:{" "}
-                  {suggestion.draft.resource.memory!.supersedes.join(", ")}
-                </p>
-              )}
-              <FileReview files={suggestion.files} />
-              {["stale", "rejected"].includes(suggestion.draft.status) && (
-                <Button
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      await call("refresh-draft", { id: suggestion.draft.id });
-                      setSuggestion(
-                        await call<SuggestionDetail>("draft", {
-                          id: suggestion.draft.id,
-                        }),
-                      );
-                    })
-                  }
-                >
-                  Review latest and retry
-                </Button>
-              )}
-              {suggestion.related?.length > 0 && (
-                <>
-                  <h4>Related shared knowledge</h4>
-                  {suggestion.related.map((r) => (
-                    <p key={r.resource.resourceId}>
-                      {displayText(r.resource.title)}
-                      {r.duplicate
-                        ? " · Same content"
-                        : " · Review scope and possible conflicts"}
-                    </p>
-                  ))}
-                </>
-              )}
-              <Button
-                disabled={busy || suggestion.draft.status !== "local"}
-                onClick={() =>
-                  void run(async () => {
-                    await call("submit-draft", { id: suggestion.draft.id });
-                    setSuggestion(null);
-                    setMessage("Suggestion submitted for publisher review.");
-                  })
-                }
-              >
-                Send for approval
-              </Button>
-            </section>
+            <ProjectChangeReview
+              detail={suggestion}
+              busy={busy}
+              error={error}
+              onClose={() => setSuggestion(null)}
+              onRefresh={() =>
+                run(async () => {
+                  await call("refresh-draft", { id: suggestion.draft.id });
+                  setSuggestion(
+                    await call<SuggestionDetail>("draft", {
+                      id: suggestion.draft.id,
+                    }),
+                  );
+                })
+              }
+              onSubmit={() =>
+                run(async () => {
+                  await call("submit-draft", {
+                    id: suggestion.draft.id,
+                    reviewedFiles: suggestion.draft.resource.files,
+                    ...(suggestion.baseRevision === undefined
+                      ? {}
+                      : { reviewedRevision: suggestion.baseRevision }),
+                  });
+                  setSuggestion(null);
+                  setMessage(
+                    suggestion.canPublish
+                      ? "Change queued for sharing."
+                      : "Suggestion submitted for publisher review.",
+                  );
+                })
+              }
+            />
           )}
         </section>
       )}

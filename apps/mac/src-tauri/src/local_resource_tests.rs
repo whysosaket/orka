@@ -107,6 +107,142 @@ async fn local_library_private_sessions_page_export_and_resume_without_shared_bi
 }
 
 #[test]
+fn local_library_browsing_enabled_categories_does_not_publish_for_owners() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    f.project["governed"] = json!(true);
+    f.project["sharing"] =
+        json!({"memory":true,"skill":true,"session":true,"plan":true,"env":false});
+    let project = f.project["id"].as_str().unwrap();
+    db::upsert(&f.db, "projects", project, "", &f.project).unwrap();
+    db::set(
+        &f.db,
+        &format!("governance:{project}"),
+        &json!({"owner":true}),
+    )
+    .unwrap();
+    for kind in ["memory", "session", "plan"] {
+        let catalog = local_resources::catalog(&f.db, &f.project, kind).unwrap();
+        assert!(
+            !catalog["resources"].as_array().unwrap().is_empty(),
+            "{kind}"
+        );
+        assert_eq!(catalog["errors"], json!([]));
+    }
+    assert!(f.outbox().is_empty());
+    assert!(f.resources().is_empty());
+    for table in ["bindings", "drafts"] {
+        assert!(db::rows(&f.db, &format!("SELECT value FROM {table}"), &[])
+            .unwrap()
+            .is_empty());
+    }
+}
+
+#[test]
+fn local_library_reuses_legacy_promoted_memory_identity_and_reads_private_edits() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    let directory = indexer::claude_memory(&f.root).unwrap();
+    fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("MEMORY.md");
+    fs::write(&path, "Original learning\n").unwrap();
+    let catalog = local_resources::catalog(&f.db, &f.project, "memory").unwrap();
+    let native = catalog["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["source"] == "claude")
+        .unwrap();
+    let project = f.project["id"].as_str().unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let draft_id = uuid::Uuid::new_v4().to_string();
+    let mut published = native.clone();
+    published.as_object_mut().unwrap().remove("local");
+    published["resourceId"] = json!(id);
+    published["source"] = json!("shared");
+    published["logicalPath"] = json!(format!("knowledge/{id}.md"));
+    published["revision"] = json!(3);
+    db::upsert(&f.db, "resources", &id, project, &published).unwrap();
+    let draft = json!({"id":draft_id,"projectId":project,"resource":native,"status":"published","submission":{"resource":published}});
+    db::upsert(&f.db, "drafts", &draft_id, project, &draft).unwrap();
+    let catalog = local_resources::catalog(&f.db, &f.project, "memory").unwrap();
+    assert!(catalog["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r["resourceId"] == id));
+    assert!(!catalog["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r["resourceId"] == native["resourceId"]));
+    fs::write(&path, "Later private learning\n").unwrap();
+    let catalog = local_resources::catalog(&f.db, &f.project, "memory").unwrap();
+    let edited = catalog["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["resourceId"] == id)
+        .unwrap();
+    assert_eq!(edited["revision"], 3);
+    assert_eq!(edited["localChanges"], true);
+    let reading = local_resources::resource(&f.db, &id).unwrap();
+    assert_eq!(
+        db::blob_read(reading["files"][0]["hash"].as_str().unwrap()).unwrap(),
+        b"Later private learning\n"
+    );
+    assert_eq!(crate::governance::resource(&f.db, &id).unwrap(), published);
+    assert_eq!(
+        db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap(),
+        vec![draft]
+    );
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
+fn local_library_keeps_native_memory_private_beside_a_teammates_promoted_alias() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    let directory = indexer::claude_memory(&f.root).unwrap();
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(directory.join("MEMORY.md"), "My private learning\n").unwrap();
+    let first = local_resources::catalog(&f.db, &f.project, "memory").unwrap();
+    let native = first["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["source"] == "claude")
+        .unwrap();
+    let project = f.project["id"].as_str().unwrap();
+    let mut published =
+        crate::context_sharing::publication_resource(&f.db, project, native).unwrap();
+    let id = published["resourceId"].as_str().unwrap().to_owned();
+    published["owner"] = json!(uuid::Uuid::new_v4().to_string());
+    published["revision"] = json!(1);
+    published["files"][0]["hash"] = json!(db::blob(b"Teammate learning\n").unwrap());
+    db::upsert(&f.db, "resources", &id, project, &published).unwrap();
+    let catalog = local_resources::catalog(&f.db, &f.project, "memory").unwrap();
+    let private = catalog["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["resourceId"] == native["resourceId"])
+        .expect("teammate publication must not replace native private memory");
+    assert_eq!(private["local"], true);
+    assert_eq!(private["owner"], db::get(&f.db, "user").unwrap());
+    assert_eq!(local_resources::resource(&f.db, &id).unwrap(), published);
+    f.db.execute("DELETE FROM resources WHERE id=?", [&id])
+        .unwrap();
+    let catalog = local_resources::catalog(&f.db, &f.project, "memory").unwrap();
+    assert!(catalog["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r["resourceId"] == native["resourceId"]));
+    assert!(f.outbox().is_empty());
+}
+
+#[test]
 fn local_library_keeps_last_complete_scan_on_source_failure() {
     let mut f = Fixture::new();
     prepare(&mut f);

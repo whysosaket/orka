@@ -9,9 +9,11 @@ Memories, skills, plans, and sessions can contain private information. Session s
 Ordinary resources are authenticated and transported over HTTPS, but are not end-to-end encrypted by Orka. A self-hosting operator with database/blob access can access their contents. Server backups must be protected accordingly.
 
 Governed projects enforce Hidden, Read, Suggest and Publish access in the shared
-backend, with separate sharing management. Native memory remains personal;
-discovery creates private candidates until explicitly submitted. Approved skills
-and instructions require local installation review. Existing projects retain
+backend, with separate sharing management. Automatic memory and skill sharing
+queues discovered changes: publishers share directly, suggesters require approval,
+and read-only content stays local. Incoming shared memory never overwrites native
+memory stores. Shared skills install automatically; instructions and conflicting
+local edits require installation review. Existing projects retain
 their previous behavior until owner activation. See [permissions and memory](governed-sharing.md).
 
 Permission changes refresh authorized local state, remove managed context and

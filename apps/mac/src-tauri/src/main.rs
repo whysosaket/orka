@@ -5,6 +5,7 @@ mod claude_import;
 mod codex_import;
 mod codex_skills;
 mod commands;
+mod context_sharing;
 mod db;
 mod device_metadata;
 mod env;
