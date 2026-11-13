@@ -242,7 +242,7 @@ for (const size of [
       );
     }, detail);
     const dialog = await openSync(page);
-    await expect(dialog).toContainText("24 sync issues");
+    await expect(dialog).toContainText("24 items need attention");
     const footer = dialog.locator(".sync-menu-progress");
     await expect(footer.locator(".sync-menu-progress-copy p")).toHaveAttribute(
       "title",

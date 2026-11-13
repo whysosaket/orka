@@ -435,6 +435,9 @@ pub fn materialize(db: &rusqlite::Connection, project: &Value, resource: &Value)
         && crate::governance::protected(resource)
         && b["reviewedRevision"] != resource["revision"]
     {
+        if let Some(current) = crate::attention::matching_instruction(db, project, resource, &b)? {
+            return db::upsert(db, "bindings", id, project_id, &current);
+        }
         b["availableRevision"] = resource["revision"].clone();
         b["installationState"] = json!(if b["base"]["revision"].is_null() {
             "review_pending"
@@ -1332,6 +1335,11 @@ async fn sync_workspace(
                 Some(resources.len()),
             )?;
         }
+        record_result(
+            db,
+            &format!("{project}:history"),
+            crate::attention::reconcile_project(db, p, true).map(|_| ()),
+        )?;
         progress(
             db,
             "Updating memory index",

@@ -23,9 +23,14 @@ pub fn snapshot() -> Result<Value> {
         } else {
             "json_extract(value,'$.updatedAt') DESC"
         };
+        let value = if table == "bindings" {
+            "json_set(value,'$.resourceId',id,'$.projectId',project)"
+        } else {
+            "value"
+        };
         db::rows(
             &db,
-            &format!("SELECT value FROM {table} WHERE project IN ({visible}) ORDER BY {order}"),
+            &format!("SELECT {value} FROM {table} WHERE project IN ({visible}) ORDER BY {order}"),
             &[],
         )
     };
@@ -73,7 +78,7 @@ pub fn snapshot() -> Result<Value> {
         "governance":db::rows(&db,&format!("SELECT json_object('projectId',substr(key,12),'catalog',json(value)) FROM meta WHERE key LIKE 'governance:%' AND substr(key,12) IN ({visible})"),&[])?,
         "reviewRequests":db::rows(&db,&format!("SELECT json_each.value FROM meta,json_each(meta.value) WHERE meta.key LIKE 'requests:%' AND json_each.type='object' AND substr(meta.key,10) IN ({visible})"),&[])?,
         "activity":db::rows(&db,&format!("SELECT value FROM activity WHERE json_extract(value,'$.resourceId') IN (SELECT id FROM resources WHERE project IN ({visible})) ORDER BY rowid DESC LIMIT 30"),&[])?,
-        "outbox":db::rows(&db,&format!("SELECT json_object('id',id,'project',project,'error',error) FROM outbox WHERE project IN ({visible})"),&[])?,
+        "outbox":db::rows(&db,&format!("SELECT json_object('id',o.id,'project',o.project,'error',o.error,'resourceId',coalesce(json_extract(o.value,'$.resource.resourceId'),json_extract(o.value,'$.resourceId')),'title',coalesce(json_extract(o.value,'$.resource.title'),json_extract(r.value,'$.title')),'kind',coalesce(json_extract(o.value,'$.resource.kind'),json_extract(r.value,'$.kind'))) FROM outbox o LEFT JOIN resources r ON r.project=o.project AND r.id=coalesce(json_extract(o.value,'$.resource.resourceId'),json_extract(o.value,'$.resourceId')) WHERE o.project IN ({visible})"),&[])?,
         "errors":db::rows(&db,&format!("SELECT json_object('source',source,'error',error) FROM errors WHERE source IN ({visible}) OR source NOT IN (SELECT id FROM projects)"),&[])?,
         "sync":db::get(&db,"sync")?, "syncProgress":sync::current_progress(&db,daemon["running"]==true)?,
         "daemon":daemon, "devices":crate::device_metadata::devices(&db,&db::get(&db,"devices")?)?, "deviceId":db::device(&db)?, "localHardwareFamily":crate::device_metadata::local_family(&db)?, "background":background
@@ -748,14 +753,20 @@ pub fn import_bundle(
     bundles::import_into_source(&db, &project_id, &PathBuf::from(path), source_id.as_deref())
 }
 #[tauri::command]
-pub fn retry_uploads() -> Result<()> {
+pub fn retry_uploads(project_id: Option<String>) -> Result<()> {
+    let _lock = projects::lock()?;
     let db = db::open()?;
-    db.execute(
-        "DELETE FROM outbox WHERE path='/v2/sessions/resolve' AND error LIKE '409:%'",
-        [],
-    )
-    .map_err(|e| e.to_string())?;
-    db.execute("UPDATE outbox SET error=NULL", [])
+    if let Some(project) = &project_id {
+        projects::active(&db, project)?;
+    }
+    if project_id.is_none() {
+        db.execute(
+            "DELETE FROM outbox WHERE path='/v2/sessions/resolve' AND error LIKE '409:%'",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    db.execute("UPDATE outbox SET error=NULL WHERE ?1 IS NULL OR (project=?1 AND (error IS NULL OR error NOT GLOB '4[0-9][0-9]:*' OR substr(error,1,3) IN ('401','408','429')))", [&project_id])
         .map_err(|e| e.to_string())?;
     sync_now()
 }

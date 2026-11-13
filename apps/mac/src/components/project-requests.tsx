@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { XIcon } from "@primer/octicons-react";
 import type { ReviewRequest, Resource } from "@portable/protocol";
 import type { Project, Snapshot } from "../types.js";
@@ -12,7 +12,7 @@ import {
   ProjectChangeReview,
   type SuggestionDetail,
 } from "./project-change-review.js";
-import { visibleRequest } from "../lib/features.js";
+import { projectAttention } from "./sync-attention.js";
 import type { FileManifestEntry } from "./diff-model.js";
 import {
   accessNames,
@@ -52,26 +52,24 @@ export function ProjectRequests({
   onReviewFile: (id: string) => void;
 }) {
   const [visibleCount, setVisibleCount] = useState(5);
+  const requestHeading = useRef<HTMLHeadingElement>(null);
+  const requestTrigger = useRef<HTMLElement | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<ReviewRequest | null>(
     null,
   );
   const [request, setRequest] = useState<RequestDetail | null>(null);
   const [suggestion, setSuggestion] = useState<SuggestionDetail | null>(null);
-  const suggestions = (state.drafts ?? []).filter(
-    (d) =>
-      d.projectId === project.id &&
-      !["dismissed", "published", "approved"].includes(d.status) &&
-      !d.automaticSharing,
+  const attention = projectAttention(
+    { ...state, reviewRequests: catalog.requests },
+    project.id,
   );
-  const updates = state.bindings.filter(
-    (b) =>
-      b.base?.projectId === project.id &&
-      b.installationState &&
-      b.installationState !== "current",
+  const localReviews = attention.items.filter(
+    (item) => item.binding || item.draft,
   );
   const labelMember = (id: string) =>
     memberLabel(id, state.user, catalog.members);
-  const requests = catalog.requests.filter(visibleRequest);
+  const requests = attention.items.flatMap((item) => item.requests);
+  const [historyPreview, setHistoryPreview] = useState(false);
   const loadRequest = (id: string) =>
     run(async () => {
       setRequest(await call<RequestDetail>("request", { id }));
@@ -81,11 +79,22 @@ export function ProjectRequests({
     setSelectedRequest(null);
     setRequest(null);
   };
+  const showRequest = (selected: ReviewRequest) => {
+    requestTrigger.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setSelectedRequest(selected);
+    setRequest(null);
+    void loadRequest(selected.id);
+  };
   return (
     <div className="project-requests">
       <section>
-        <h3>Requests</h3>
-        {requests.length === 0 && <p>No requests available.</p>}
+        <h3 ref={requestHeading} tabIndex={-1}>
+          Requests to review
+        </h3>
+        {requests.length === 0 && <p>No requests need your decision.</p>}
         {requests.slice(0, visibleCount).map((r) => (
           <div key={r.id} className="governance-row">
             <span>
@@ -101,11 +110,7 @@ export function ProjectRequests({
               size="sm"
               variant="tertiary"
               disabled={busy}
-              onClick={() => {
-                setSelectedRequest(r);
-                setRequest(null);
-                void loadRequest(r.id);
-              }}
+              onClick={() => showRequest(r)}
             >
               Review request
             </Button>
@@ -123,7 +128,11 @@ export function ProjectRequests({
         {selectedRequest && (
           <Overlay
             open
-            title="Review request"
+            title={
+              selectedRequest.status === "pending"
+                ? "Review request"
+                : "Request history"
+            }
             className="changes-review-modal request-review-modal"
             onClose={() => {
               if (!busy) closeRequest();
@@ -132,9 +141,19 @@ export function ProjectRequests({
               if (busy) event.preventDefault();
             }}
             onKeyDownCapture={handleReviewTab}
+            onCloseAutoFocus={(event) => {
+              if (!requestTrigger.current?.isConnected) {
+                event.preventDefault();
+                requestHeading.current?.focus();
+              }
+            }}
           >
             <header className="review-header">
-              <h2>Review request</h2>
+              <h2>
+                {selectedRequest.status === "pending"
+                  ? "Review request"
+                  : "Request history"}
+              </h2>
               <IconButton
                 icon={XIcon}
                 size="sm"
@@ -197,9 +216,11 @@ export function ProjectRequests({
                     />
                   )}
                   <p>
-                    {request.request.type === "access"
-                      ? `Requested access: ${accessNames[request.request.requestedMode!]}`
-                      : "Approval publishes exactly this prepared version."}
+                    {selectedRequest.status !== "pending"
+                      ? `Request ${request.request.status}.`
+                      : request.request.type === "access"
+                        ? `Requested access: ${accessNames[request.request.requestedMode!]}`
+                        : "Approval publishes exactly this prepared version."}
                   </p>
                 </>
               )}
@@ -208,7 +229,8 @@ export function ProjectRequests({
               <Button variant="tertiary" disabled={busy} onClick={closeRequest}>
                 Cancel
               </Button>
-              {request?.request.status === "pending" &&
+              {selectedRequest.status === "pending" &&
+                request?.request.status === "pending" &&
                 request.request.canReview && (
                   <>
                     {(["reject", "approve"] as const).map((decision) => (
@@ -253,115 +275,194 @@ export function ProjectRequests({
           </Overlay>
         )}
       </section>
-      <section aria-label="Local updates">
-        <h3>Updates on this Mac</h3>
-        <p>
-          Shared skills install automatically when Skills sharing is enabled.
-          Review conflicting local edits and project instruction updates here.
-          Local edits are kept.
-        </p>
-        {updates.length === 0 && <p>No updates need review.</p>}
-        {updates.map((b) => (
-          <div className="governance-row" key={b.base.resourceId}>
-            <span>
-              {displayText(b.base.title)}
-              <small>{(b.installationState ?? "").replaceAll("_", " ")}</small>
-            </span>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={busy}
-              onClick={() => onReviewFile(b.base.resourceId)}
-            >
-              Review update
-            </Button>
-          </div>
-        ))}
-      </section>
-      {suggestions.length > 0 && (
-        <section aria-label="Local changes">
-          <h3>Changes on this Mac</h3>
-          <p>
-            Share selected changes here. Publishing permission lets you share
-            directly; suggested changes need a publisher’s approval.
-          </p>
-          {suggestions.map((d) => (
-            <div className="governance-row" key={d.id}>
+      {attention.waitingRequests.length > 0 && (
+        <section aria-label="Waiting for approval">
+          <h3>Waiting for approval</h3>
+          {attention.waitingRequests.map((r) => (
+            <div className="governance-row" key={r.id}>
               <span>
-                {displayText(d.resource.title)}
-                <small>
-                  {d.status === "proposed"
-                    ? "Review pending"
-                    : d.status === "local"
-                      ? "Only on this Mac"
-                      : `Request ${d.status}`}
-                </small>
+                {displayText(r.title)}
+                <small>{labelMember(r.author)} · pending</small>
               </span>
               <Button
                 size="sm"
                 variant="tertiary"
                 disabled={busy}
-                onClick={() =>
-                  void run(async () => {
-                    setSuggestion(
-                      await call<SuggestionDetail>("draft", { id: d.id }),
-                    );
-                  })
-                }
+                onClick={() => showRequest(r)}
               >
-                Review changes
-              </Button>
-              <Button
-                size="sm"
-                variant="tertiary"
-                disabled={busy}
-                onClick={() =>
-                  void run(async () => {
-                    await call("dismiss", { id: d.id });
-                    setSuggestion(null);
-                  })
-                }
-              >
-                Dismiss
+                View request
               </Button>
             </div>
           ))}
-          {suggestion && (
-            <ProjectChangeReview
-              detail={suggestion}
-              busy={busy}
-              error={error}
-              onClose={() => setSuggestion(null)}
-              onRefresh={() =>
-                run(async () => {
-                  await call("refresh-draft", { id: suggestion.draft.id });
-                  setSuggestion(
-                    await call<SuggestionDetail>("draft", {
-                      id: suggestion.draft.id,
-                    }),
-                  );
-                })
-              }
-              onSubmit={() =>
-                run(async () => {
-                  await call("submit-draft", {
-                    id: suggestion.draft.id,
-                    reviewedFiles: suggestion.draft.resource.files,
-                    ...(suggestion.baseRevision === undefined
-                      ? {}
-                      : { reviewedRevision: suggestion.baseRevision }),
-                  });
-                  setSuggestion(null);
-                  setMessage(
-                    suggestion.canPublish
-                      ? "Change queued for sharing."
-                      : "Suggestion submitted for publisher review.",
-                  );
-                })
-              }
-            />
-          )}
         </section>
+      )}
+      <section aria-label="Local reviews">
+        <h3>Changes on this Mac</h3>
+        {localReviews.length === 0 && <p>No local changes need review.</p>}
+        {localReviews.map((item) => (
+          <div className="governance-row" key={item.key}>
+            <span>
+              {displayText(item.title)}
+              {item.binding && (
+                <small>
+                  {(item.binding.installationState ?? "").replaceAll("_", " ")}
+                </small>
+              )}
+              {item.draft && (
+                <small>
+                  {item.draft.status === "stale"
+                    ? "Shared version changed"
+                    : "Local edits preserved"}
+                </small>
+              )}
+              {item.paths.map((path) => (
+                <small key={path}>{path}</small>
+              ))}
+            </span>
+            {item.binding && item.resourceId && (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => onReviewFile(item.resourceId!)}
+              >
+                Review update
+              </Button>
+            )}
+            {item.draft && (
+              <>
+                <Button
+                  size="sm"
+                  variant="tertiary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      setHistoryPreview(false);
+                      setSuggestion(
+                        await call<SuggestionDetail>("draft", {
+                          id: item.draft!.id,
+                        }),
+                      );
+                    })
+                  }
+                >
+                  Review changes
+                </Button>
+                <Button
+                  size="sm"
+                  variant="tertiary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      await call("dismiss", { id: item.draft!.id });
+                      setSuggestion(null);
+                    })
+                  }
+                >
+                  Dismiss
+                </Button>
+              </>
+            )}
+          </div>
+        ))}
+      </section>
+      {(attention.historyRequests.length > 0 ||
+        attention.historyDrafts.length > 0) && (
+        <section aria-label="Request history">
+          <details>
+            <summary>
+              History (
+              {attention.historyRequests.length +
+                attention.historyDrafts.length}
+              )
+            </summary>
+            {attention.historyRequests.map((r) => (
+              <div className="governance-row" key={r.id}>
+                <span>
+                  {displayText(r.title)}
+                  <small>
+                    {labelMember(r.author)} · {r.status}
+                  </small>
+                </span>
+                <Button
+                  size="sm"
+                  variant="tertiary"
+                  disabled={busy}
+                  onClick={() => showRequest(r)}
+                >
+                  View request
+                </Button>
+              </div>
+            ))}
+            {attention.historyDrafts.map((draft) => (
+              <div className="governance-row" key={draft.id}>
+                <span>
+                  {displayText(draft.resource.title)}
+                  <small>
+                    {draft.dismissalReason === "superseded"
+                      ? "Superseded snapshot"
+                      : draft.status}{" "}
+                    ·{" "}
+                    {new Date(
+                      draft.updatedAt ?? draft.createdAt,
+                    ).toLocaleString()}
+                  </small>
+                </span>
+                <Button
+                  size="sm"
+                  variant="tertiary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      setHistoryPreview(true);
+                      setSuggestion(
+                        await call<SuggestionDetail>("draft", { id: draft.id }),
+                      );
+                    })
+                  }
+                >
+                  View saved change
+                </Button>
+              </div>
+            ))}
+          </details>
+        </section>
+      )}
+      {suggestion && (
+        <ProjectChangeReview
+          detail={suggestion}
+          readOnly={historyPreview}
+          busy={busy}
+          error={error}
+          onClose={() => setSuggestion(null)}
+          onRefresh={() =>
+            run(async () => {
+              await call("refresh-draft", { id: suggestion.draft.id });
+              setSuggestion(
+                await call<SuggestionDetail>("draft", {
+                  id: suggestion.draft.id,
+                }),
+              );
+            })
+          }
+          onSubmit={() =>
+            run(async () => {
+              await call("submit-draft", {
+                id: suggestion.draft.id,
+                reviewedFiles: suggestion.draft.resource.files,
+                ...(suggestion.baseRevision === undefined
+                  ? {}
+                  : { reviewedRevision: suggestion.baseRevision }),
+              });
+              setSuggestion(null);
+              setMessage(
+                suggestion.canPublish
+                  ? "Change queued for sharing."
+                  : "Suggestion submitted for publisher review.",
+              );
+            })
+          }
+        />
       )}
     </div>
   );

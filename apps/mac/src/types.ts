@@ -58,7 +58,9 @@ export interface Project {
   lifecycleRevision?: number;
 }
 export interface Binding {
-  base: Resource;
+  resourceId?: string;
+  projectId?: string;
+  base?: Resource;
   nativeId?: string;
   paths?: string[];
   needsCopy?: boolean;
@@ -100,7 +102,14 @@ export interface Snapshot {
   bindings: Binding[];
   conflicts: SessionConflict[];
   activity: Activity[];
-  outbox: { id: string; project: string; error: string | null }[];
+  outbox: {
+    id: string;
+    project: string;
+    error: string | null;
+    resourceId?: string | null;
+    title?: string | null;
+    kind?: Resource["kind"] | null;
+  }[];
   errors: { source: string; error: string }[];
   sync: { online: boolean; lastSync?: string; error?: string } | null;
   syncProgress?: SyncProgress | null;
@@ -126,6 +135,8 @@ export interface LocalDraft {
   createdAt: string;
   updatedAt?: string;
   request?: ReviewRequest;
+  dismissalReason?: string;
+  archivedAt?: string;
 }
 export interface Inspection {
   conversation?: string | null;

@@ -24,6 +24,15 @@ Memories, plans, and text skill files use three-way merges. Binary files and exe
 
 ENV support remains in the native implementation for compatibility, but is currently disabled in the desktop UI. See the [security model](security-model.md).
 
+The desktop derives project attention from current requests, queued operations,
+local review state, and conflicts, grouping overlapping states by resource identity.
+Binding snapshots retain their own resource and project identities even before a
+base revision is installed. Completed decisions and superseded local draft
+snapshots remain history; reconciliation preserves their stored content and does
+not resolve differing files or pending operations. Existing instruction files
+that exactly match an authorized revision can acquire a baseline without a file
+write.
+
 ## Native modules
 
 `indexer.rs`, `plans.rs`, and session readers discover scoped native content. `sync.rs` handles exchange and local materialization. `codex_import.rs` and `claude_import.rs` preserve native identities. `env/` owns dotenv parsing, encryption, device approval, and guarded file writes. `db.rs` and `auth.rs` isolate local persistence and credentials.
