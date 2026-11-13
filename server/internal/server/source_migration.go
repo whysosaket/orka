@@ -39,7 +39,7 @@ func (s *Store) migrateSources(ctx context.Context, apply bool) error {
 	}
 	fmt.Printf("%d projects need a default source. %s\n", len(projects), notice)
 	for _, project := range projects {
-		q.Exec("insert into orka.project_sources values($1,$1,$2) on conflict do nothing", project["id"], project["name"])
+		q.Exec("insert into orka.project_sources(project_id,id,name) values($1,$1,$2) on conflict do nothing", project["id"], project["name"])
 		for _, table := range []string{"resources", "snapshots", "conflicts", "events", "receipts"} {
 			q.Exec("update orka."+table+" set payload=pg_temp.scope_project_resources(payload,$1::text) where project_id=$1", project["id"])
 		}

@@ -100,7 +100,7 @@ Declared licenses are upstream metadata. Preserve the actual license notices and
 | [@pierre/theme](https://www.npmjs.com/package/@pierre/theme/v/2.0.0) | 2.0.0 | apache-2.0 |
 | [@pierre/theming](https://www.npmjs.com/package/@pierre/theming/v/1.0.2) | 1.0.2 | apache-2.0 |
 | [@playwright/test](https://www.npmjs.com/package/@playwright/test/v/1.64.1) | 1.64.1 | Apache-2.0 |
-| [@portable/protocol](https://www.npmjs.com/package/@portable/protocol/v/0.6.0) | 0.6.0 | MIT |
+| [@portable/protocol](https://www.npmjs.com/package/@portable/protocol/v/0.6.6-dev.1) | 0.6.6-dev.1 | MIT |
 | [@primer/octicons-react](https://www.npmjs.com/package/@primer/octicons-react/v/19.40.0) | 19.40.0 | MIT |
 | [@radix-ui/number](https://www.npmjs.com/package/@radix-ui/number/v/1.1.3) | 1.1.3 | MIT |
 | [@radix-ui/primitive](https://www.npmjs.com/package/@radix-ui/primitive/v/1.2.0) | 1.2.0 | MIT |

@@ -230,8 +230,9 @@ func (g *GitHub) source(q *Queries, user string, input Object, owner bool) Objec
 		return nil
 	}
 	g.Store.member(q, user, project)
-	row := q.One("select s.id,r.repository,r.revision,m.role from orka.project_sources s join orka.members m on m.project_id=s.project_id and m.user_id=$3 left join orka.source_repositories r on r.project_id=s.project_id and r.source_id=s.id where s.project_id=$1 and s.id=$2", project, source, user)
+	row := q.One("select s.id,s.removed_at,r.repository,r.revision,m.role from orka.project_sources s join orka.members m on m.project_id=s.project_id and m.user_id=$3 left join orka.source_repositories r on r.project_id=s.project_id and r.source_id=s.id where s.project_id=$1 and s.id=$2", project, source, user)
 	q.Require(row != nil, 404, "Source no longer belongs to this project")
+	q.Require(row["removed_at"] == nil, 409, "Source folder was removed from this project")
 	q.Require(!owner || text(row["role"]) == "owner", 403, "Only project owners can link repositories")
 	return row
 }
@@ -293,7 +294,7 @@ func (g *GitHub) action(q *Queries, user, action string, raw any) any {
 		g.tx(q, func(db *Queries) any {
 			db.One("select pg_advisory_xact_lock(hashtextextended($1,0))", "github:"+user)
 			db.Exec("delete from orka.github_authorizations where user_id=$1 or expires_at<now()", user)
-			db.Exec("insert into orka.github_authorizations values($1,$2,$3,now()+$4*interval '1 second',now()+$5*interval '1 second',$5)", id, user, g.seal(db, device["device_code"], user+":"+id), number(device["expires_in"]), interval)
+			db.Exec("insert into orka.github_authorizations(id,user_id,device_code,expires_at,next_poll_at,poll_interval) values($1,$2,$3,now()+$4*interval '1 second',now()+$5*interval '1 second',$5)", id, user, g.seal(db, device["device_code"], user+":"+id), number(device["expires_in"]), interval)
 			return nil
 		})
 		return Object{"id": id, "userCode": device["user_code"], "verificationUrl": device["verification_uri"], "interval": interval, "expiresIn": device["expires_in"]}
@@ -306,6 +307,9 @@ func (g *GitHub) action(q *Queries, user, action string, raw any) any {
 			expires, _ := time.Parse(time.RFC3339Nano, text(row["expires_at"]))
 			if !db.Require(row != nil && expires.After(time.Now()), 410, "GitHub authorization expired; start again") {
 				return nil
+			}
+			if row["result"] != nil {
+				return row["result"]
 			}
 			next, _ := time.Parse(time.RFC3339Nano, text(row["next_poll_at"]))
 			if next.After(time.Now()) {
@@ -333,8 +337,9 @@ func (g *GitHub) action(q *Queries, user, action string, raw any) any {
 			github := strconv.FormatInt(number(identity["id"]), 10)
 			db.Exec("insert into orka.github_connections values($1,$2,$3,$4,now()+$5*interval '1 second') on conflict(user_id) do update set github_id=excluded.github_id,login=excluded.login,credentials=excluded.credentials,expires_at=excluded.expires_at", user, github, identity["login"], g.seal(db, value, user), number(value["expires_in"]))
 			db.Exec("update orka.repository_access_requests set status='canceled',revision=revision+1,updated_at=now(),note='Connected GitHub identity changed' where requester=$1 and github_id<>$2 and status=any($3::text[])", user, github, githubActive)
-			db.Exec("delete from orka.github_authorizations where id=$1", id)
-			return Object{"connected": true, "identity": Object{"id": github, "login": identity["login"]}}
+			result = Object{"connected": true, "identity": Object{"id": github, "login": identity["login"]}}
+			db.Exec("update orka.github_authorizations set result=$2 where id=$1", id, result)
+			return result
 		})
 	case "cancel-authorization":
 		v := q.Parse(raw, map[string]Field{"id": uuidField()})
@@ -418,7 +423,7 @@ func (g *GitHub) projectAction(q *Queries, user, action string, raw any) any {
 		return g.tx(q, func(db *Queries) any {
 			p := db.One("select source_model from orka.projects where id=$1 for update", project)
 			g.Store.member(db, user, project)
-			if !db.Require(number(p["source_model"]) == 1, 409, "Upgrade this project to add repository sources") || !db.Require(db.One("select 1 from orka.members where project_id=$1 and user_id=$2 and role='owner'", project, user) != nil, 403, "Only project owners can add repositories") || !db.Require(db.One("select 1 from orka.source_repositories where project_id=$1 and repository->>'id'=$2", project, v["repositoryId"]) == nil, 409, "This repository is already linked to a source in this project") || !db.Require(number(db.One("select count(*) as count from orka.project_sources where project_id=$1", project)["count"]) < 100, 400, "A project can contain at most 100 sources") {
+			if !db.Require(number(p["source_model"]) == 1, 409, "Upgrade this project to add repository sources") || !db.Require(db.One("select 1 from orka.members where project_id=$1 and user_id=$2 and role='owner'", project, user) != nil, 403, "Only project owners can add repositories") || !db.Require(db.One("select 1 from orka.source_repositories where project_id=$1 and repository->>'id'=$2", project, v["repositoryId"]) == nil, 409, "This repository is already linked to a source in this project") || !db.Require(number(db.One("select count(*) as count from orka.project_sources where project_id=$1 and removed_at is null", project)["count"]) < 100, 400, "A project can contain at most 100 sources") {
 				return nil
 			}
 			id := newID()
@@ -426,7 +431,7 @@ func (g *GitHub) projectAction(q *Queries, user, action string, raw any) any {
 			if db.err != nil || len(name) != 2 {
 				return nil
 			}
-			db.Exec("insert into orka.project_sources values($1,$2,$3)", project, id, name[1])
+			db.Exec("insert into orka.project_sources(project_id,id,name) values($1,$2,$3)", project, id, name[1])
 			db.Exec("insert into orka.source_repositories values($1,$2,$3,1)", project, id, repo)
 			g.event(db, project, id, user, "add-source", Object{"repositoryId": repo["id"]})
 			return Object{"sourceId": id, "repository": repo, "revision": 1}
@@ -443,6 +448,12 @@ func (g *GitHub) projectAction(q *Queries, user, action string, raw any) any {
 			db.One("select id from orka.projects where id=$1 for update", project)
 			g.Store.member(db, user, project)
 			if !db.Require(db.One("select 1 from orka.members where project_id=$1 and user_id=$2 and role='owner'", project, user) != nil, 403, "Only project owners can link repositories") {
+				return nil
+			}
+			if !g.Store.requireActiveSource(db, project, source) {
+				return nil
+			}
+			if action == "bind" && !db.Require(db.One("select 1 from orka.source_repositories where project_id=$1 and source_id<>$2 and repository->>'id'=$3", project, source, repo["id"]) == nil, 409, "This repository is already linked to a source in this project") {
 				return nil
 			}
 			current := db.One("select revision from orka.source_repositories where project_id=$1 and source_id=$2 for update", project, source)
@@ -517,6 +528,9 @@ func (g *GitHub) projectAction(q *Queries, user, action string, raw any) any {
 		return g.tx(q, func(db *Queries) any {
 			db.One("select id from orka.projects where id=$1 for update", project)
 			g.Store.member(db, user, project)
+			if !g.Store.requireActiveSource(db, project, source) {
+				return nil
+			}
 			current := db.One("select repository from orka.source_repositories where project_id=$1 and source_id=$2", project, source)
 			if !db.Require(field(current["repository"], "id") == binding["id"], 409, "Repository link changed; refresh and try again") {
 				return nil

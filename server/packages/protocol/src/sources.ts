@@ -4,13 +4,17 @@ export const projectSource = z
   .object({
     id: z.uuid(),
     name: z.string().trim().min(1).max(128),
+    removedAt: z.iso.datetime({ offset: true }).optional(),
   })
   .strict();
 
 export const addProjectSources = z
   .object({
     projectId: z.uuid(),
-    sources: z.array(projectSource).min(1).max(100),
+    sources: z
+      .array(projectSource.omit({ removedAt: true }))
+      .min(1)
+      .max(100),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -22,3 +26,7 @@ export const addProjectSources = z
   });
 
 export type ProjectSource = z.infer<typeof projectSource>;
+
+export const removeProjectSource = z
+  .object({ projectId: z.uuid(), sourceId: z.uuid() })
+  .strict();

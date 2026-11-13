@@ -7,6 +7,7 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Project, Snapshot } from "../types.js";
+import { activeSources } from "./project-sources.js";
 
 export interface GitHubStatus {
   connected: boolean;
@@ -19,6 +20,7 @@ interface Authorization {
   verificationUrl: string;
   interval: number;
   expiresIn: number;
+  expiresAt: number;
 }
 export interface CloneJob {
   id: string;
@@ -56,7 +58,7 @@ export function useBackgroundRepositoryAccess(state: Snapshot) {
   const call = useRepositoryCommand(state);
   const targets = JSON.stringify(
     state.projects.flatMap((project) =>
-      (project.sources ?? [])
+      activeSources(project.sources)
         .filter((source) => source.repository)
         .map((source) => ({
           projectId: project.id,
@@ -107,6 +109,10 @@ export function useRepositories(
   const [authorization, setAuthorization] = useState<Authorization | null>(
     null,
   );
+  const [authorizationError, setAuthorizationError] = useState("");
+  const [authorizationConnectedVersion, setAuthorizationConnectedVersion] =
+    useState(0);
+  const authorizationPoll = useRef<(() => Promise<void>) | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [access, setAccess] = useState<Record<string, RepositoryAccess>>({});
@@ -116,7 +122,7 @@ export function useRepositories(
   const alive = useRef(true);
   const refreshWorkspace = useEffectEvent(refresh);
   const currentBinding = useEffectEvent((sourceId: string) =>
-    project.sources?.find((source) => source.id === sourceId),
+    activeSources(project.sources).find((source) => source.id === sourceId),
   );
   useEffect(() => {
     alive.current = true;
@@ -140,6 +146,11 @@ export function useRepositories(
   };
   useEffect(() => {
     let canceled = false;
+    setEnabled(false);
+    setStatus(null);
+    setAuthorization(null);
+    setAuthorizationError("");
+    setAuthorizationConnectedVersion(0);
     void call<{ enabled: boolean }>("capabilities")
       .then(async (caps) => {
         if (!caps.enabled || canceled) return;
@@ -157,7 +168,7 @@ export function useRepositories(
     };
   }, [call]);
   const bindings = JSON.stringify(
-    (project.sources ?? [])
+    activeSources(project.sources)
       .filter((source) => source.repository)
       .map((source) => ({
         sourceId: source.id,
@@ -209,43 +220,86 @@ export function useRepositories(
   useEffect(() => {
     if (!authorization) return;
     let canceled = false,
+      inFlight = false,
       timer: ReturnType<typeof setTimeout>;
-    const expires = Date.now() + authorization.expiresIn * 1000;
+    let interval = Math.max(5, authorization.interval) * 1000;
+    let nextPollAt = Date.now() + interval;
+    const schedule = () => {
+      clearTimeout(timer);
+      timer = setTimeout(
+        () => void poll(),
+        Math.max(0, Math.min(nextPollAt, authorization.expiresAt) - Date.now()),
+      );
+    };
     const poll = async () => {
+      if (canceled || inFlight) return;
+      if (Date.now() >= authorization.expiresAt) {
+        setError("GitHub authorization expired. Connect again.");
+        setAuthorizationError("");
+        setAuthorization(null);
+        return;
+      }
+      if (Date.now() < nextPollAt) {
+        schedule();
+        return;
+      }
+      inFlight = true;
       try {
-        if (Date.now() >= expires)
-          throw new Error("GitHub authorization expired. Connect again.");
         const result = await call<{
           connected?: boolean;
           interval?: number;
           error?: string;
         }>("poll", { id: authorization.id });
         if (canceled) return;
-        if (result.error) throw new Error(result.error);
-        if (result.connected) {
+        if (result.error) {
+          setError(result.error);
+          setAuthorizationError("");
           setAuthorization(null);
+          return;
+        }
+        if (result.connected) {
           const value = await call<GitHubStatus>("status");
           if (!canceled) {
             setStatus(value);
             setAccess({});
             setAccessVersion((v) => v + 1);
+            setAuthorizationError("");
+            setAuthorizationConnectedVersion((value) => value + 1);
+            setAuthorization(null);
           }
-        } else
-          timer = setTimeout(
-            () => void poll(),
-            Math.max(5, result.interval ?? authorization.interval) * 1000,
-          );
+        } else {
+          setAuthorizationError("");
+          interval =
+            Math.max(5, result.interval ?? authorization.interval) * 1000;
+          nextPollAt = Date.now() + interval;
+          schedule();
+        }
       } catch (e) {
         if (!canceled) {
-          setError(String(e));
-          setAuthorization(null);
+          const message = String(e);
+          if (/GitHub authorization (?:expired|declined)/i.test(message)) {
+            setError(message);
+            setAuthorizationError("");
+            setAuthorization(null);
+          } else {
+            setAuthorizationError(message);
+            nextPollAt = Date.now() + interval;
+            schedule();
+          }
         }
+      } finally {
+        inFlight = false;
       }
     };
-    timer = setTimeout(() => void poll(), authorization.interval * 1000);
+    const check = () => void poll();
+    authorizationPoll.current = poll;
+    window.addEventListener("focus", check);
+    schedule();
     return () => {
       canceled = true;
       clearTimeout(timer);
+      authorizationPoll.current = null;
+      window.removeEventListener("focus", check);
     };
   }, [authorization, call]);
   const activeJobs = jobs.some((job) =>
@@ -315,8 +369,12 @@ export function useRepositories(
   }, [enabled, call, project.id, activeJobs]);
   const openGitHub = (url: string) => call("open-github", { url });
   const connectGitHub = async () => {
-    const value = await call<Authorization>("begin");
-    setAuthorization(value);
+    const value = await call<Omit<Authorization, "expiresAt">>("begin");
+    setAuthorization({
+      ...value,
+      expiresAt: Date.now() + value.expiresIn * 1000,
+    });
+    setAuthorizationError("");
     await openGitHub(value.verificationUrl);
   };
   const disconnectGitHub = async () => {
@@ -347,6 +405,8 @@ export function useRepositories(
     enabled,
     status,
     authorization,
+    authorizationError,
+    authorizationConnectedVersion,
     busy,
     error,
     access,
@@ -361,13 +421,18 @@ export function useRepositories(
       const value = await call<GitHubStatus>("status");
       if (alive.current) setStatus(value);
     },
+    checkAuthorization: () =>
+      authorizationPoll.current?.() ?? Promise.resolve(),
     cancelAuthorization: async () => {
-      if (authorization)
-        await call("cancel-authorization", { id: authorization.id });
+      const current = authorization;
       setAuthorization(null);
+      setAuthorizationError("");
+      if (current) await call("cancel-authorization", { id: current.id });
     },
     recheck: async (sourceId: string) => {
-      const source = project.sources?.find((source) => source.id === sourceId);
+      const source = activeSources(project.sources).find(
+        (source) => source.id === sourceId,
+      );
       const value = await call<RepositoryAccess>("access-status", {
         projectId: project.id,
         sourceId,

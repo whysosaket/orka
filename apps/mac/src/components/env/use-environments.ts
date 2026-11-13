@@ -1,4 +1,4 @@
-import { sourcePath } from "../project-sources.js";
+import { activeSources, sourcePath } from "../project-sources.js";
 import { useRef, useState } from "react";
 import type { EnvMember } from "@portable/protocol";
 import type { Project } from "../../types.js";
@@ -38,7 +38,9 @@ export function useEnvironments(
     checkAvailability,
   } = connection;
   const [selected, setSelected] = useState(initialSet);
-  const [sourceId, setSourceId] = useState(project.sources?.[0]?.id ?? "");
+  const [sourceId, setSourceId] = useState(
+    activeSources(project.sources)[0]?.id ?? "",
+  );
   const [draft, setDraft] = useState<Draft | null>(null);
   const [checked, setChecked] = useState<string[]>([]);
   const [name, setName] = useState("");
@@ -237,7 +239,12 @@ export function useEnvironments(
         setText("");
         setName("");
         setGrants([user]);
-        if (repository !== "all") setSourceId(repository);
+        const sources = activeSources(project.sources);
+        setSourceId(
+          sources.find((source) => source.id === repository)?.id ??
+            sources[0]?.id ??
+            "",
+        );
         setModal("import");
       });
     });

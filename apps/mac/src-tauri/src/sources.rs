@@ -11,6 +11,9 @@ use std::{
 use uuid::Uuid;
 
 pub fn views(project: &Value) -> Vec<Value> {
+    if !project["removedAt"].is_null() {
+        return Vec::new();
+    }
     if project["sourceId"].is_string() || !project["sources"].is_array() {
         return vec![project.clone()];
     }
@@ -18,6 +21,7 @@ pub fn views(project: &Value) -> Vec<Value> {
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|source| source["removedAt"].is_null())
         .map(|source| {
             let mut view = project.clone();
             view["sourceId"] = source["id"].clone();
@@ -81,6 +85,9 @@ pub fn scope(project: &Value, resource: &mut Value) {
 }
 
 pub fn validate(project: &Value) -> Result<()> {
+    if !project["removedAt"].is_null() {
+        return Err("This source folder was removed from the project".into());
+    }
     let raw = project["path"]
         .as_str()
         .ok_or("Connect this repository's folder")?;
@@ -158,6 +165,78 @@ fn canonical(raw: &str) -> Result<PathBuf> {
     Ok(root)
 }
 
+fn registration_id(sources: &[Value], pending: &Value, root: &Path) -> String {
+    pending
+        .as_array()
+        .and_then(|items| {
+            items.iter().find(|item| {
+                item["path"] == json!(root)
+                    && !sources
+                        .iter()
+                        .any(|source| source["id"] == item["id"] && !source["removedAt"].is_null())
+            })
+        })
+        .and_then(|item| item["id"].as_str())
+        .map(str::to_owned)
+        .unwrap_or_else(|| Uuid::new_v4().to_string())
+}
+
+pub(crate) fn preserve_removed_queue(
+    db: &rusqlite::Connection,
+    project: &str,
+    source: &Value,
+) -> Result<()> {
+    let source_id = source["id"].as_str().ok_or("Missing source")?;
+    let queued = db::rows(db, "SELECT json_object('id',id,'path',path,'value',json(value),'error',error) FROM outbox WHERE project=?1 AND (json_extract(value,'$.resource.sourceId')=?2 OR json_extract(value,'$.sourceId')=?2 OR EXISTS(SELECT 1 FROM resources r WHERE r.project=outbox.project AND r.id=json_extract(outbox.value,'$.resourceId') AND json_extract(r.value,'$.sourceId')=?2))", &[&project,&source_id])?;
+    for entry in queued {
+        let request_id = entry["id"].as_str().ok_or("Missing queued request")?;
+        let resource = if entry["value"]["resource"].is_object() {
+            entry["value"]["resource"].clone()
+        } else {
+            crate::governance::resource(
+                db,
+                entry["value"]["resourceId"]
+                    .as_str()
+                    .ok_or("Missing queued resource")?,
+            )?
+        };
+        let binding = indexer::binding(
+            db,
+            resource["resourceId"].as_str().ok_or("Missing resource")?,
+        )?;
+        let receipt_key = format!("selected-share:{request_id}");
+        let mut receipt = db::get(db, &receipt_key)?;
+        let paths = if receipt["paths"].is_array() {
+            &receipt["paths"]
+        } else {
+            &binding["paths"]
+        };
+        let id = Uuid::new_v5(
+            &Uuid::NAMESPACE_URL,
+            format!("removed-source:{project}:{source_id}:{request_id}").as_bytes(),
+        )
+        .to_string();
+        let draft = json!({"id":id,"projectId":project,"resource":resource,"paths":paths,"status":"local","createdAt":db::now(),"sourceRemoval":{"sourceId":source_id,"removedAt":source["removedAt"],"queued":entry}});
+        db.execute(
+            "INSERT OR IGNORE INTO drafts VALUES(?,?,?)",
+            rusqlite::params![id, project, draft.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
+        if entry["path"] == crate::selective_sharing::QUEUE_PATH && receipt.is_object() {
+            receipt["status"] = json!("conflict");
+            receipt["result"] = json!({"status":"conflict","reason":"source_removed","draftId":id,"message":"Source folder removed. The selected snapshot is kept in Changes on this Mac."});
+            db::set(db, &receipt_key, &receipt)?;
+        }
+        db.execute("DELETE FROM outbox WHERE id=?", [request_id])
+            .map_err(|e| e.to_string())?;
+    }
+    for mut pending in db::rows(db, "SELECT json_object('key',key,'value',json(value)) FROM meta WHERE key LIKE 'env:%:pending:%' AND json_extract(value,'$.header.manifest.projectId')=?1 AND coalesce(json_extract(value,'$.header.manifest.sourceId'),?1)=?2", &[&project,&source_id])? {
+        pending["value"]["sourceRemoval"] = json!({"sourceId":source_id,"removedAt":source["removedAt"]});
+        db::set(db, pending["key"].as_str().ok_or("Missing ENV pending key")?, &pending["value"])?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn scan_project_folders(path: String) -> Result<Vec<Value>> {
     let parent = canonical(&path)?;
@@ -213,6 +292,13 @@ pub(crate) async fn connect_sources(
         .as_array()
         .cloned()
         .ok_or("Refresh this project or run the project-source migration")?;
+    if source_id.as_ref().is_some_and(|id| {
+        sources
+            .iter()
+            .any(|source| source["id"] == *id && !source["removedAt"].is_null())
+    }) {
+        return Err("This source folder was removed from the project".into());
+    }
     let roots = paths
         .iter()
         .map(|path| canonical(path))
@@ -263,6 +349,9 @@ pub(crate) async fn connect_sources(
                 .iter()
                 .enumerate()
                 .filter(|(_, source)| {
+                    if !source["removedAt"].is_null() {
+                        return false;
+                    }
                     source_id.as_ref().map_or(
                         source["name"] == name
                             && source["path"]
@@ -278,7 +367,7 @@ pub(crate) async fn connect_sources(
             [index] => *index,
             [] if source_id.is_some() => return Err("Repository no longer belongs to this project; refresh and try again".into()),
             [] => {
-                let source_id = pending.as_array().and_then(|items|items.iter().find(|item|item["path"]==json!(root))).and_then(|item|item["id"].as_str()).map(str::to_owned).unwrap_or_else(||Uuid::new_v4().to_string());
+                let source_id = registration_id(&sources, &pending, &root);
                 let source = json!({"id":source_id,"name":name});
                 additions.push(source.clone()); sources.push(source); sources.len()-1
             },
@@ -375,6 +464,20 @@ pub fn disconnect_project_source(id: String, source_id: String) -> Result<()> {
 #[cfg(test)]
 mod folder_state_tests {
     use super::*;
+
+    #[test]
+    fn removed_registration_ids_are_never_reused_for_the_same_folder() {
+        let root = Path::new("/fixture/repository");
+        let pending = json!([{"id":"removed-id","path":root}]);
+        let removed = vec![json!({"id":"removed-id","removedAt":"2026-11-13T00:00:00Z"})];
+        let next = registration_id(&removed, &pending, root);
+        assert_ne!(next, "removed-id");
+        assert!(Uuid::parse_str(&next).is_ok());
+        assert_eq!(
+            registration_id(&[json!({"id":"removed-id"})], &pending, root),
+            "removed-id"
+        );
+    }
 
     #[test]
     fn folder_states_follow_native_path_and_identity_validation() {

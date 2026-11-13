@@ -1,13 +1,18 @@
 {
+  "server": {
+    "language": "Go",
+    "module": "github.com/whysosaket/orka-api",
+    "toolchain": "1.27.4"
+  },
   "repository": "https://github.com/whysosaket/orka-api",
-  "commit": "c0fa56dc3ea880616e7fe9266b418d9db446e00f",
+  "commit": "06d8e9e09760c8a982a40e0786a3e16ce4588ce7",
   "packages": [
     {
       "name": "@portable/protocol",
-      "version": "0.6.0",
-      "file": "portable-protocol-0.6.0.tgz",
-      "sha256": "02c84c87b7945df51559b53fcbea772a36ee10fcf8866a6bc3dddf0c2743fcbe",
-      "integrity": "sha512-dPlzNn4PZJ/BDZSgONL93Udc7miDngb352oVQXlnSBOdmGfctQ/Lw4RHov5elQIpmK2jJQfl5i6XU4iYdQ8Y1g=="
+      "version": "0.6.6-dev.1",
+      "file": "portable-protocol-0.6.6-dev.1.tgz",
+      "sha256": "1b183c99d371dc3f22cfad93631bf7d162864838c33664075360428562f45dc6",
+      "integrity": "sha512-MaRevt/x7PB1+7gxdb/NncQWIFSS+ghQ11NM/efSDsvRAoLffofi+S07KqDw77SVlTiuQ2fSLM19qaHXvxQ0fg=="
     }
   ]
 }

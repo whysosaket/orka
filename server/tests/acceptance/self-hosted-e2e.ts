@@ -242,7 +242,7 @@ try {
   helper(installation, "doctor");
   assert.equal(
     migrationLedger(installation),
-    "001_initial.sql\n002_github_repositories.sql\n003_email_invitations.sql\n004_mcp_operations.sql",
+    "001_initial.sql\n002_github_repositories.sql\n003_email_invitations.sql\n004_mcp_operations.sql\n005_source_removal.sql\n006_github_authorization_completion.sql",
   );
   console.log(
     "Fresh setup, repeated setup, port changes and diagnostics passed.",
@@ -404,7 +404,7 @@ try {
   helper(installation, "upgrade", "--reset-ledger");
   assert.equal(
     migrationLedger(installation),
-    "001_initial.sql\n002_github_repositories.sql\n003_email_invitations.sql\n004_mcp_operations.sql",
+    "001_initial.sql\n002_github_repositories.sql\n003_email_invitations.sql\n004_mcp_operations.sql\n005_source_removal.sql\n006_github_authorization_completion.sql",
   );
   await verifyContent(origin, (await login(origin, owner)).access_token);
   console.log(
@@ -435,7 +435,7 @@ try {
   );
   assert.equal(
     migrationLedger(recovery),
-    "001_initial.sql\n002_github_repositories.sql\n003_email_invitations.sql\n004_mcp_operations.sql",
+    "001_initial.sql\n002_github_repositories.sql\n003_email_invitations.sql\n004_mcp_operations.sql\n005_source_removal.sql\n006_github_authorization_completion.sql",
   );
   const recoveredOrigin = `http://127.0.0.1:${recoveryPort}`;
   await verifyContent(

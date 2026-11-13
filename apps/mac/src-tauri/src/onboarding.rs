@@ -200,7 +200,11 @@ fn checkpoint(mut input: Value) -> Result<Value> {
     Ok(json!({"ok":true}))
 }
 fn matching_source(project: &Value, path: &str) -> Option<String> {
-    let sources = project["sources"].as_array()?;
+    let sources: Vec<_> = project["sources"]
+        .as_array()?
+        .iter()
+        .filter(|source| source["removedAt"].is_null())
+        .collect();
     let name = std::path::Path::new(path).file_name()?.to_string_lossy();
     if let Some(source) = sources.iter().find(|source| source["path"] == path) {
         return source["id"].as_str().map(str::to_string);
@@ -226,7 +230,14 @@ async fn review(input: Value) -> Result<Value> {
         .as_str()
         .ok_or("Configure a service first")?;
     let supported = crate::auth::capabilities(service.into()).await?["onboarding"] == 1;
-    let catalog = sync::api_at(owner, service, "GET", "/v2/projects", None).await?;
+    let catalog = sync::api_at(
+        owner,
+        service,
+        "GET",
+        "/v2/projects?includeArchived=true",
+        None,
+    )
+    .await?;
     let _lock = crate::projects::wait_for_lock(std::time::Duration::from_secs(5))?;
     ensure_scope(&db, (owner, service))?;
     crate::projects::merge_catalog(&db, &catalog)?;
@@ -254,7 +265,8 @@ fn project_review(
 ) -> Result<Value> {
     let mut catalog: Vec<_> = candidates
         .iter()
-        .map(|p| json!({"id":p["id"],"name":p["name"],"role":p["role"],"sources":p["sources"]}))
+        .filter(|p| p["archivedAt"].is_null())
+        .map(|p| json!({"id":p["id"],"name":p["name"],"role":p["role"],"sources":p["sources"].as_array().map(|sources| sources.iter().filter(|source| source["removedAt"].is_null()).collect::<Vec<_>>())}))
         .collect();
     catalog.sort_by_key(|p| p["name"].as_str().unwrap_or("").to_lowercase());
     let mut matches = serde_json::Map::new();
@@ -264,9 +276,9 @@ fn project_review(
         } else {
             None
         };
-        let mut suggested = candidates
-            .iter()
-            .filter(|p| key.is_some() && p["remoteKey"].as_str() == key.as_deref());
+        let mut suggested = candidates.iter().filter(|p| {
+            p["archivedAt"].is_null() && key.is_some() && p["remoteKey"].as_str() == key.as_deref()
+        });
         let suggested_id = suggested
             .next()
             .filter(|_| suggested.next().is_none())
@@ -379,7 +391,14 @@ async fn connect(input: Value, expected: Option<(&str, &str)>) -> Result<Value> 
     };
     // Refresh membership before connecting to an existing project.
     if input["existingId"].is_string() {
-        let catalog = sync::api_at(owner, service, "GET", "/v2/projects", None).await?;
+        let catalog = sync::api_at(
+            owner,
+            service,
+            "GET",
+            "/v2/projects?includeArchived=true",
+            None,
+        )
+        .await?;
         let _lock = crate::projects::lock()?;
         ensure_scope(&db, scope)?;
         crate::projects::merge_catalog(&db, &catalog)?;
@@ -391,7 +410,7 @@ async fn connect(input: Value, expected: Option<(&str, &str)>) -> Result<Value> 
         .or_else(|| matching_source(&project, &path.to_string_lossy()));
     if project["sources"]
         .as_array()
-        .is_some_and(|sources| !sources.is_empty())
+        .is_some_and(|sources| sources.iter().any(|source| source["removedAt"].is_null()))
         && source_id.is_none()
     {
         return Err("Choose which repository this folder should connect to before syncing".into());

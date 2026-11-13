@@ -50,6 +50,9 @@ func (s *Store) verifyFiles(q *Queries, project, user string, files []any) {
 	}
 }
 func (s *Store) saveChange(q *Queries, user string, input Object, revision int64, resource Object, conflicts []any, activity any, resolutions []any) Object {
+	if !s.requireActiveSource(q, text(input["projectId"]), resource["sourceId"]) {
+		return nil
+	}
 	resource = merge(resource, Object{"hash": Hash(Object{"files": resource["files"], "deleted": resource["deleted"]})})
 	project := text(input["projectId"])
 	q.Exec("insert into orka.resources values($1,$2,$3,$4) on conflict(project_id,id) do update set revision=excluded.revision,payload=excluded.payload", project, resource["resourceId"], resource["revision"], resource)
@@ -128,7 +131,7 @@ func (s *Store) change(q *Queries, user string, input Object, options ChangeOpti
 	project := text(input["projectId"])
 	incoming := object(input["resource"])
 	id := text(incoming["resourceId"])
-	if incoming["sourceId"] != nil && !q.Require(q.One("select 1 from orka.project_sources where project_id=$1 and id=$2", project, incoming["sourceId"]) != nil, 400, "Source folder does not belong to this project") {
+	if !s.requireActiveSource(q, project, incoming["sourceId"]) {
 		return nil
 	}
 	existing := s.resource(q, project, id)

@@ -61,6 +61,8 @@ assert.deepEqual(
     "packages/server-core/migrations/002_github_repositories.sql",
     "packages/server-core/migrations/003_email_invitations.sql",
     "packages/server-core/migrations/004_mcp_operations.sql",
+    "packages/server-core/migrations/005_source_removal.sql",
+    "packages/server-core/migrations/006_github_authorization_completion.sql",
   ],
 );
 assert.equal(
