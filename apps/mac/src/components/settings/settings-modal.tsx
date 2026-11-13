@@ -102,7 +102,7 @@ export const SettingsModal = forwardRef<
     [draftVersion, setDraftVersion] = useState(0);
   const [pending, setPending] = useState<Destination | null>(null);
   const [confirmation, setConfirmation] = useState<{
-    action: "disconnect" | "signout";
+    action: "disconnect" | "remove-source" | "signout";
     sourceId?: string;
   } | null>(null);
   const [saving, setSaving] = useState(false),
@@ -464,25 +464,32 @@ export const SettingsModal = forwardRef<
   async function confirm() {
     if (confirmation?.action === "signout") {
       if (await run(() => invoke("sign_out"))) onSignedOut();
-    } else if (confirmation?.action === "disconnect") {
+    } else if (confirmation) {
       if (!project || queued) {
         setFolderError(
-          "Finish syncing queued changes before disconnecting this folder.",
+          "Finish syncing queued changes before changing source folders.",
         );
         return;
       }
       const saved = await folderRun(() =>
-        confirmation.sourceId
-          ? invoke("disconnect_project_source", {
-              id: projectId,
-              sourceId: confirmation.sourceId,
+        confirmation.action === "remove-source"
+          ? invoke("project_command", {
+              action: "remove-source",
+              input: { projectId, sourceId: confirmation.sourceId },
             })
-          : invoke("disconnect_project", { id: projectId }),
+          : confirmation.sourceId
+            ? invoke("disconnect_project_source", {
+                id: projectId,
+                sourceId: confirmation.sourceId,
+              })
+            : invoke("disconnect_project", { id: projectId }),
       );
       if (saved) {
         setConfirmation(null);
         setNotice(
-          "Folder disconnected. Local files and shared content are kept.",
+          confirmation.action === "remove-source"
+            ? "Source folder removed. Local files and previously shared content are kept."
+            : "Folder disconnected. Local files and shared content are kept.",
         );
       }
     }
@@ -675,6 +682,9 @@ export const SettingsModal = forwardRef<
                         }
                         onDisconnectSource={(sourceId) =>
                           setConfirmation({ action: "disconnect", sourceId })
+                        }
+                        onRemoveSource={(sourceId) =>
+                          setConfirmation({ action: "remove-source", sourceId })
                         }
                         onSyncActivity={() =>
                           request(() => onSyncActivity(projectId))
@@ -899,7 +909,9 @@ export const SettingsModal = forwardRef<
           title={
             confirmation.action === "disconnect"
               ? "Disconnect folder?"
-              : "Sign out?"
+              : confirmation.action === "remove-source"
+                ? "Remove source folder?"
+                : "Sign out?"
           }
           className="settings-confirm"
           onClose={() => {
@@ -909,14 +921,18 @@ export const SettingsModal = forwardRef<
           <h2>
             {confirmation.action === "disconnect"
               ? "Disconnect folder?"
-              : "Sign out?"}
+              : confirmation.action === "remove-source"
+                ? "Remove source folder?"
+                : "Sign out?"}
           </h2>
           <p>
             {confirmation.action === "disconnect"
               ? "Disconnect this folder on this Mac? Local files and shared content are kept."
-              : "Projects and queued changes are kept. Sign in to this account again to resume sync."}
+              : confirmation.action === "remove-source"
+                ? `Remove ${project?.sources?.find((source) => source.id === confirmation.sourceId)?.name ?? "this source folder"} from the project? It will stop syncing on all Macs. Local files and previously shared content are kept.`
+                : "Projects and queued changes are kept. Sign in to this account again to resume sync."}
           </p>
-          {confirmation.action === "disconnect"
+          {confirmation.action !== "signout"
             ? folderError && <p role="alert">{folderError}</p>
             : error && <p role="alert">{error}</p>}
           <div className="settings-confirm-actions">
@@ -931,15 +947,16 @@ export const SettingsModal = forwardRef<
               disabled={
                 busy ||
                 folderBusy ||
-                (confirmation.action === "disconnect" &&
-                  (!project || queued > 0))
+                (confirmation.action !== "signout" && (!project || queued > 0))
               }
               onClick={() => void confirm()}
             >
               {(saving || folderBusy) && <ActivityIndicator />}
               {confirmation.action === "disconnect"
                 ? "Disconnect folder"
-                : "Sign out"}
+                : confirmation.action === "remove-source"
+                  ? "Remove source folder"
+                  : "Sign out"}
             </Button>
           </div>
         </Overlay>

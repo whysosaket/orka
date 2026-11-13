@@ -22,6 +22,7 @@ import {
   type RepositorySource,
 } from "./repository-picker.js";
 import { useRepositories, useRepositoryCommand } from "./use-repositories.js";
+import { activeSources } from "./project-sources.js";
 export { useRepositoryCommand } from "./use-repositories.js";
 
 type ConnectionDialog = {
@@ -35,6 +36,7 @@ export function RepositoryConnections({
   renderLocalFolders,
   onLocalFolder,
   onDisconnectSource,
+  onRemoveSource,
   folderBusy = false,
   queued = 0,
   initiallyOpen = false,
@@ -52,6 +54,7 @@ export function RepositoryConnections({
   ) => ReactNode;
   onLocalFolder?: () => Promise<unknown>;
   onDisconnectSource?: (sourceId: string) => void;
+  onRemoveSource?: (sourceId: string) => void;
   folderBusy?: boolean;
   queued?: number;
   initiallyOpen?: boolean;
@@ -63,7 +66,7 @@ export function RepositoryConnections({
   const controller = useRepositories(project, state, refresh);
   const { call, enabled, busy, access, jobs, run, error, status } = controller;
   const multipleSources =
-    (project.sources ?? []).filter(
+    activeSources(project.sources).filter(
       (source) =>
         source.repository &&
         (!source.path || source.folderState === "reconnect"),
@@ -116,7 +119,9 @@ export function RepositoryConnections({
   };
   if (!enabled) return <>{renderLocalFolders?.(false, openPicker)}</>;
   const disabled = busy || folderBusy;
-  const sources = (project.sources ?? []).filter((source) => source.repository);
+  const sources = activeSources(project.sources).filter(
+    (source) => source.repository,
+  );
   const needsAccountConnection =
     !status?.connected ||
     Object.values(access).some((value) =>
@@ -369,7 +374,9 @@ export function RepositoryConnections({
                       <IconButton
                         icon={KebabHorizontalIcon}
                         size="sm"
-                        variant="tertiary"
+                        variant="secondary"
+                        className="repository-source-options"
+                        title={`Options for ${source.name}`}
                         aria-label={`Options for ${source.name}`}
                         disabled={disabled || Boolean(active)}
                       />
@@ -392,13 +399,22 @@ export function RepositoryConnections({
                         Use existing folder
                       </Button>
                     )}
-                    {connected && onDisconnectSource && (
+                    {source.path && onDisconnectSource && (
                       <Button
                         size="sm"
                         disabled={queued > 0}
                         onClick={() => onDisconnectSource(source.id)}
                       >
                         Disconnect folder on this Mac
+                      </Button>
+                    )}
+                    {project.role === "owner" && onRemoveSource && (
+                      <Button
+                        size="sm"
+                        disabled={queued > 0}
+                        onClick={() => onRemoveSource(source.id)}
+                      >
+                        Remove source folder
                       </Button>
                     )}
                     {value && !ready && (

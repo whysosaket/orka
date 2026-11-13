@@ -18,7 +18,7 @@ import { readSkillMarkdown } from "./skill-markdown.js";
 import { projectLabel } from "./project-navigation.js";
 import { SkillUsageCount, type SkillUsage } from "./skill-usage.js";
 import { SortMenu } from "./sort-menu.js";
-import { repositoryLabel } from "./project-sources.js";
+import { activeSources, repositoryLabel } from "./project-sources.js";
 import { LoadingRegion } from "./loading-region.js";
 
 interface GlobalSkill {
@@ -115,7 +115,7 @@ function GlobalSkillsDialog({
 }) {
   const [scan, setScan] = useState<Scan | null>(null);
   const [sourceId, setSourceId] = useState(
-    project.sources?.find((source) => source.path)?.id ?? "",
+    activeSources(project.sources).find((source) => source.path)?.id ?? "",
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -219,7 +219,9 @@ function GlobalSkillsDialog({
       .includes(search),
   );
   const connected = project.sources
-    ? project.sources.some((source) => source.id === sourceId && source.path)
+    ? activeSources(project.sources).some(
+        (source) => source.id === sourceId && source.path,
+      )
     : Boolean(project.path);
   const selectable = visible.filter((skill) => !skill.exists && !skill.error);
   const selectedSkills = skills.filter(
@@ -353,8 +355,8 @@ function GlobalSkillsDialog({
               setReviewable(false);
             }}
           >
-            {project.sources
-              ?.filter((source) => source.path)
+            {activeSources(project.sources)
+              .filter((source) => source.path)
               .map((source) => (
                 <option key={source.id} value={source.id}>
                   {repositoryLabel(project.sources ?? [], source.id)}
@@ -419,7 +421,7 @@ function GlobalSkillsDialog({
           </p>
         )}
         {!(project.sources
-          ? project.sources.some(
+          ? activeSources(project.sources).some(
               (source) => source.id === sourceId && source.path,
             )
           : project.path) && (
@@ -554,7 +556,7 @@ function GlobalSkillsDialog({
                         busy ||
                         Boolean(pending) ||
                         !(project.sources
-                          ? project.sources.some(
+                          ? activeSources(project.sources).some(
                               (source) => source.id === sourceId && source.path,
                             )
                           : project.path) ||

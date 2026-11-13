@@ -4,6 +4,11 @@ One GitHub App can serve both GitHub sign-in and optional repository connections
 GoTrue owns Orka identity/sessions. Repository connections use GitHub's device
 authorization flow and separately stored, expiring user tokens. App installation,
 user authorization, Orka membership and GitHub repository membership are separate.
+The desktop guides a newly authorized account into app installation when needed,
+then refreshes discovery on return. Device authorization completion is retained
+until the original attempt expires, so a lost response can be retried without
+repeating consent. Migration `006_github_authorization_completion.sql` adds this
+receipt; completion remains bound to the requesting Orka account and attempt.
 
 ## App and server setup
 

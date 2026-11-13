@@ -16,8 +16,12 @@ import { join, resolve } from "node:path";
 const [tag, source] = process.argv.slice(2);
 assert.match(
   tag ?? "",
-  /^v\d+\.\d+\.\d+$/,
+  /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/,
   "Usage: npm run backend:update -- vX.Y.Z [release-directory]",
+);
+assert.ok(
+  source || !tag.includes("-"),
+  "Prerelease protocols require an explicit local release directory",
 );
 const temporary = mkdtempSync(join(tmpdir(), "orka-backend-"));
 try {

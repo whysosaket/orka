@@ -43,6 +43,7 @@ export interface Project {
   sources?: {
     id: string;
     name: string;
+    removedAt?: string | null;
     path?: string | null;
     folderState?: "connected" | "reconnect" | "locate";
     repository?: RepositoryBinding | null;

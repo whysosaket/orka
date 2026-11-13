@@ -149,7 +149,7 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 		}
 		return parsed, nil
 	}
-	scoped := []string{"/v2/sync/push", "/v2/sharing/selected", "/v2/sessions/resolve", "/v2/sessions/copy", "/v2/presence", "/v2/env/action", "/v2/governance/action", "/v2/projects/action", "/v2/projects/sources", "/v2/invites", "/v2/github/action"}
+	scoped := []string{"/v2/sync/push", "/v2/sharing/selected", "/v2/sessions/resolve", "/v2/sessions/copy", "/v2/presence", "/v2/env/action", "/v2/governance/action", "/v2/projects/action", "/v2/projects/sources", "/v2/projects/sources/remove", "/v2/invites", "/v2/github/action"}
 	project := r.URL.Query().Get("projectId")
 	if strings.HasPrefix(path, "/v2/blobs/") {
 		parts := strings.Split(path, "/")
@@ -238,7 +238,13 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 		}
 		return tx(func(q *Queries) any { return s.putProfile(q, user, input) })
 	case path == "/v2/projects/capabilities" && method == http.MethodGet:
-		return Object{"lifecycle": 1, "governance": 1, "sources": 1, "rename": 1, "rolePolicies": 1, "policyOperations": 1, "deviceHardware": 1, "selectedSharing": 1}, false, nil
+		return Object{"lifecycle": 1, "governance": 1, "sources": 1, "sourcesRemoval": 1, "rename": 1, "rolePolicies": 1, "policyOperations": 1, "deviceHardware": 1, "selectedSharing": 1}, false, nil
+	case path == "/v2/projects/sources/remove" && method == http.MethodPost:
+		input, err := contract("removeProjectSource")
+		if err != nil {
+			return nil, false, err
+		}
+		return tx(func(q *Queries) any { return s.removeSource(q, user, input) })
 	case path == "/v2/projects/sources" && method == http.MethodPost:
 		input, err := contract("addProjectSources")
 		if err != nil {

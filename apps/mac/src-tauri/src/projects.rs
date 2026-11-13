@@ -191,6 +191,21 @@ pub fn merge_catalog(db: &Connection, remote: &Value) -> Result<()> {
         let mut project = item.clone();
         if let Some(sources) = project["sources"].as_array_mut() {
             for source in sources {
+                if let Some(local) = old["sources"].as_array().and_then(|items| {
+                    items
+                        .iter()
+                        .find(|local| local["id"] == source["id"] && !local["removedAt"].is_null())
+                }) {
+                    source["removedAt"] = local["removedAt"].clone();
+                    source["repository"] = Value::Null;
+                }
+                if !source["removedAt"].is_null() {
+                    crate::sources::preserve_removed_queue(&tx, id, source)?;
+                    source["path"] = Value::Null;
+                    source["folderIdentity"] = Value::Null;
+                    tx.execute("DELETE FROM bindings WHERE project=? AND json_extract(value,'$.base.sourceId')=?", [id, source["id"].as_str().ok_or("Missing source")?]).map_err(|e| e.to_string())?;
+                    continue;
+                }
                 if let Some(local) = old["sources"]
                     .as_array()
                     .and_then(|items| items.iter().find(|local| local["id"] == source["id"]))
@@ -312,6 +327,64 @@ pub async fn project_command(action: String, input: Value) -> Result<Value> {
     }
     let _lock = lock()?;
     match action.as_str() {
+        "remove-source" => {
+            active(&db, id)?;
+            let mut project = crate::governance::project(&db, id)?;
+            if project["role"] != "owner" {
+                return Err("Only project owners can remove source folders".into());
+            }
+            let source_id = input["sourceId"].as_str().ok_or("Choose a source folder")?;
+            uuid::Uuid::parse_str(source_id).map_err(|_| "Invalid source folder")?;
+            let pending: bool = db
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM outbox WHERE project=?1 UNION ALL SELECT 1 FROM meta WHERE key LIKE 'env:%:pending:%' AND json_extract(value,'$.header.manifest.projectId')=?1 AND json_extract(value,'$.sourceRemoval') IS NULL)",
+                    [id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if pending {
+                return Err("Sync queued changes and finish pending ENV publications before removing a source folder".into());
+            }
+            if sync::api_as(&owner, "GET", "/v2/projects/capabilities", None).await?
+                ["sourcesRemoval"]
+                != 1
+            {
+                return Err("This service does not support removing source folders. Update the server and try again.".into());
+            }
+            let receipt = sync::api_as(
+                &owner,
+                "POST",
+                "/v2/projects/sources/remove",
+                Some(&json!({"projectId":id,"sourceId":source_id})),
+            )
+            .await?;
+            let source = project["sources"]
+                .as_array_mut()
+                .and_then(|items| items.iter_mut().find(|source| source["id"] == source_id))
+                .ok_or("Source folder not found")?;
+            source["removedAt"] = json!(receipt["removedAt"]
+                .as_str()
+                .ok_or("Invalid source removal response")?);
+            source["path"] = Value::Null;
+            source["folderIdentity"] = Value::Null;
+            source["repository"] = Value::Null;
+            {
+                let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
+                db::upsert(&tx, "projects", id, id, &project)?;
+                tx.execute(
+                    "DELETE FROM bindings WHERE project=? AND json_extract(value,'$.base.sourceId')=?",
+                    [id, source_id],
+                )
+                .map_err(|e| e.to_string())?;
+                tx.commit().map_err(|e| e.to_string())?;
+            }
+            if let Ok(remote) =
+                sync::api_as(&owner, "GET", "/v2/projects?includeArchived=true", None).await
+            {
+                merge_catalog(&db, &remote)?;
+            }
+            env::clear();
+        }
         "sharing" => {
             active(&db, id)?;
             let sharing: Sharing = serde_json::from_value(input["sharing"].clone())

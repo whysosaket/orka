@@ -233,9 +233,6 @@ func (s *Store) envMutate(q *Queries, user string, device, input Object) any {
 	project, setID := text(next["projectId"]), text(next["setId"])
 	q.Exec("select id from orka.projects where id=$1 for update", project)
 	s.member(q, user, project)
-	if next["sourceId"] != nil && !q.Require(q.One("select 1 from orka.project_sources where project_id=$1 and id=$2", project, next["sourceId"]) != nil, 400, "ENV source folder does not belong to this project") {
-		return nil
-	}
 	previous := object(q.One("select header from orka.env_sets where project_id=$1 and id=$2", project, setID)["header"])
 	old := object(previous["manifest"])
 	if previous == nil && !q.Require(s.resource(q, project, setID) == nil, 409, "ENV ID is already used by an ordinary resource") {
@@ -253,6 +250,9 @@ func (s *Store) envMutate(q *Queries, user string, device, input Object) any {
 	if receipt != nil {
 		q.Require(text(receipt["request_hash"]) == Hash(input), 409, "ENV retry ID reused with different content")
 		return receipt["payload"]
+	}
+	if !s.requireActiveSource(q, project, next["sourceId"]) {
+		return nil
 	}
 	if previous != nil {
 		if !envAllowed(q, old, user, text(device["id"])) {

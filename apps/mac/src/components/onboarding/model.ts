@@ -65,7 +65,7 @@ export interface ProjectMatch {
   role: "owner" | "member";
   lastSyncAt?: string;
   sourceId?: string | null;
-  sources?: { id: string; name: string }[];
+  sources?: { id: string; name: string; removedAt?: string | null }[];
 }
 export interface OnboardingDraft {
   step: OnboardingStep;
@@ -103,7 +103,9 @@ export function suggestedSource(
   folderName: string,
 ) {
   if (project?.sourceId) return project.sourceId;
-  const sources = project?.sources ?? [];
+  const sources = (project?.sources ?? []).filter(
+    (source) => !source.removedAt,
+  );
   if (sources.length === 1) return sources[0].id;
   const matches = sources.filter((source) => source.name === folderName);
   return matches.length === 1 ? matches[0].id : undefined;

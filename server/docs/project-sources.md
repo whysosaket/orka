@@ -11,6 +11,23 @@ and retryable with the same IDs; reusing an ID with different metadata fails.
 Membership and governed-client checks apply. Members may locate an existing
 source locally; registering a new shared source requires ownership.
 
+When `/v2/projects/capabilities` advertises `sourcesRemoval: 1`, owners can use
+`POST /v2/projects/sources/remove {projectId,sourceId}`. Removal is idempotent and
+returns `{sourceId,removedAt}`. Migration `005_source_removal.sql` adds the nullable
+timestamp. The source remains in the catalog with its name and `removedAt` so
+existing resources, snapshots, ENV signatures and history retain their identity.
+Clients hide removed sources from connection and publication destinations and
+clear their local binding when the catalog refreshes. Removal does not delete
+local folders, downloaded code or shared content.
+
+Removed sources cannot receive new changes, repository links or ENV versions.
+Their GitHub binding is cleared and active repository access requests are
+canceled. A removed source ID cannot be registered again; add a new source to
+connect that folder later. Only active sources count toward the 100-source limit.
+Existing upload receipts and read access to previously shared history remain
+valid. Deploy the additive backend migration before exposing removal in a client;
+older services retain local disconnect only.
+
 Resources include optional `sourceId`. The source must belong to the resource's
 project, cannot change after creation, and participates in logical-path
 uniqueness. An omitted source denotes a project-level resource; desktop

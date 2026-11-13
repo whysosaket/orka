@@ -3,7 +3,7 @@ import { UploadIcon } from "@primer/octicons-react";
 import { Button } from "../button.js";
 import { Textarea } from "../textarea.js";
 import type { EnvController } from "./use-environments.js";
-import { repositoryLabel } from "../project-sources.js";
+import { activeSources, repositoryLabel } from "../project-sources.js";
 export function ImportEnvDialog({ c }: { c: EnvController }) {
   const { text, setText, modal, busy, run, close, imported } = c;
   if (!(modal === "import")) return null;
@@ -20,22 +20,23 @@ export function ImportEnvDialog({ c }: { c: EnvController }) {
           those changes before publishing.
         </p>
       )}
-      {!c.draft?.revision && Boolean(c.project.sources?.length) && (
-        <label>
-          Repository
-          <select
-            value={c.sourceId}
-            disabled={Boolean(busy)}
-            onChange={(event) => c.setSourceId(event.target.value)}
-          >
-            {c.project.sources?.map((source) => (
-              <option key={source.id} value={source.id}>
-                {repositoryLabel(c.project.sources ?? [], source.id)}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
+      {!c.draft?.revision &&
+        Boolean(activeSources(c.project.sources).length) && (
+          <label>
+            Repository
+            <select
+              value={c.sourceId}
+              disabled={Boolean(busy)}
+              onChange={(event) => c.setSourceId(event.target.value)}
+            >
+              {activeSources(c.project.sources).map((source) => (
+                <option key={source.id} value={source.id}>
+                  {repositoryLabel(c.project.sources ?? [], source.id)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       <Button
         size="sm"
         disabled={Boolean(busy)}
