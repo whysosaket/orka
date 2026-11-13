@@ -14,6 +14,11 @@ import React, {
 } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { spring } from "./lib/springs.js";
+import { ResourceMenuProvider } from "./components/resource-menu.js";
+import {
+  hasNativeTextMenu,
+  type ItemMenuAction,
+} from "./components/item-menu.js";
 import { ENV_ENABLED } from "./lib/features.js";
 import { invoke } from "@tauri-apps/api/core";
 import type { Resource } from "@portable/protocol";
@@ -115,6 +120,14 @@ const pageLabels: Record<ProjectPage, string> = {
 };
 
 export function App() {
+  useEffect(() => {
+    const menu = (event: MouseEvent) => {
+      if (!event.defaultPrevented && !hasNativeTextMenu(event.target))
+        event.preventDefault();
+    };
+    document.addEventListener("contextmenu", menu);
+    return () => document.removeEventListener("contextmenu", menu);
+  }, []);
   const workspace = useWorkspace();
   return (
     <LoadingProvider
@@ -184,10 +197,15 @@ function WorkspaceApp({
   const [tab, setTab] = useState<ProjectPage>("home");
   const [envSet, setEnvSet] = useState("");
   const [resource, setResource] = useState("");
+  const [comparison, setComparison] = useState("");
   // The resource whose reading view Back just closed; its index row takes focus.
   const [returnFocus, setReturnFocus] = useState("");
   const clearReturnFocus = useCallback(() => setReturnFocus(""), []);
   const [settings, setSettings] = useState<SettingsSection | null>(null);
+  const [settingsProject, setSettingsProject] = useState<string | null>(null);
+  useEffect(() => {
+    if (!settings) setSettingsProject(null);
+  }, [settings]);
   const settingsNavigation = useRef<SettingsNavigationHandle>(null);
   const leaveSettings = (action: () => void) => {
     if (settings && settingsNavigation.current)
@@ -196,6 +214,19 @@ function WorkspaceApp({
         action();
       });
     else action();
+  };
+  const openProjectSettings = (id: string, section: SettingsSection) => {
+    if (settings && settingsNavigation.current) {
+      settingsNavigation.current.requestProject(id, () => {
+        setSettingsProject(id);
+        requestAnimationFrame(() =>
+          settingsNavigation.current?.requestSection(section),
+        );
+      });
+    } else {
+      setSettingsProject(id);
+      setSettings(section);
+    }
   };
   const openSettings = (section: SettingsSection) => {
     if (settingsNavigation.current)
@@ -207,6 +238,7 @@ function WorkspaceApp({
     useState<Exclude<ManagementSection, "members">>("requests");
   const [governance, setGovernance] = useState<{
     resource: string;
+    mode?: "incoming" | "outgoing";
     env?: { title: string };
   } | null>(null);
   const openManagement = useCallback(
@@ -364,6 +396,12 @@ function WorkspaceApp({
       state.deviceId,
     ]),
   );
+  useEffect(() => {
+    if (comparison && selected?.resourceId === comparison) {
+      view.setChanges(true);
+      setComparison("");
+    }
+  }, [comparison, selected?.resourceId, view]);
   useDeepLinks((link) => {
     if (link.hostname === "auth") {
       void act(() => account.complete(link.href));
@@ -495,430 +533,517 @@ function WorkspaceApp({
       />
     ) : undefined;
   return (
-    <div
-      className="app"
-      data-detail-kind={!settings ? selected?.kind : undefined}
+    <ResourceMenuProvider
+      key={workspaceScope}
+      scope={JSON.stringify([workspaceScope, project])}
+      state={state}
+      resources={catalogResources}
+      busy={busy}
+      act={act}
+      onOpen={(item, compare) =>
+        leaveSettings(() => {
+          setTab(item.kind);
+          openResource(item.resourceId);
+          if (compare) setComparison(item.resourceId);
+        })
+      }
+      onReview={(item, mode) =>
+        leaveSettings(() => setGovernance({ resource: item.resourceId, mode }))
+      }
+      onRefresh={async () => {
+        await refresh();
+        localCatalog.refresh();
+      }}
+      onNotice={setNotice}
+      onError={setError}
     >
-      <motion.aside
-        initial={false}
-        animate={{ width: sidebarCollapsed ? 80 : 240 }}
-        transition={
-          sidebarInstant || reducedMotion
-            ? { duration: 0 }
-            : sidebarCollapsed
-              ? spring.slow.exit
-              : spring.slow
-        }
-        className={`sidebar${sidebarCollapsed ? " sidebar-collapsed" : ""}`}
-        data-motion={sidebarInstant ? "instant" : undefined}
+      <div
+        className="app"
+        data-detail-kind={!settings ? selected?.kind : undefined}
       >
-        <div
-          className="sidebar-window-controls"
-          data-tauri-drag-region
-          aria-hidden="true"
-        />
-        <ProjectNavigation
-          collapsed={sidebarCollapsed}
-          projects={state.projects}
-          projectId={project}
-          activeKind={settings ? null : tab}
-          resources={catalogResources}
-          onNavigate={(kind) =>
-            leaveSettings(() => {
-              setEnvSet("");
-              setTab(kind);
-              setResource("");
-              if (kind === "members") openManagement();
-            })
+        <motion.aside
+          initial={false}
+          animate={{ width: sidebarCollapsed ? 80 : 240 }}
+          transition={
+            sidebarInstant || reducedMotion
+              ? { duration: 0 }
+              : sidebarCollapsed
+                ? spring.slow.exit
+                : spring.slow
           }
-        />
-        <div className="sidebar-footer">
-          {updates?.update && (
-            <SidebarUpdate
-              key={updates.update.sha256}
-              update={updates.update}
-              collapsed={sidebarCollapsed}
-            />
-          )}
-          <SidebarQuickAccess
-            settingsActive={Boolean(settings)}
-            collapsed={sidebarCollapsed}
-            onSettings={() => openSettings("general")}
-            onCreate={() => leaveSettings(() => setup.show("create"))}
-            onJoin={() => leaveSettings(() => setup.show("join"))}
+          className={`sidebar${sidebarCollapsed ? " sidebar-collapsed" : ""}`}
+          data-motion={sidebarInstant ? "instant" : undefined}
+        >
+          <div
+            className="sidebar-window-controls"
+            data-tauri-drag-region
+            aria-hidden="true"
           />
-          <ProjectPicker
+          <ProjectNavigation
+            collapsed={sidebarCollapsed}
             projects={state.projects}
             projectId={project}
-            collapsed={sidebarCollapsed}
-            onProjectChange={(id) => {
-              const change = () => {
+            activeKind={settings ? null : tab}
+            resources={catalogResources}
+            onNavigate={(kind) =>
+              leaveSettings(() => {
                 setEnvSet("");
-                setProject(id);
+                setTab(kind);
                 setResource("");
-                setGovernance(null);
-              };
-              if (settings && settingsNavigation.current)
-                settingsNavigation.current.requestProject(id, change);
-              else change();
-            }}
+                if (kind === "members") openManagement();
+              })
+            }
           />
-        </div>
-      </motion.aside>
-      <main>
-        <WorkspaceHeader
-          leading={
-            !settings && selected?.kind === "skill" ? (
-              <Button size="sm" variant="tertiary" onClick={closeDetail}>
-                <Icon icon={ArrowLeftIcon} /> Back to Skills
-              </Button>
-            ) : undefined
-          }
-          title={
-            settings
-              ? "Settings"
-              : selectedProject
-                ? collectionLabel
-                : "Your projects"
-          }
-          instant={sidebarInstant}
-          collapsed={sidebarCollapsed}
-          onToggle={(instant) => {
-            setSidebarInstant(instant);
-            setSidebarCollapsed((current) => !current);
-          }}
-          repositoryFilter={
-            selectedProject &&
-            repositories.length > 1 &&
-            tab !== "home" &&
-            tab !== "members" ? (
-              <RepositoryFilter
-                key={`${workspaceScope}:${project}`}
-                repositories={repositories}
-                value={repository}
-                onChange={(value) => {
-                  index.setRepository(value);
-                  setResource("");
-                }}
+          <div className="sidebar-footer">
+            {updates?.update && (
+              <SidebarUpdate
+                key={updates.update.sha256}
+                update={updates.update}
+                collapsed={sidebarCollapsed}
               />
-            ) : undefined
-          }
-          status={
-            <SyncMenu
-              placement="header"
-              open={syncOpen}
-              onOpenChange={setSyncOpen}
-              key={project}
-              canConnect={Boolean(selectedProject)}
-              state={state}
-              attention={attention}
-              onReview={() => leaveSettings(() => openManagement("requests"))}
-              busy={busy}
-              actionError={error || refreshError}
-              onDismissError={error ? () => setError("") : undefined}
-              skillUsagePartial={skillUsage.usage?.partial}
-              onSync={() =>
-                void act(() => invoke("sync_now"), {
-                  successTitle: "Sync requested",
-                  kind: "queued",
-                  errorTitle: "Couldn’t request sync",
-                })
-              }
-              onRetry={() =>
-                void act(
-                  () => invoke("retry_uploads", { projectId: project || null }),
-                  {
-                    successTitle: "Upload retry requested",
-                    kind: "queued",
-                    errorTitle: "Couldn’t retry uploads",
-                  },
-                )
-              }
-              onResumeSetup={() =>
-                void act(
-                  () =>
-                    onboardingCommand(
-                      "resume-setup",
-                      {},
-                      { user: state.user, service: state.config?.apiUrl },
-                    ),
-                  { errorTitle: "Couldn’t reopen project setup" },
-                )
-              }
-              onSettings={() => openSettings("sync")}
-              onConnect={() => void act(() => connectProject(project))}
-              onOpen={(id) =>
-                leaveSettings(() => {
-                  openResource(id);
-                  const kind = state.resources.find(
-                    (r) => r.resourceId === id,
-                  )?.kind;
-                  if (kind) setTab(kind);
-                })
-              }
+            )}
+            <SidebarQuickAccess
+              settingsActive={Boolean(settings)}
+              collapsed={sidebarCollapsed}
+              onSettings={() => openSettings("general")}
+              onCreate={() => leaveSettings(() => setup.show("create"))}
+              onJoin={() => leaveSettings(() => setup.show("join"))}
             />
-          }
-        />
-        {settings ? (
-          <SettingsModal
-            ref={settingsNavigation}
-            key={workspaceScope}
-            state={state}
-            initialProjectId={project}
-            initialSection={settings}
-            onSectionChange={setSettings}
-            onManage={(id, section) => {
-              setProject(id);
-              setSettings(null);
-              openManagement(section);
+            <ProjectPicker
+              projects={state.projects}
+              projectId={project}
+              collapsed={sidebarCollapsed}
+              projectActions={(target) => {
+                const settingsAction = (
+                  id: string,
+                  label: string,
+                  section: SettingsSection,
+                ): ItemMenuAction => ({
+                  id,
+                  label,
+                  onSelect: () => openProjectSettings(target.id, section),
+                });
+                const actions: ItemMenuAction[] = [
+                  {
+                    id: "open",
+                    label: "Open project",
+                    onSelect: () =>
+                      leaveSettings(() => {
+                        setProject(target.id);
+                        setResource("");
+                        setEnvSet("");
+                        setTab("home");
+                      }),
+                  },
+                  {
+                    id: "link",
+                    label: "Copy project link",
+                    onSelect: () =>
+                      void act(
+                        () =>
+                          navigator.clipboard.writeText(
+                            `orka://project/${target.id}`,
+                          ),
+                        {
+                          successTitle: "Project link copied",
+                          errorTitle: "Couldn’t copy project link",
+                        },
+                      ),
+                  },
+                  settingsAction("settings", "Project settings…", "general"),
+                  settingsAction(
+                    "rename",
+                    target.role === "owner"
+                      ? "Rename project…"
+                      : "Rename on this Mac…",
+                    "general",
+                  ),
+                  settingsAction("members", "Members…", "members"),
+                  settingsAction("folders", "Source folders…", "folder"),
+                ];
+                if (target.role === "owner" || target.role === "admin")
+                  actions.push(
+                    settingsAction(
+                      "permissions",
+                      "Permissions…",
+                      "permissions",
+                    ),
+                  );
+                return actions;
+              }}
+              onProjectChange={(id) => {
+                const change = () => {
+                  setEnvSet("");
+                  setProject(id);
+                  setResource("");
+                  setGovernance(null);
+                };
+                if (settings && settingsNavigation.current)
+                  settingsNavigation.current.requestProject(id, change);
+                else change();
+              }}
+            />
+          </div>
+        </motion.aside>
+        <main>
+          <WorkspaceHeader
+            leading={
+              !settings && selected?.kind === "skill" ? (
+                <Button size="sm" variant="tertiary" onClick={closeDetail}>
+                  <Icon icon={ArrowLeftIcon} /> Back to Skills
+                </Button>
+              ) : undefined
+            }
+            title={
+              settings
+                ? "Settings"
+                : selectedProject
+                  ? collectionLabel
+                  : "Your projects"
+            }
+            instant={sidebarInstant}
+            collapsed={sidebarCollapsed}
+            onToggle={(instant) => {
+              setSidebarInstant(instant);
+              setSidebarCollapsed((current) => !current);
             }}
-            busy={busy}
-            run={run}
-            onSyncActivity={(id) => {
-              setProject(id);
-              setResource("");
-              setEnvSet("");
-              setTab("home");
-              setSettings(null);
-              setSyncOpen(true);
-            }}
-            onSignedOut={() => {
-              setSettings(null);
-              setResource("");
-              setEnvSet("");
-              setTab("home");
-            }}
-            onClose={() => {
-              setSettings(null);
-              requestAnimationFrame(() =>
-                document
-                  .querySelector<HTMLButtonElement>(
-                    '.sidebar-bottom button[aria-label="Settings"]',
-                  )
-                  ?.focus(),
-              );
-            }}
-          />
-        ) : !selectedProject ? (
-          <ProjectEmptyState
-            onCreate={() => leaveSettings(() => setup.show("create"))}
-            onJoin={() => leaveSettings(() => setup.show("join"))}
-          />
-        ) : (
-          <>
-            {!hasConnectedSource(selectedProject) &&
-              selected?.kind !== "skill" && (
-                <FolderConnectionPrompt
-                  projectName={projectLabel(selectedProject)}
-                  busy={busy}
-                  repositories={activeSources(selectedProject.sources).some(
-                    (source) => source.repository,
-                  )}
-                  onConnect={() =>
-                    activeSources(selectedProject.sources).some(
-                      (source) => source.repository,
-                    )
-                      ? openSettings("general")
-                      : void act(() => connectProject(project))
-                  }
-                />
-              )}
-            <Suspense
-              fallback={
-                <p className="content-message" role="status">
-                  Loading…
-                </p>
-              }
-            >
-              {tab === "members" ? (
-                <MembersPage
-                  key={project}
-                  project={selectedProject}
-                  state={state}
-                  section={managementSection}
-                  onSection={openManagement}
-                  onRefresh={refresh}
-                  onReviewFile={(resource) => setGovernance({ resource })}
-                />
-              ) : tab === "env" ? (
-                <EnvPage
-                  onSettings={() => openSettings("sharing")}
-                  onGovernance={(resource, title) =>
-                    setGovernance({ resource, env: { title } })
-                  }
-                  key={`${state.user}:${project}:${envSet}`}
-                  project={selectedProject}
-                  user={state.user!}
-                  initialSet={envSet}
-                  repository={repository}
-                />
-              ) : tab === "home" ? (
-                <ProjectHome
-                  scope={workspaceScope}
-                  project={selectedProject}
-                  user={state.user}
-                  resources={catalogResources}
-                  onNavigate={(kind) => {
-                    index.setRepository("all");
-                    setEnvSet("");
-                    setTab(kind);
+            repositoryFilter={
+              selectedProject &&
+              repositories.length > 1 &&
+              tab !== "home" &&
+              tab !== "members" ? (
+                <RepositoryFilter
+                  key={`${workspaceScope}:${project}`}
+                  repositories={repositories}
+                  value={repository}
+                  onChange={(value) => {
+                    index.setRepository(value);
                     setResource("");
                   }}
-                  onOpen={(item) => {
-                    setTab(item.kind);
-                    openResource(item.resourceId);
-                  }}
                 />
-              ) : selected ? (
-                <ResourceDetail
-                  key={`${workspaceScope}:${selected.resourceId}`}
-                  scope={workspaceScope}
-                  accessRequest={accessRequest}
-                  resource={selected}
-                  displayTitle={displayTitle(selected)}
-                  skillSummary={skillSummaries[skillSummaryKey(selected)]}
-                  project={selectedProject}
-                  user={state.user}
-                  deviceId={state.deviceId}
-                  busy={busy}
-                  conflicts={attention.items.flatMap((item) => item.conflicts)}
-                  view={view}
-                  act={act}
-                  state={state}
-                  offline={state.sync ? !state.sync.online : false}
-                  onRefresh={refresh}
-                  onBack={closeDetail}
-                  onGovernance={() =>
-                    selected.local
-                      ? openManagement("requests")
-                      : setGovernance({ resource: selected.resourceId })
-                  }
-                  onNotice={setNotice}
-                  onError={setError}
-                />
-              ) : (
-                <ResourceIndex
-                  key={`${workspaceScope}:${project}:${tab}`}
-                  floatingAction={
-                    tab === "skill" ? (
-                      <GlobalSkillImport
-                        key={`${workspaceScope}:${project}`}
-                        project={selectedProject}
-                        busy={busy}
-                        run={run}
-                        onReview={() => openManagement("requests")}
-                      />
-                    ) : undefined
-                  }
-                  accessRequest={accessRequest}
-                  skillSummaries={skillSummaries}
-                  skillUsage={tab === "skill" ? skillUsage : undefined}
-                  kind={tab}
-                  resources={resources}
-                  filters={{ ...index.filters[tab], repository }}
-                  onFilters={(next) => index.set(tab, next)}
-                  user={state.user}
-                  displayTitle={displayTitle}
-                  duplicateTitles={duplicateTitles}
-                  conflicted={conflicted}
-                  connected={hasConnectedSource(selectedProject)}
-                  noAccess={Boolean(
-                    selectedProject.governed &&
-                    selectedProject.role !== "owner" &&
-                    state.governance?.find((item) => item.projectId === project)
-                      ?.catalog.access[tab]?.mode === "hidden",
-                  )}
-                  loading={sessionTitles.loading}
-                  discovering={localCatalog.loading}
-                  discoveryErrors={localCatalog.errors}
-                  onRefreshLocal={localCatalog.refresh}
-                  status={
-                    sessionTitles.unavailable && !sessionTitles.loading ? (
-                      <div className="session-preview-status" role="status">
-                        <span>Some session titles are unavailable.</span>
-                        <Button
-                          size="sm"
-                          variant="tertiary"
-                          onClick={sessionTitles.retry}
-                        >
-                          Retry
-                        </Button>
-                      </div>
-                    ) : null
-                  }
-                  focusResource={returnFocus}
-                  onFocusHandled={clearReturnFocus}
-                  onOpen={openResource}
-                />
-              )}
-            </Suspense>
-          </>
+              ) : undefined
+            }
+            status={
+              <SyncMenu
+                placement="header"
+                open={syncOpen}
+                onOpenChange={setSyncOpen}
+                key={project}
+                canConnect={Boolean(selectedProject)}
+                state={state}
+                attention={attention}
+                onReview={() => leaveSettings(() => openManagement("requests"))}
+                busy={busy}
+                actionError={error || refreshError}
+                onDismissError={error ? () => setError("") : undefined}
+                skillUsagePartial={skillUsage.usage?.partial}
+                onSync={() =>
+                  void act(() => invoke("sync_now"), {
+                    successTitle: "Sync requested",
+                    kind: "queued",
+                    errorTitle: "Couldn’t request sync",
+                  })
+                }
+                onRetry={() =>
+                  void act(
+                    () =>
+                      invoke("retry_uploads", { projectId: project || null }),
+                    {
+                      successTitle: "Upload retry requested",
+                      kind: "queued",
+                      errorTitle: "Couldn’t retry uploads",
+                    },
+                  )
+                }
+                onResumeSetup={() =>
+                  void act(
+                    () =>
+                      onboardingCommand(
+                        "resume-setup",
+                        {},
+                        { user: state.user, service: state.config?.apiUrl },
+                      ),
+                    { errorTitle: "Couldn’t reopen project setup" },
+                  )
+                }
+                onSettings={() => openSettings("sync")}
+                onConnect={() => void act(() => connectProject(project))}
+                onOpen={(id) =>
+                  leaveSettings(() => {
+                    openResource(id);
+                    const kind = state.resources.find(
+                      (r) => r.resourceId === id,
+                    )?.kind;
+                    if (kind) setTab(kind);
+                  })
+                }
+              />
+            }
+          />
+          {settings ? (
+            <SettingsModal
+              ref={settingsNavigation}
+              key={workspaceScope}
+              state={state}
+              initialProjectId={settingsProject ?? project}
+              initialSection={settings}
+              onSectionChange={setSettings}
+              onManage={(id, section) => {
+                setProject(id);
+                setSettings(null);
+                openManagement(section);
+              }}
+              busy={busy}
+              run={run}
+              onSyncActivity={(id) => {
+                setProject(id);
+                setResource("");
+                setEnvSet("");
+                setTab("home");
+                setSettings(null);
+                setSyncOpen(true);
+              }}
+              onSignedOut={() => {
+                setSettings(null);
+                setResource("");
+                setEnvSet("");
+                setTab("home");
+              }}
+              onClose={() => {
+                setSettings(null);
+                requestAnimationFrame(() =>
+                  document
+                    .querySelector<HTMLButtonElement>(
+                      '.sidebar-bottom button[aria-label="Settings"]',
+                    )
+                    ?.focus(),
+                );
+              }}
+            />
+          ) : !selectedProject ? (
+            <ProjectEmptyState
+              onCreate={() => leaveSettings(() => setup.show("create"))}
+              onJoin={() => leaveSettings(() => setup.show("join"))}
+            />
+          ) : (
+            <>
+              {!hasConnectedSource(selectedProject) &&
+                selected?.kind !== "skill" && (
+                  <FolderConnectionPrompt
+                    projectName={projectLabel(selectedProject)}
+                    busy={busy}
+                    repositories={activeSources(selectedProject.sources).some(
+                      (source) => source.repository,
+                    )}
+                    onConnect={() =>
+                      activeSources(selectedProject.sources).some(
+                        (source) => source.repository,
+                      )
+                        ? openSettings("general")
+                        : void act(() => connectProject(project))
+                    }
+                  />
+                )}
+              <Suspense
+                fallback={
+                  <p className="content-message" role="status">
+                    Loading…
+                  </p>
+                }
+              >
+                {tab === "members" ? (
+                  <MembersPage
+                    key={project}
+                    project={selectedProject}
+                    state={state}
+                    section={managementSection}
+                    onSection={openManagement}
+                    onRefresh={refresh}
+                    onReviewFile={(resource) => setGovernance({ resource })}
+                  />
+                ) : tab === "env" ? (
+                  <EnvPage
+                    onSettings={() => openSettings("sharing")}
+                    onGovernance={(resource, title) =>
+                      setGovernance({ resource, env: { title } })
+                    }
+                    key={`${state.user}:${project}:${envSet}`}
+                    project={selectedProject}
+                    user={state.user!}
+                    initialSet={envSet}
+                    repository={repository}
+                  />
+                ) : tab === "home" ? (
+                  <ProjectHome
+                    scope={workspaceScope}
+                    project={selectedProject}
+                    user={state.user}
+                    resources={catalogResources}
+                    onNavigate={(kind) => {
+                      index.setRepository("all");
+                      setEnvSet("");
+                      setTab(kind);
+                      setResource("");
+                    }}
+                    onOpen={(item) => {
+                      setTab(item.kind);
+                      openResource(item.resourceId);
+                    }}
+                  />
+                ) : selected ? (
+                  <ResourceDetail
+                    key={`${workspaceScope}:${selected.resourceId}`}
+                    scope={workspaceScope}
+                    accessRequest={accessRequest}
+                    resource={selected}
+                    displayTitle={displayTitle(selected)}
+                    skillSummary={skillSummaries[skillSummaryKey(selected)]}
+                    project={selectedProject}
+                    user={state.user}
+                    deviceId={state.deviceId}
+                    busy={busy}
+                    conflicts={attention.items.flatMap(
+                      (item) => item.conflicts,
+                    )}
+                    view={view}
+                    act={act}
+                    state={state}
+                    offline={state.sync ? !state.sync.online : false}
+                    onRefresh={refresh}
+                    onBack={closeDetail}
+                    onGovernance={() =>
+                      selected.local
+                        ? openManagement("requests")
+                        : setGovernance({ resource: selected.resourceId })
+                    }
+                    onNotice={setNotice}
+                    onError={setError}
+                  />
+                ) : (
+                  <ResourceIndex
+                    key={`${workspaceScope}:${project}:${tab}`}
+                    floatingAction={
+                      tab === "skill" ? (
+                        <GlobalSkillImport
+                          key={`${workspaceScope}:${project}`}
+                          project={selectedProject}
+                          busy={busy}
+                          run={run}
+                          onReview={() => openManagement("requests")}
+                        />
+                      ) : undefined
+                    }
+                    accessRequest={accessRequest}
+                    skillSummaries={skillSummaries}
+                    skillUsage={tab === "skill" ? skillUsage : undefined}
+                    kind={tab}
+                    resources={resources}
+                    filters={{ ...index.filters[tab], repository }}
+                    onFilters={(next) => index.set(tab, next)}
+                    user={state.user}
+                    displayTitle={displayTitle}
+                    duplicateTitles={duplicateTitles}
+                    conflicted={conflicted}
+                    connected={hasConnectedSource(selectedProject)}
+                    noAccess={Boolean(
+                      selectedProject.governed &&
+                      selectedProject.role !== "owner" &&
+                      state.governance?.find(
+                        (item) => item.projectId === project,
+                      )?.catalog.access[tab]?.mode === "hidden",
+                    )}
+                    loading={sessionTitles.loading}
+                    discovering={localCatalog.loading}
+                    discoveryErrors={localCatalog.errors}
+                    onRefreshLocal={localCatalog.refresh}
+                    status={
+                      sessionTitles.unavailable && !sessionTitles.loading ? (
+                        <div className="session-preview-status" role="status">
+                          <span>Some session titles are unavailable.</span>
+                          <Button
+                            size="sm"
+                            variant="tertiary"
+                            onClick={sessionTitles.retry}
+                          >
+                            Retry
+                          </Button>
+                        </div>
+                      ) : null
+                    }
+                    focusResource={returnFocus}
+                    onFocusHandled={clearReturnFocus}
+                    onOpen={openResource}
+                  />
+                )}
+              </Suspense>
+            </>
+          )}
+          <ToastViewport />
+        </main>
+        {repositorySetupProject && !alreadyConnectedRepositories && (
+          <RepositoryConnections
+            key={`${workspaceScope}:${repositorySetup}`}
+            project={repositorySetupProject}
+            state={state}
+            refresh={refresh}
+            initiallyOpen
+            dialogOnly
+            initialSource={
+              unconnectedRepositories.length === 1
+                ? unconnectedRepositories[0]
+                : undefined
+            }
+            onClose={() => setRepositorySetup("")}
+            onConnecting={() => openSettings("general")}
+          />
         )}
-        <ToastViewport />
-      </main>
-      {repositorySetupProject && !alreadyConnectedRepositories && (
-        <RepositoryConnections
-          key={`${workspaceScope}:${repositorySetup}`}
-          project={repositorySetupProject}
-          state={state}
-          refresh={refresh}
-          initiallyOpen
-          dialogOnly
-          initialSource={
-            unconnectedRepositories.length === 1
-              ? unconnectedRepositories[0]
-              : undefined
-          }
-          onClose={() => setRepositorySetup("")}
-          onConnecting={() => openSettings("general")}
-        />
-      )}
-      {setup.dialog && (
-        <ProjectSetupDialog
-          mode={setup.dialog}
-          repositoryEnabled={setup.repositoryEnabled}
-          sourceMode={setup.sourceMode}
-          onSourceMode={setup.setSourceMode}
-          value={setup.input}
-          selection={setup.selection}
-          run={(action) => void act(action)}
-          sharing={setup.sharing}
-          onSharingChange={setup.setSharing}
-          busy={busy}
-          error={error}
-          onChange={setup.setInput}
-          onClose={setup.close}
-          onSubmit={() => void act(setup.submit)}
-          inviteService={setup.inviteService}
-          serviceMismatch={setup.serviceMismatch}
-          onSwitchService={() =>
-            void act(() => account.switchService(setup.inviteService))
-          }
-        />
-      )}
-      {governance !== null && selectedProject && governanceSkill && (
-        <SkillReviewOverlay
-          key={`${project}:${governanceSkill.resourceId}`}
-          mode="incoming"
-          project={selectedProject}
-          resource={governanceSkill}
-          state={state}
-          onClose={() => setGovernance(null)}
-          onRefresh={refresh}
-          onNotice={setNotice}
-        />
-      )}
-      {governance !== null && selectedProject && !governanceSkill && (
-        <GovernanceDialog
-          key={project}
-          project={selectedProject}
-          state={state}
-          initialResource={governance.resource}
-          initialEnv={governance.env}
-          onClose={() => setGovernance(null)}
-          onRefresh={refresh}
-        />
-      )}
-    </div>
+        {setup.dialog && (
+          <ProjectSetupDialog
+            mode={setup.dialog}
+            repositoryEnabled={setup.repositoryEnabled}
+            sourceMode={setup.sourceMode}
+            onSourceMode={setup.setSourceMode}
+            value={setup.input}
+            selection={setup.selection}
+            run={(action) => void act(action)}
+            sharing={setup.sharing}
+            onSharingChange={setup.setSharing}
+            busy={busy}
+            error={error}
+            onChange={setup.setInput}
+            onClose={setup.close}
+            onSubmit={() => void act(setup.submit)}
+            inviteService={setup.inviteService}
+            serviceMismatch={setup.serviceMismatch}
+            onSwitchService={() =>
+              void act(() => account.switchService(setup.inviteService))
+            }
+          />
+        )}
+        {governance !== null && selectedProject && governanceSkill && (
+          <SkillReviewOverlay
+            key={`${project}:${governanceSkill.resourceId}`}
+            mode={governance.mode ?? "incoming"}
+            project={selectedProject}
+            resource={governanceSkill}
+            state={state}
+            onClose={() => setGovernance(null)}
+            onRefresh={refresh}
+            onNotice={setNotice}
+          />
+        )}
+        {governance !== null && selectedProject && !governanceSkill && (
+          <GovernanceDialog
+            key={project}
+            project={selectedProject}
+            state={state}
+            initialResource={governance.resource}
+            initialEnv={governance.env}
+            onClose={() => setGovernance(null)}
+            onRefresh={refresh}
+          />
+        )}
+      </div>
+    </ResourceMenuProvider>
   );
 }

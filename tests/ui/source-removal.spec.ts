@@ -33,7 +33,7 @@ test("owner removes a source after review while retaining its historical metadat
     animations: "disabled",
   });
   await page
-    .getByRole("button", { name: "Remove source folder", exact: true })
+    .getByRole("menuitem", { name: "Remove source folder", exact: true })
     .click();
   const confirmation = page.getByRole("dialog", {
     name: "Remove source folder?",
@@ -57,7 +57,7 @@ test("owner removes a source after review while retaining its historical metadat
     .getByRole("button", { name: "Options for desktop", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Remove source folder", exact: true })
+    .getByRole("menuitem", { name: "Remove source folder", exact: true })
     .click();
   await confirmation
     .getByRole("button", { name: "Remove source folder", exact: true })
@@ -103,7 +103,7 @@ test("source removal failure keeps the source and retry visible", async ({
     .getByRole("button", { name: "Options for orka", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Remove source folder", exact: true })
+    .getByRole("menuitem", { name: "Remove source folder", exact: true })
     .click();
   const confirmation = page.getByRole("dialog", {
     name: "Remove source folder?",
@@ -138,10 +138,13 @@ test("members can disconnect stale folders and cannot remove project sources", a
     .getByRole("button", { name: "Options for orka", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Remove source folder", exact: true }),
+    page.getByRole("menuitem", { name: "Remove source folder", exact: true }),
   ).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Disconnect folder on this Mac", exact: true })
+    .getByRole("menuitem", {
+      name: "Disconnect folder on this Mac",
+      exact: true,
+    })
     .click();
   const confirmation = page.getByRole("dialog", {
     name: "Disconnect folder?",
@@ -189,10 +192,10 @@ test("queued changes prevent removal and disconnected removed sources remain hid
     .getByRole("button", { name: "Options for desktop", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Remove source folder", exact: true }),
+    page.getByRole("menuitem", { name: "Remove source folder", exact: true }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("button", {
+    page.getByRole("menuitem", {
       name: "Disconnect folder on this Mac",
       exact: true,
     }),
@@ -212,10 +215,10 @@ test("older services keep folder disconnection without offering unsupported remo
     .getByRole("button", { name: "Options for orka", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Remove source folder", exact: true }),
+    page.getByRole("menuitem", { name: "Remove source folder", exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", {
+    page.getByRole("menuitem", {
       name: "Disconnect folder on this Mac",
       exact: true,
     }),

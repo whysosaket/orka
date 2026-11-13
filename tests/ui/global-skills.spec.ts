@@ -832,7 +832,12 @@ test("first approval keeps one status pill and the local editor action", async (
   ]);
   await expect(info.getByRole("term")).toHaveText(["Updated by", "Updated at"]);
   await expect(info.locator(".skill-info-note")).toHaveCount(0);
-  await expect(info.getByRole("button")).toHaveText(["Open in editor"]);
+  await expect(info.locator(".skill-actions").getByRole("button")).toHaveText([
+    "Open in editor",
+  ]);
+  await expect(
+    info.getByRole("button", { name: "More skill actions", exact: true }),
+  ).toBeVisible();
   await expect(
     detail.getByText(
       "Project permissions require approval before this skill can be shared.",

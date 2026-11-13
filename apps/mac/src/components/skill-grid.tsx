@@ -1,4 +1,6 @@
 import React from "react";
+import { ResourceItemMenu } from "./resource-menu.js";
+import { ItemMenuButton } from "./item-menu.js";
 import { AlertIcon } from "@primer/octicons-react";
 import type { ProjectResource as Resource } from "../types.js";
 import { skillSummaryKey, type SkillSummaries } from "./use-skill-summaries.js";
@@ -38,65 +40,80 @@ export function SkillGrid({
         const summary = summaries[skillSummaryKey(skill)];
         const title = displayTitle(skill);
         return (
-          <button
-            key={skill.resourceId}
-            className="skill-card"
-            data-resource-id={skill.resourceId}
-            onClick={() => onOpen(skill.resourceId)}
-          >
-            <span className="skill-card-title">
-              <strong title={skill.title}>{title}</strong>
-              {skill.global && (
-                <span className="skill-origin-badge">Global</span>
-              )}
-            </span>
-            <RepositoryLabel name={skill.repositoryName} />
-            {duplicateTitles.has(title.toLocaleLowerCase()) && (
-              <small title={skill.logicalPath}>
-                {skill.logicalPath.split("/").slice(-2).join("/")}
-              </small>
+          <ResourceItemMenu key={skill.resourceId} resource={skill}>
+            {(actions) => (
+              <div className="resource-item-shell">
+                <button
+                  className="skill-card"
+                  data-resource-id={skill.resourceId}
+                  onClick={() => onOpen(skill.resourceId)}
+                >
+                  <span className="skill-card-title">
+                    <strong title={skill.title}>{title}</strong>
+                    {skill.global && (
+                      <span className="skill-origin-badge">Global</span>
+                    )}
+                  </span>
+                  <RepositoryLabel name={skill.repositoryName} />
+                  {duplicateTitles.has(title.toLocaleLowerCase()) && (
+                    <small title={skill.logicalPath}>
+                      {skill.logicalPath.split("/").slice(-2).join("/")}
+                    </small>
+                  )}
+                  {summary === undefined ? (
+                    <span
+                      className="skill-card-description-skeleton loading-fade"
+                      aria-hidden="true"
+                    >
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                  ) : summary?.description ? (
+                    <p className="skill-card-description">
+                      {summary.description}
+                    </p>
+                  ) : null}
+                  {conflicted.has(skill.resourceId) && (
+                    <span className="resource-conflict">
+                      <AlertIcon size={12} aria-hidden="true" />
+                      Needs resolution
+                    </span>
+                  )}
+                  <SkillUsageCount count={usageCounts?.[skill.resourceId]} />
+                  <span className="skill-card-meta">
+                    {skill.local ? (
+                      <span>{skillSharing(skill).label}</span>
+                    ) : (
+                      <SourceLabel source={skill.source} />
+                    )}
+                    {skill.files.length > 1 && (
+                      <span className="skill-card-files">
+                        {skill.files.length} files
+                      </span>
+                    )}
+                    <time
+                      dateTime={skill.updatedAt}
+                      title={`Updated ${new Date(skill.updatedAt).toLocaleString()}`}
+                    >
+                      {new Date(skill.updatedAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </time>
+                  </span>
+                </button>
+                {actions.length > 0 && (
+                  <div className="resource-item-more">
+                    <ItemMenuButton
+                      actions={actions}
+                      label={`Actions for ${title}`}
+                    />
+                  </div>
+                )}
+              </div>
             )}
-            {summary === undefined ? (
-              <span
-                className="skill-card-description-skeleton loading-fade"
-                aria-hidden="true"
-              >
-                <span />
-                <span />
-                <span />
-              </span>
-            ) : summary?.description ? (
-              <p className="skill-card-description">{summary.description}</p>
-            ) : null}
-            {conflicted.has(skill.resourceId) && (
-              <span className="resource-conflict">
-                <AlertIcon size={12} aria-hidden="true" />
-                Needs resolution
-              </span>
-            )}
-            <SkillUsageCount count={usageCounts?.[skill.resourceId]} />
-            <span className="skill-card-meta">
-              {skill.local ? (
-                <span>{skillSharing(skill).label}</span>
-              ) : (
-                <SourceLabel source={skill.source} />
-              )}
-              {skill.files.length > 1 && (
-                <span className="skill-card-files">
-                  {skill.files.length} files
-                </span>
-              )}
-              <time
-                dateTime={skill.updatedAt}
-                title={`Updated ${new Date(skill.updatedAt).toLocaleString()}`}
-              >
-                {new Date(skill.updatedAt).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                })}
-              </time>
-            </span>
-          </button>
+          </ResourceItemMenu>
         );
       })}
     </div>

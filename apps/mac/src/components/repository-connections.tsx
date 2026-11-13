@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   CheckCircleFillIcon,
   AlertFillIcon,
   DotFillIcon,
   FileDirectoryIcon,
-  KebabHorizontalIcon,
   PlusIcon,
   SyncIcon,
   XIcon,
@@ -16,7 +16,11 @@ import { PermissionSelect } from "./permission-select.js";
 import { IconButton } from "./icon-button.js";
 import { TextField } from "./text-field.js";
 import { Overlay } from "./overlay.js";
-import { ActionPopover } from "./resource-actions.js";
+import {
+  ItemContextMenu,
+  ItemMenuButton,
+  type ItemMenuAction,
+} from "./item-menu.js";
 import { connectProject } from "./use-project-setup.js";
 import {
   RepositoryPicker,
@@ -24,6 +28,7 @@ import {
 } from "./repository-picker.js";
 import { useRepositories, useRepositoryCommand } from "./use-repositories.js";
 import { activeSources } from "./project-sources.js";
+import { useToastNotice } from "./toasts.js";
 export { useRepositoryCommand } from "./use-repositories.js";
 
 type ConnectionDialog = {
@@ -80,6 +85,7 @@ export function RepositoryConnections({
   const [reason, setReason] = useState("");
   const [requested, setRequested] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
+  const notify = useToastNotice();
   const denied = Object.values(access).some(
     (value) => value.state === "access_unavailable",
   );
@@ -267,195 +273,254 @@ export function RepositoryConnections({
             : value
               ? AlertFillIcon
               : DotFillIcon;
+          const actions: ItemMenuAction[] = [];
+          if (active && job.state !== "connecting")
+            actions.push({
+              id: "cancel",
+              label: "Cancel clone",
+              onSelect: () =>
+                void run(async () => {
+                  await call("cancel-clone", { id: job.id });
+                }),
+            });
+          if (!active) {
+            if (connected) {
+              const input = {
+                accountId: state.user,
+                serviceOrigin: state.config?.apiUrl,
+                projectId: project.id,
+                sourceId: source.id,
+              };
+              actions.push(
+                {
+                  id: "reveal",
+                  label: "Show in Finder",
+                  disabled,
+                  onSelect: () =>
+                    void run(async () => {
+                      await invoke("resource_command", {
+                        action: "reveal",
+                        input,
+                      });
+                    }),
+                },
+                {
+                  id: "copy-path",
+                  label: "Copy folder path",
+                  disabled,
+                  onSelect: () =>
+                    void run(async () => {
+                      const result = await invoke<{ paths: string[] }>(
+                        "resource_command",
+                        { action: "paths", input },
+                      );
+                      await navigator.clipboard.writeText(
+                        result.paths.join("\n"),
+                      );
+                      notify("Folder path copied");
+                    }),
+                },
+              );
+            } else
+              actions.push({
+                id: "locate",
+                label: "Use existing folder",
+                disabled,
+                onSelect: () =>
+                  void run(async () => {
+                    await connectProject(
+                      project.id,
+                      source.id,
+                      source.path ?? undefined,
+                    );
+                    await refresh();
+                  }),
+              });
+            actions.push({
+              id: "github",
+              label: "Open repository on GitHub",
+              disabled,
+              onSelect: () =>
+                void run(async () => {
+                  await call("open-github", {
+                    url: `https://github.com/${source.repository!.fullName}`,
+                  });
+                }),
+            });
+            if (value && !ready)
+              actions.push({
+                id: "refresh",
+                label: "Refresh access",
+                disabled,
+                onSelect: () => void run(() => controller.recheck(source.id)),
+              });
+            if (source.path && onDisconnectSource)
+              actions.push({
+                id: "disconnect",
+                label: "Disconnect folder on this Mac",
+                separator: true,
+                disabled: disabled || queued > 0,
+                reason:
+                  queued > 0
+                    ? "Sync queued changes before disconnecting"
+                    : undefined,
+                onSelect: () => onDisconnectSource(source.id),
+              });
+            if (project.role === "owner")
+              actions.push({
+                id: "unlink",
+                label: "Remove GitHub link",
+                disabled,
+                danger: true,
+                separator: true,
+                onSelect: () =>
+                  void run(async () => {
+                    await call("unlink", {
+                      projectId: project.id,
+                      sourceId: source.id,
+                      expectedRevision:
+                        source.repositoryRevision ??
+                        source.repository!.revision,
+                    });
+                    await refresh();
+                  }),
+              });
+            if (project.role === "owner" && onRemoveSource)
+              actions.push({
+                id: "remove",
+                label: "Remove source folder",
+                danger: true,
+                disabled: disabled || queued > 0,
+                reason:
+                  queued > 0
+                    ? "Sync queued changes before removing a source"
+                    : undefined,
+                onSelect: () => onRemoveSource(source.id),
+              });
+          }
           return (
-            <div className="repository-card-row" key={source.id}>
-              <div className="repository-card-main">
-                <FileDirectoryIcon size={18} aria-hidden="true" />
-                <div className="repository-card-identity">
-                  <strong>{source.repository!.fullName}</strong>
-                  <span className="repository-card-meta">
-                    {active
-                      ? job.message
-                      : connected
-                        ? "Connected on this Mac"
-                        : source.folderState === "reconnect"
-                          ? "Folder needs reconnecting"
-                          : "Not connected on this Mac"}
-                  </span>
-                </div>
-                <span
-                  className="repository-access-icon"
-                  data-state={ready ? "ready" : value ? "warning" : "checking"}
-                  role="img"
-                  aria-label={label}
-                  title={`${label}${value?.checkedAt ? ` · ${new Date(value.checkedAt).toLocaleString()}` : ""}`}
-                >
-                  <StatusIcon size={16} />
-                </span>
-                <div className="repository-card-actions">
-                  {active ? (
-                    job.state !== "connecting" && (
-                      <IconButton
-                        icon={XIcon}
-                        size="sm"
-                        variant="tertiary"
-                        aria-label={`Cancel clone for ${source.name}`}
-                        title="Cancel clone"
-                        onClick={() =>
-                          void run(async () => {
-                            await call("cancel-clone", { id: job.id });
-                          })
-                        }
-                      />
-                    )
-                  ) : job?.folderIdentity && ready ? (
-                    <Button
-                      size="sm"
-                      disabled={disabled}
-                      onClick={() =>
-                        void run(async () => {
-                          await call("retry-connect", { id: job.id });
-                          await refresh();
-                        })
-                      }
-                    >
-                      Finish connecting
-                    </Button>
-                  ) : needsGithub ? null : denied ? (
-                    <Button
-                      size="sm"
-                      disabled={disabled || requested.includes(source.id)}
-                      onClick={() => {
-                        setReason("");
-                        setDialog({ kind: "request", source });
-                      }}
-                    >
-                      {requested.includes(source.id)
-                        ? "Request sent"
-                        : "Request access"}
-                    </Button>
-                  ) : failed ? (
-                    <IconButton
-                      icon={SyncIcon}
-                      size="sm"
-                      variant="tertiary"
-                      aria-label={`Retry access check for ${source.name}`}
-                      title="Retry access check"
-                      disabled={disabled}
-                      onClick={() =>
-                        void run(() => controller.recheck(source.id))
-                      }
-                    />
-                  ) : (
-                    !connected && (
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        disabled={disabled || !ready}
-                        onClick={() =>
-                          source.path
-                            ? void run(async () => {
-                                await connectProject(
-                                  project.id,
-                                  source.id,
-                                  source.path!,
-                                );
-                                await refresh();
-                              })
-                            : openPicker(source)
-                        }
-                      >
-                        {source.path ? "Reconnect" : "Connect"}
-                      </Button>
-                    )
-                  )}
-                  <ActionPopover
-                    label={`Options for ${source.name}`}
-                    trigger={
-                      <IconButton
-                        icon={KebabHorizontalIcon}
-                        size="sm"
-                        variant="secondary"
-                        className="repository-source-options"
-                        title={`Options for ${source.name}`}
-                        aria-label={`Options for ${source.name}`}
-                        disabled={disabled || Boolean(active)}
-                      />
+            <ItemContextMenu
+              key={source.id}
+              actions={actions}
+              label={`Options for ${source.name}`}
+            >
+              <div className="repository-card-row">
+                <div className="repository-card-main">
+                  <FileDirectoryIcon size={18} aria-hidden="true" />
+                  <div className="repository-card-identity">
+                    <strong>{source.repository!.fullName}</strong>
+                    <span className="repository-card-meta">
+                      {active
+                        ? job.message
+                        : connected
+                          ? "Connected on this Mac"
+                          : source.folderState === "reconnect"
+                            ? "Folder needs reconnecting"
+                            : "Not connected on this Mac"}
+                    </span>
+                  </div>
+                  <span
+                    className="repository-access-icon"
+                    data-state={
+                      ready ? "ready" : value ? "warning" : "checking"
                     }
+                    role="img"
+                    aria-label={label}
+                    title={`${label}${value?.checkedAt ? ` · ${new Date(value.checkedAt).toLocaleString()}` : ""}`}
                   >
-                    {!connected && (
+                    <StatusIcon size={16} />
+                  </span>
+                  <div className="repository-card-actions">
+                    {active ? (
+                      job.state !== "connecting" && (
+                        <IconButton
+                          icon={XIcon}
+                          size="sm"
+                          variant="tertiary"
+                          aria-label={`Cancel clone for ${source.name}`}
+                          title="Cancel clone"
+                          onClick={() =>
+                            void run(async () => {
+                              await call("cancel-clone", { id: job.id });
+                            })
+                          }
+                        />
+                      )
+                    ) : job?.folderIdentity && ready ? (
                       <Button
                         size="sm"
+                        disabled={disabled}
                         onClick={() =>
                           void run(async () => {
-                            await connectProject(
-                              project.id,
-                              source.id,
-                              source.path ?? undefined,
-                            );
+                            await call("retry-connect", { id: job.id });
                             await refresh();
                           })
                         }
                       >
-                        Use existing folder
+                        Finish connecting
                       </Button>
-                    )}
-                    {source.path && onDisconnectSource && (
+                    ) : needsGithub ? null : denied ? (
                       <Button
                         size="sm"
-                        disabled={queued > 0}
-                        onClick={() => onDisconnectSource(source.id)}
+                        disabled={disabled || requested.includes(source.id)}
+                        onClick={() => {
+                          setReason("");
+                          setDialog({ kind: "request", source });
+                        }}
                       >
-                        Disconnect folder on this Mac
+                        {requested.includes(source.id)
+                          ? "Request sent"
+                          : "Request access"}
                       </Button>
-                    )}
-                    {project.role === "owner" && onRemoveSource && (
-                      <Button
+                    ) : failed ? (
+                      <IconButton
+                        icon={SyncIcon}
                         size="sm"
-                        disabled={queued > 0}
-                        onClick={() => onRemoveSource(source.id)}
-                      >
-                        Remove source folder
-                      </Button>
-                    )}
-                    {value && !ready && (
-                      <Button
-                        size="sm"
+                        variant="tertiary"
+                        aria-label={`Retry access check for ${source.name}`}
+                        title="Retry access check"
+                        disabled={disabled}
                         onClick={() =>
                           void run(() => controller.recheck(source.id))
                         }
-                      >
-                        Refresh access
-                      </Button>
+                      />
+                    ) : (
+                      !connected && (
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          disabled={disabled || !ready}
+                          onClick={() =>
+                            source.path
+                              ? void run(async () => {
+                                  await connectProject(
+                                    project.id,
+                                    source.id,
+                                    source.path!,
+                                  );
+                                  await refresh();
+                                })
+                              : openPicker(source)
+                          }
+                        >
+                          {source.path ? "Reconnect" : "Connect"}
+                        </Button>
+                      )
                     )}
-                    {project.role === "owner" && (
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          void run(async () => {
-                            await call("unlink", {
-                              projectId: project.id,
-                              sourceId: source.id,
-                              expectedRevision:
-                                source.repositoryRevision ??
-                                source.repository!.revision,
-                            });
-                            await refresh();
-                          })
-                        }
-                      >
-                        Remove GitHub link
-                      </Button>
-                    )}
-                  </ActionPopover>
+                    <ItemMenuButton
+                      actions={actions}
+                      label={`Options for ${source.name}`}
+                      disabled={disabled}
+                    />
+                  </div>
                 </div>
+                {job && !active && (
+                  <p className="repository-job-feedback" role="status">
+                    {job.message}
+                  </p>
+                )}
               </div>
-              {job && !active && (
-                <p className="repository-job-feedback" role="status">
-                  {job.message}
-                </p>
-              )}
-            </div>
+            </ItemContextMenu>
           );
         })}
         {(needsAccountConnection || project.role === "owner") && (

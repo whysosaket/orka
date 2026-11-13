@@ -22,6 +22,7 @@ import {
   useRegisterFluidHoverItem,
 } from "../hooks/use-fluid-hover.js";
 import { FluidHoverHighlight } from "./fluid-hover-highlight.js";
+import { ItemContextMenu, type ItemMenuAction } from "./item-menu.js";
 
 const sections = [
   { kind: "home", label: "Home", icon: HomeIcon },
@@ -49,29 +50,36 @@ function ProjectOption({
   index,
   registerItem,
   onChoose,
+  actions,
 }: {
   project: Project;
   selected: boolean;
   index: number;
   registerItem: RegisterItem;
   onChoose: () => void;
+  actions: ItemMenuAction[];
 }) {
   const ref = React.useRef<HTMLButtonElement>(null);
   useRegisterFluidHoverItem(registerItem, index, ref);
   return (
-    <button
-      ref={ref}
-      type="button"
-      role="option"
-      aria-selected={selected}
-      tabIndex={selected ? 0 : -1}
-      className="project-menu-item"
-      onClick={onChoose}
+    <ItemContextMenu
+      actions={actions}
+      label={`Actions for ${projectLabel(project)}`}
     >
-      <FileDirectoryIcon size={16} aria-hidden="true" />
-      <span>{projectLabel(project)}</span>
-      {selected && <CheckIcon size={16} aria-hidden="true" />}
-    </button>
+      <button
+        ref={ref}
+        type="button"
+        role="option"
+        aria-selected={selected}
+        tabIndex={selected ? 0 : -1}
+        className="project-menu-item"
+        onClick={onChoose}
+      >
+        <FileDirectoryIcon size={16} aria-hidden="true" />
+        <span>{projectLabel(project)}</span>
+        {selected && <CheckIcon size={16} aria-hidden="true" />}
+      </button>
+    </ItemContextMenu>
   );
 }
 
@@ -80,11 +88,13 @@ export function ProjectPicker({
   projectId,
   collapsed,
   onProjectChange,
+  projectActions,
 }: {
   projects: Project[];
   projectId: string;
   collapsed: boolean;
   onProjectChange: (id: string) => void;
+  projectActions?: (project: Project) => ItemMenuAction[];
 }) {
   const selected = projects.find((p) => p.id === projectId);
   const label = selected ? projectLabel(selected) : "Select project";
@@ -105,6 +115,11 @@ export function ProjectPicker({
         [],
     );
   const onKeys = (event: React.KeyboardEvent) => {
+    if (
+      !(event.target instanceof Node) ||
+      !listRef.current?.contains(event.target)
+    )
+      return;
     const items = options(),
       index = items.indexOf(document.activeElement as HTMLButtonElement);
     if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
@@ -139,51 +154,68 @@ export function ProjectPicker({
         ?.focus();
     }
   };
+  const actions = (project: Project) =>
+    (projectActions?.(project) ?? []).map((action) => ({
+      ...action,
+      onSelect: () => {
+        setOpen(false);
+        action.onSelect();
+      },
+    }));
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          role="combobox"
-          aria-controls={open ? listId : undefined}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          className="project-selector"
-          data-selected={Boolean(selected)}
-          disabled={!projects.length}
-          aria-label={collapsed ? "Select project: " + label : "Select project"}
-          title={label}
-          onPointerDown={() => setKeyboard(false)}
-          onKeyDown={(event) => {
-            setKeyboard(true);
-            if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-              event.preventDefault();
-              focusEdge.current =
-                event.key === "Home"
-                  ? "first"
-                  : event.key === "End"
-                    ? "last"
-                    : null;
-              setOpen(true);
+      <ItemContextMenu
+        actions={selected ? actions(selected) : []}
+        label={
+          selected ? `Actions for ${projectLabel(selected)}` : "Project actions"
+        }
+      >
+        <Popover.Trigger asChild>
+          <button
+            type="button"
+            role="combobox"
+            aria-controls={open ? listId : undefined}
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            className="project-selector"
+            data-selected={Boolean(selected)}
+            disabled={!projects.length}
+            aria-label={
+              collapsed ? "Select project: " + label : "Select project"
             }
-          }}
-        >
-          <FileDirectoryIcon
-            className="project-selector-symbol"
-            size={16}
-            aria-hidden="true"
-          />
-          <span className="project-selector-label">{label}</span>
-          <motion.span
-            className="project-selector-chevron"
-            initial={false}
-            animate={{ rotate: open ? 180 : 0 }}
-            transition={reduced || keyboard ? { duration: 0 } : spring.fast}
+            title={label}
+            onPointerDown={() => setKeyboard(false)}
+            onKeyDown={(event) => {
+              setKeyboard(true);
+              if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                event.preventDefault();
+                focusEdge.current =
+                  event.key === "Home"
+                    ? "first"
+                    : event.key === "End"
+                      ? "last"
+                      : null;
+                setOpen(true);
+              }
+            }}
           >
-            <ChevronUpIcon size={16} aria-hidden="true" />
-          </motion.span>
-        </button>
-      </Popover.Trigger>
+            <FileDirectoryIcon
+              className="project-selector-symbol"
+              size={16}
+              aria-hidden="true"
+            />
+            <span className="project-selector-label">{label}</span>
+            <motion.span
+              className="project-selector-chevron"
+              initial={false}
+              animate={{ rotate: open ? 180 : 0 }}
+              transition={reduced || keyboard ? { duration: 0 } : spring.fast}
+            >
+              <ChevronUpIcon size={16} aria-hidden="true" />
+            </motion.span>
+          </button>
+        </Popover.Trigger>
+      </ItemContextMenu>
       <Popover.Portal forceMount>
         <AnimatePresence>
           {open && (
@@ -236,6 +268,7 @@ export function ProjectPicker({
                       selected={project.id === projectId}
                       index={index}
                       registerItem={hover.registerItem}
+                      actions={actions(project)}
                       onChoose={() => {
                         onProjectChange(project.id);
                         setOpen(false);

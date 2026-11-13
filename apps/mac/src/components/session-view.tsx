@@ -15,7 +15,9 @@ import { Icon } from "./icon.js";
 import { SourceLabel } from "./source-label.js";
 import { markdownComponents } from "./resource-content.js";
 import { useSessionMessages } from "./use-session-messages.js";
-import type { SessionMessage } from "../types.js";
+import type { SessionMessage, ProjectResource } from "../types.js";
+import { ResourceItemMenu } from "./resource-menu.js";
+import type { ItemMenuAction } from "./item-menu.js";
 import { LoadingRegion } from "./loading-region.js";
 
 const sampleMessages: SessionMessage[] = [
@@ -88,6 +90,8 @@ const SessionTurn = memo(function SessionTurn({
 });
 
 export interface SessionViewProps {
+  resource: ProjectResource;
+  menuActions?: ItemMenuAction[];
   id: string;
   revision: number;
   contentKey: string;
@@ -105,6 +109,8 @@ export interface SessionViewProps {
 
 /** Full-width reading view for one session with paged, windowed turns. */
 export function SessionView({
+  resource,
+  menuActions,
   id,
   revision,
   contentKey,
@@ -164,94 +170,98 @@ export function SessionView({
       loadMore();
   }, [hasMore, loading, error, lastVisible, messages.length, loadMore]);
   return (
-    <section
-      className="resource-detail resource-detail--session session-view"
-      aria-label="Session details"
-      ref={scrollRef}
-    >
-      {header}
-      {!conversation ? (
-        <div className="detail-body">{transcript}</div>
-      ) : (
-        <div
-          className="session-conversation"
-          aria-label="Conversation"
-          aria-busy={loading}
+    <ResourceItemMenu resource={resource} extraActions={menuActions}>
+      {() => (
+        <section
+          className="resource-detail resource-detail--session session-view"
+          aria-label="Session details"
+          ref={scrollRef}
         >
-          {removed && (
-            <p className="content-message">
-              This version removes the session from shared history.
-            </p>
-          )}
-          {error && (
-            <p className="content-message" role="alert">
-              {error}{" "}
-              <Button size="sm" variant="tertiary" onClick={retry}>
-                Retry
-              </Button>
-            </p>
-          )}
-          {!error && !removed && total === 0 && (
-            <p className="content-message">
-              No readable conversation messages. View the transcript for setup
-              and tool records.
-            </p>
-          )}
-          <LoadingRegion
-            id={`session:${id}:${revision}:${conflictId}`}
-            label="Loading messages…"
-            loading={initialLoading}
-          >
-            {initialLoading ? (
-              <div>
-                {sampleMessages.map((message) => (
-                  <SessionTurn
-                    key={message.index}
-                    message={message}
-                    raw={raw}
-                    source={source}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div
-                ref={listRef}
-                className="session-turns"
-                style={{ height: virtualizer.getTotalSize() }}
+          {header}
+          {!conversation ? (
+            <div className="detail-body">{transcript}</div>
+          ) : (
+            <div
+              className="session-conversation"
+              aria-label="Conversation"
+              aria-busy={loading}
+            >
+              {removed && (
+                <p className="content-message">
+                  This version removes the session from shared history.
+                </p>
+              )}
+              {error && (
+                <p className="content-message" role="alert">
+                  {error}{" "}
+                  <Button size="sm" variant="tertiary" onClick={retry}>
+                    Retry
+                  </Button>
+                </p>
+              )}
+              {!error && !removed && total === 0 && (
+                <p className="content-message">
+                  No readable conversation messages. View the transcript for
+                  setup and tool records.
+                </p>
+              )}
+              <LoadingRegion
+                id={`session:${id}:${revision}:${conflictId}`}
+                label="Loading messages…"
+                loading={initialLoading}
               >
-                {items.map((item) => (
-                  <div
-                    key={item.key}
-                    data-index={item.index}
-                    ref={virtualizer.measureElement}
-                    className="session-turn-slot"
-                    style={{
-                      transform: `translateY(${item.start - scrollMargin}px)`,
-                    }}
-                  >
-                    <SessionTurn
-                      message={messages[item.index]}
-                      raw={raw}
-                      source={source}
-                    />
+                {initialLoading ? (
+                  <div>
+                    {sampleMessages.map((message) => (
+                      <SessionTurn
+                        key={message.index}
+                        message={message}
+                        raw={raw}
+                        source={source}
+                      />
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-          </LoadingRegion>
-          {!error && hasMore && (
-            <div className="session-load-more">
-              {loading ? (
-                <span role="status">Loading messages…</span>
-              ) : (
-                <Button size="sm" variant="secondary" onClick={loadMore}>
-                  Show more messages
-                </Button>
+                ) : (
+                  <div
+                    ref={listRef}
+                    className="session-turns"
+                    style={{ height: virtualizer.getTotalSize() }}
+                  >
+                    {items.map((item) => (
+                      <div
+                        key={item.key}
+                        data-index={item.index}
+                        ref={virtualizer.measureElement}
+                        className="session-turn-slot"
+                        style={{
+                          transform: `translateY(${item.start - scrollMargin}px)`,
+                        }}
+                      >
+                        <SessionTurn
+                          message={messages[item.index]}
+                          raw={raw}
+                          source={source}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </LoadingRegion>
+              {!error && hasMore && (
+                <div className="session-load-more">
+                  {loading ? (
+                    <span role="status">Loading messages…</span>
+                  ) : (
+                    <Button size="sm" variant="secondary" onClick={loadMore}>
+                      Show more messages
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           )}
-        </div>
+        </section>
       )}
-    </section>
+    </ResourceItemMenu>
   );
 }

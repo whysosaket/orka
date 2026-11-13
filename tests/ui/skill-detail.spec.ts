@@ -707,9 +707,12 @@ test("first approval shows one pending pill and only local skill actions", async
   ]);
   await expect(info.locator(".skill-info-note")).toHaveCount(0);
   await expect(info.locator(".resource-access-request")).toHaveCount(0);
-  await expect(info.locator(".skill-info").getByRole("button")).toHaveText([
+  await expect(info.locator(".skill-actions").getByRole("button")).toHaveText([
     "Open in editor",
   ]);
+  await expect(
+    info.getByRole("button", { name: "More skill actions", exact: true }),
+  ).toBeVisible();
   await expect(
     info.getByRole("button", {
       name: /View changes|Copy skill link|Export ZIP|Review changes/,

@@ -1,21 +1,19 @@
 import { RepositoryRequests } from "../repository-connections.js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  HistoryIcon,
-  KebabHorizontalIcon,
-  MailIcon,
-  PersonAddIcon,
-} from "@primer/octicons-react";
+import { HistoryIcon, MailIcon, PersonAddIcon } from "@primer/octicons-react";
 import type { Project, ProjectMember, Snapshot } from "../../types.js";
 import {
   governanceCall,
   type GovernanceCatalog,
 } from "../project-permissions.js";
 import { Button } from "../button.js";
-import { IconButton } from "../icon-button.js";
 import { PermissionSelect } from "../permission-select.js";
 import { ProjectInviteDialog } from "../project-invite-dialog.js";
-import { ActionPopover } from "../resource-actions.js";
+import {
+  ItemContextMenu,
+  ItemMenuButton,
+  type ItemMenuAction,
+} from "../item-menu.js";
 import { Overlay } from "../overlay.js";
 import { LoadingRegion } from "../loading-region.js";
 import { ActivityIndicator } from "../activity-indicator.js";
@@ -113,56 +111,80 @@ export function MemberRows({
   );
   return (
     <ul className="settings-group settings-member-list">
-      {orderedMembers.map((member) => (
-        <li className="settings-member-row" key={member.id}>
-          <MemberIdentity member={member} user={user} userEmail={userEmail} />
-          {busy === member.id && <ActivityIndicator />}
-          <div className="settings-member-controls">
-            {roleEditable && member.role !== "owner" ? (
-              <PermissionSelect
-                label={`Role for ${member.name ?? member.id}`}
-                value={member.role}
-                options={[
-                  { value: "admin", label: "Admin" },
-                  { value: "member", label: "Member" },
-                ]}
-                disabled={Boolean(busy)}
-                onChange={(role) => onRole(member.id, role)}
+      {orderedMembers.map((member) => {
+        const label = `Actions for ${member.name ?? member.id}`;
+        const actions: ItemMenuAction[] = [];
+        if (roleEditable && member.role !== "owner")
+          actions.push({
+            id: "role",
+            label: "Change role",
+            onSelect: () => {},
+            children: ["admin", "member"].map((role) => ({
+              id: role,
+              label: roleName(role),
+              disabled: Boolean(busy) || member.role === role,
+              onSelect: () => onRole(member.id, role),
+            })),
+          });
+        if (
+          ((owner && member.role !== "owner") ||
+            (admin && member.role === "member")) &&
+          member.id !== user
+        ) {
+          if (roleEditable)
+            actions.push({
+              id: "transfer",
+              label: "Transfer ownership",
+              disabled: Boolean(busy),
+              onSelect: () => onTransfer(member),
+            });
+          actions.push({
+            id: "remove",
+            label: `Remove ${roleName(member.role)}`,
+            danger: true,
+            separator: actions.length > 0,
+            disabled: Boolean(busy),
+            onSelect: () => onRemove(member),
+          });
+        }
+        return (
+          <ItemContextMenu key={member.id} actions={actions} label={label}>
+            <li className="settings-member-row">
+              <MemberIdentity
+                member={member}
+                user={user}
+                userEmail={userEmail}
               />
-            ) : (
-              <span className="settings-member-role">
-                {roleName(member.role)}
-              </span>
-            )}
-            {((owner && member.role !== "owner") ||
-              (admin && member.role === "member")) &&
-              member.id !== user && (
-                <ActionPopover
-                  label={`Actions for ${member.name ?? member.id}`}
-                  trigger={
-                    <IconButton
-                      icon={KebabHorizontalIcon}
-                      variant="tertiary"
-                      size="sm"
-                      className="settings-member-menu"
-                      disabled={Boolean(busy)}
-                      aria-label={`Actions for ${member.name ?? member.id}`}
-                    />
-                  }
-                >
-                  <Button size="sm" onClick={() => onRemove(member)}>
-                    Remove {roleName(member.role)}
-                  </Button>
-                  {roleEditable && (
-                    <Button size="sm" onClick={() => onTransfer(member)}>
-                      Transfer ownership
-                    </Button>
-                  )}
-                </ActionPopover>
-              )}
-          </div>
-        </li>
-      ))}
+              {busy === member.id && <ActivityIndicator />}
+              <div className="settings-member-controls">
+                {roleEditable && member.role !== "owner" ? (
+                  <PermissionSelect
+                    label={`Role for ${member.name ?? member.id}`}
+                    value={member.role}
+                    options={[
+                      { value: "admin", label: "Admin" },
+                      { value: "member", label: "Member" },
+                    ]}
+                    disabled={Boolean(busy)}
+                    onChange={(role) => onRole(member.id, role)}
+                  />
+                ) : (
+                  <span className="settings-member-role">
+                    {roleName(member.role)}
+                  </span>
+                )}
+                {actions.length > 0 && (
+                  <ItemMenuButton
+                    actions={actions}
+                    label={label}
+                    disabled={Boolean(busy)}
+                  />
+                )}
+              </div>
+            </li>
+          </ItemContextMenu>
+        );
+      })}
     </ul>
   );
 }

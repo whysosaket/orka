@@ -257,7 +257,7 @@ func (a *API) handle(w http.ResponseWriter, r *http.Request) (any, bool, error) 
 		}
 		return tx(func(q *Queries) any { return s.putProfile(q, user, input) })
 	case path == "/v2/projects/capabilities" && method == http.MethodGet:
-		return Object{"lifecycle": 1, "governance": 1, "sources": 1, "sourcesRemoval": 1, "rename": 1, "rolePolicies": 1, "policyOperations": 1, "deviceHardware": 1, "selectedSharing": 1}, false, nil
+		return Object{"lifecycle": 1, "governance": 1, "sources": 1, "sourcesRemoval": 1, "rename": 1, "rolePolicies": 1, "policyOperations": 1, "deviceHardware": 1, "selectedSharing": 1, "resourceDeletion": 1}, false, nil
 	case path == "/v2/projects/sources/remove" && method == http.MethodPost:
 		input, err := contract("removeProjectSource")
 		if err != nil {

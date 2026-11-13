@@ -391,6 +391,18 @@ fn collect(
                 .as_str()
                 .is_some_and(|m| m != "publish"))
         {
+            // Acknowledged deletions reach the cache before native materialization.
+            // The unchanged installed base is not a new private edit during that scan.
+            if existing["deleted"] == true
+                && b["base"]["deleted"] != true
+                && b["base"]["revision"]
+                    .as_u64()
+                    .zip(existing["revision"].as_u64())
+                    .is_some_and(|(base, current)| base < current)
+                && manifest_hash(&json!(files)) == manifest_hash(&b["base"]["files"])
+            {
+                return Ok(());
+            }
             if !files.is_empty()
                 && manifest_hash(&json!(files)) != manifest_hash(&existing["files"])
             {
