@@ -59,6 +59,10 @@ Incoming knowledge lives at
 Legacy Orka cache copies are detached, retaining edits as private drafts.
 
 Review remaining private candidates under **Manage → Requests → Changes on this Mac**.
+**Review changes** opens a modal comparing the shared version with this Mac's
+changes, using per-file additions, deletions, and permission changes. Closing the
+modal keeps the private changes. A readable text diff remains available on older
+supported versions of macOS.
 Publishing permission offers **Publish update** without a second approval step.
 Own pending memory and skill requests from older clients finish automatically
 while their category's automatic sharing is enabled and the server permits review.

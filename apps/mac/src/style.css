@@ -1715,12 +1715,39 @@
   color: var(--text-secondary);
 }
 .governance-files {
+  display: grid;
+  gap: 16px;
   max-height: 360px;
   overflow: auto;
 }
-.governance-files .content {
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+.modal.changes-review-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(960px, calc(100vw - 48px));
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface-secondary);
+}
+.changes-review-body {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+  padding: 24px;
+  overflow-y: auto;
+}
+.changes-review-body h3,
+.changes-review-body p {
+  margin: 0;
+}
+.changes-review-body > [role="alert"] {
+  color: var(--status-error);
+}
+.changes-review-modal .governance-files {
+  max-height: none;
+  overflow: visible;
+}
+.changes-review-modal .review-footer {
+  flex-wrap: wrap;
 }
 
 .members-page {

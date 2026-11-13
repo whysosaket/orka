@@ -5,6 +5,7 @@ import { useToastNotice } from "./toasts.js";
 import { XIcon } from "@primer/octicons-react";
 import type { Project, Snapshot } from "../types.js";
 import { Overlay } from "./overlay.js";
+import { handleReviewTab } from "./review-focus.js";
 import { Button } from "./button.js";
 import { IconButton } from "./icon-button.js";
 import {
@@ -109,7 +110,13 @@ export function GovernanceDialog({
   const selected = resources.find((r) => r.resourceId === selectedResource);
   const title = initialEnv ? "Replace ENV set" : "Review local update";
   return (
-    <Overlay open onClose={onClose} title={title} className="governance-dialog">
+    <Overlay
+      open
+      onClose={onClose}
+      title={title}
+      className="governance-dialog"
+      onKeyDownCapture={handleReviewTab}
+    >
       <div className="actions">
         <h2>{title}</h2>
         <span className="spacer" />
@@ -225,6 +232,8 @@ export function GovernanceDialog({
                             <FileReview
                               files={preview.after}
                               before={preview.before}
+                              beforeManifest={preview.beforeManifest}
+                              afterManifest={preview.afterManifest}
                             />
                             {preview.copies
                               ?.slice(1)
@@ -239,6 +248,8 @@ export function GovernanceDialog({
                                   <FileReview
                                     files={preview.after}
                                     before={c.files}
+                                    beforeManifest={c.manifest}
+                                    afterManifest={preview.afterManifest}
                                   />
                                 </section>
                               ))}

@@ -125,6 +125,8 @@ export interface FileDiffCardProps {
   binary?: boolean;
   comparisonUnavailable?: boolean;
   executableChange?: FileChange["executableChange"];
+  showRemovedContent?: boolean;
+  fallback?: React.ReactNode;
 }
 
 /** One unified, read-only comparison with collapsible unchanged regions. */
@@ -136,6 +138,8 @@ export function FileDiffCard({
   binary = false,
   comparisonUnavailable = false,
   executableChange,
+  showRemovedContent = false,
+  fallback,
 }: FileDiffCardProps) {
   const kind = fileKind(path);
   const textPreview = !binary && kind.label !== "PDF";
@@ -192,7 +196,7 @@ export function FileDiffCard({
       {!removed && !textPreview && (
         <p className="diff-card-summary">No text preview for this file.</p>
       )}
-      {!removed && textPreview && before !== after && (
+      {(!removed || showRemovedContent) && textPreview && before !== after && (
         <div className="diff-lines" role="group" aria-label="File changes">
           {supported ? (
             <Suspense
@@ -209,6 +213,8 @@ export function FileDiffCard({
                 context={context}
               />
             </Suspense>
+          ) : fallback ? (
+            fallback
           ) : (
             <p className="diff-card-summary" role="status">
               Diff preview unavailable in this macOS webview. Use Open in editor

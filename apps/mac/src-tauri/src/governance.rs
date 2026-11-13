@@ -753,7 +753,8 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
                 let can_publish = matches!(draft["resource"]["kind"].as_str(), Some("memory" | "skill")) && crate::context_sharing::publication_mode(&db,project_id,&draft["resource"])? == "publish";
                 let prepared=crate::context_sharing::publication_resource(&db,project_id,&draft["resource"])?;
                 let current=db::rows(&db,"SELECT value FROM resources WHERE id=? AND project=?", &[&prepared["resourceId"].as_str(),&project_id])?.into_iter().next().unwrap_or(Value::Null);
-                return Ok(json!({"draft":draft,"files":files,"manifest":manifest,"related":related,"canPublish":can_publish,"baseRevision":current["revision"].as_u64().unwrap_or(0),"before":if current["files"].is_array(){texts(&current["files"])?}else{json!({})}}));
+                let (before,before_manifest)=if current["files"].is_array(){preview_files(&current["files"])?}else{(json!({}),json!([]))};
+                return Ok(json!({"draft":draft,"files":files,"manifest":manifest,"beforeManifest":before_manifest,"related":related,"canPublish":can_publish,"baseRevision":current["revision"].as_u64().unwrap_or(0),"before":before}));
             }
             if let Some(files) = input.get("reviewedFiles") {
                 if !files.is_array() || files != &draft["resource"]["files"]
@@ -864,8 +865,14 @@ pub async fn governance_command(action: String, input: Value) -> Result<Value> {
                 &json!({"projectId":project_id,"files":r["files"]}),
             )
             .await?;
+            let (files, manifest) = preview_files(&r["files"])?;
+            let (before, before_manifest) = if result["base"]["files"].is_array() {
+                preview_files(&result["base"]["files"])?
+            } else {
+                (json!({}), json!([]))
+            };
             return Ok(
-                json!({"request":result["request"],"content":result["content"],"audience":result["audience"],"files":texts(&r["files"])?,"before":if result["base"]["files"].is_array(){texts(&result["base"]["files"])?}else{json!({})}}),
+                json!({"request":result["request"],"content":result["content"],"audience":result["audience"],"files":files,"manifest":manifest,"before":before,"beforeManifest":before_manifest}),
             );
         }
     }
