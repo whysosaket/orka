@@ -1248,9 +1248,11 @@ test("a stale preview asks for a fresh review before installing", async ({
   await dialog
     .getByRole("button", { name: "Install update", exact: true })
     .click();
-  await expect(dialog.getByRole("status")).toHaveText(
-    "Files changed since this preview.",
-  );
+  await expect(
+    dialog
+      .getByRole("status")
+      .filter({ hasText: "Files changed since this preview." }),
+  ).toHaveText("Files changed since this preview.");
   await expect(
     dialog.getByRole("button", { name: "Install update" }),
   ).toHaveCount(0);
