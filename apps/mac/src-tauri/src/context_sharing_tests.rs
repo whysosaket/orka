@@ -516,3 +516,135 @@ fn owners_submit_memory_directly_and_legacy_pending_requests_finish_without_self
         change["value"]["resource"]["resourceId"]
     );
 }
+
+#[test]
+fn plugin_retries_keep_frozen_context_queues_eligible_without_unblocking_legacy_uploads() {
+    let f = fixture("owner");
+    fs::write(f.root.join("AGENTS.md"), "Frozen instructions\n").unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    let frozen = queued(&f);
+    assert_eq!(frozen["path"], context_sharing::QUEUE_PATH);
+    let original = f.outbox();
+    let legacy_id = uuid::Uuid::new_v4().to_string();
+    let mut legacy = frozen["value"].clone();
+    legacy["id"] = json!(legacy_id);
+    f.db.execute(
+        "INSERT INTO outbox VALUES(?,?,?,?,NULL)",
+        rusqlite::params![
+            legacy_id,
+            f.project["id"].as_str(),
+            format!("{}-other", context_sharing::QUEUE_PATH),
+            legacy.to_string()
+        ],
+    )
+    .unwrap();
+    governance::block_legacy_retry(&f.db, &f.project).unwrap();
+    let errors = db::rows(
+        &f.db,
+        "SELECT json_object('id',id,'error',error) FROM outbox ORDER BY rowid",
+        &[],
+    )
+    .unwrap();
+    assert_eq!(errors[0]["id"], frozen["id"]);
+    assert_eq!(errors[0]["error"], Value::Null);
+    assert!(errors[1]["error"].as_str().unwrap().starts_with("409:"));
+    assert_eq!(f.outbox()[0], original[0]);
+    context_sharing::check_upload_eligibility(&f.db, &frozen).unwrap();
+}
+
+#[test]
+fn ignored_frozen_instructions_stop_before_upload_and_preserve_the_exact_queue() {
+    let f = fixture("owner");
+    db::set(&f.db, "config", &json!({"apiUrl":"invalid-fixture-origin"})).unwrap();
+    assert!(std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(&f.root)
+        .status()
+        .unwrap()
+        .success());
+    fs::write(f.root.join("AGENTS.md"), "Frozen original source\n").unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    let frozen = queued(&f);
+    let before = db::rows(
+        &f.db,
+        "SELECT json_object('id',id,'raw',value) FROM outbox",
+        &[],
+    )
+    .unwrap();
+    let drafts = db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap();
+    fs::write(f.root.join("AGENTS.md"), "Later private source\n").unwrap();
+    fs::write(f.root.join(".gitignore"), "AGENTS.md\n").unwrap();
+    let owner = db::get(&f.db, "user").unwrap();
+    let error = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(context_sharing::upload(
+            &f.db,
+            owner.as_str().unwrap(),
+            &frozen,
+        ))
+        .unwrap_err();
+    assert!(
+        error.starts_with("409: Queued instruction is now ignored"),
+        "{error}"
+    );
+    assert_eq!(
+        db::rows(
+            &f.db,
+            "SELECT json_object('id',id,'raw',value) FROM outbox",
+            &[]
+        )
+        .unwrap(),
+        before
+    );
+    assert_eq!(
+        db::rows(&f.db, "SELECT value FROM drafts", &[]).unwrap(),
+        drafts
+    );
+    assert_eq!(
+        fs::read_to_string(f.root.join("AGENTS.md")).unwrap(),
+        "Later private source\n"
+    );
+    let mut selected = frozen;
+    selected["path"] = json!(crate::selective_sharing::QUEUE_PATH);
+    context_sharing::check_upload_eligibility(&f.db, &selected).unwrap();
+}
+
+#[test]
+fn queued_instruction_eligibility_uses_its_frozen_resource_instead_of_the_latest_draft() {
+    let f = fixture("owner");
+    assert!(std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(&f.root)
+        .status()
+        .unwrap()
+        .success());
+    fs::write(f.root.join("CLAUDE.md"), "Frozen allowed source\n").unwrap();
+    indexer::scan(&f.db, &f.project).unwrap();
+    let frozen = queued(&f);
+    let project = f.project["id"].as_str().unwrap();
+    let draft_id = frozen["value"]["contextDraft"].as_str().unwrap();
+    let mut newer = db::rows(&f.db, "SELECT value FROM drafts WHERE id=?", &[&draft_id])
+        .unwrap()
+        .remove(0);
+    let newer_id = uuid::Uuid::new_v4().to_string();
+    newer["id"] = json!(newer_id);
+    newer["resource"]["logicalPath"] = json!("instructions/AGENTS.md");
+    newer["updatedAt"] = json!("9999-01-01T00:00:00Z");
+    db::upsert(&f.db, "drafts", &newer_id, project, &newer).unwrap();
+    fs::write(f.root.join("AGENTS.md"), "Newer ignored source\n").unwrap();
+    fs::write(f.root.join(".gitignore"), "AGENTS.md\n").unwrap();
+    assert_eq!(
+        governance::latest_draft(
+            &f.db,
+            project,
+            frozen["value"]["resource"]["resourceId"].as_str().unwrap()
+        )
+        .unwrap()
+        .unwrap()["id"],
+        newer_id
+    );
+    context_sharing::check_upload_eligibility(&f.db, &frozen).unwrap();
+    fs::write(f.root.join(".gitignore"), "CLAUDE.md\n").unwrap();
+    assert!(context_sharing::check_upload_eligibility(&f.db, &frozen).is_err());
+    assert_eq!(queued(&f), frozen);
+}

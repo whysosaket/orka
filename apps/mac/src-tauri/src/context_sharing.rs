@@ -4,9 +4,44 @@ use crate::{
 };
 use rusqlite::Connection;
 use serde_json::{json, Value};
+use std::path::Path;
 use uuid::Uuid;
 
 pub const QUEUE_PATH: &str = "/local/context-share";
+
+pub(crate) fn check_upload_eligibility(db: &Connection, queued: &Value) -> Result<()> {
+    if queued["path"] != QUEUE_PATH {
+        return Ok(());
+    }
+    let resource = &queued["value"]["resource"];
+    let Some(relative) = resource["logicalPath"]
+        .as_str()
+        .filter(|_| resource["kind"] == "memory")
+        .and_then(|path| path.strip_prefix("instructions/"))
+    else {
+        return Ok(());
+    };
+    let project = governance::project(db, queued["project"].as_str().ok_or("Missing project")?)?;
+    let source = crate::sources::for_resource(&project, resource)
+        .ok_or("409: Reconnect the queued instruction's repository before retrying; original queued bytes and request ID preserved")?;
+    crate::sources::validate(&source)?;
+    let root = Path::new(source["path"].as_str().ok_or("Missing source folder")?);
+    let instructions = indexer::instruction_files(root)?;
+    if !indexer::instruction_allowed(root, Path::new(relative), &instructions)? {
+        return Err("409: Queued instruction is now ignored or excluded; review its source in Orka before retrying. Original queued bytes and request ID preserved".into());
+    }
+    Ok(())
+}
+
+pub(crate) async fn upload(db: &Connection, owner: &str, queued: &Value) -> Result<()> {
+    check_upload_eligibility(db, queued)?;
+    crate::repair::upload(
+        owner,
+        queued["project"].as_str().ok_or("Missing project")?,
+        &queued["value"]["resource"],
+    )
+    .await
+}
 
 pub fn publication_id(db: &Connection, project: &str, resource: &Value) -> Result<String> {
     let original = resource["resourceId"].as_str().ok_or("Missing resource")?;

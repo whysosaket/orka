@@ -171,7 +171,7 @@ fn git_instruction_allowed(path: &Path) -> Result<Option<bool>> {
     }
 }
 
-fn instruction_files(root: &Path) -> Result<BTreeSet<PathBuf>> {
+pub(crate) fn instruction_files(root: &Path) -> Result<BTreeSet<PathBuf>> {
     let unversioned = if has_git_repository(root) {
         BTreeSet::new()
     } else {
@@ -205,6 +205,21 @@ fn instruction_files(root: &Path) -> Result<BTreeSet<PathBuf>> {
         files.insert(relative.to_path_buf());
     }
     Ok(files)
+}
+
+pub(crate) fn instruction_allowed(
+    root: &Path,
+    relative: &Path,
+    instructions: &BTreeSet<PathBuf>,
+) -> Result<bool> {
+    packages::safe_relative(relative.to_str().ok_or("Invalid instruction path")?)?;
+    let path = root.join(relative);
+    Ok(memory_context::discoverable(relative)
+        && if path.try_exists().map_err(|error| error.to_string())? {
+            instructions.contains(relative)
+        } else {
+            git_instruction_allowed(&path)?.unwrap_or(true)
+        })
 }
 pub fn manifest_hash(files: &Value) -> String {
     db::digest(files.to_string().as_bytes())
@@ -877,13 +892,7 @@ fn scan_source(db: &rusqlite::Connection, project: &Value, report_progress: bool
         else {
             continue;
         };
-        let path = root.join(relative);
-        let allowed = memory_context::discoverable(Path::new(relative))
-            && if path.try_exists().map_err(|e| e.to_string())? {
-                instructions.contains(Path::new(relative))
-            } else {
-                git_instruction_allowed(&path)?.unwrap_or(true)
-            };
+        let allowed = instruction_allowed(&root, Path::new(relative), &instructions)?;
         if !allowed {
             ignored_drafts.push(draft);
         }

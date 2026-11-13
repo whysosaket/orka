@@ -1034,7 +1034,7 @@ async fn sync_workspace(
         }
         if p["governed"] == true {
             let id = p["id"].as_str().ok_or("Missing project")?;
-            let result = async {
+            let result: Result<()> = async {
                 let local = crate::governance::project(db, id)?;
                 if project_filter.is_none() {
                     crate::governance::localize_outbox(db, &local)?;
@@ -1049,7 +1049,11 @@ async fn sync_workspace(
                 )
                 .await?;
                 db::set(db, &format!("governance:{id}"), &catalog)?;
-                crate::context_sharing::approve_own_pending(db, owner, &local, &catalog).await
+                if project_filter.is_none() {
+                    crate::context_sharing::approve_own_pending(db, owner, &local, &catalog)
+                        .await?;
+                }
+                Ok(())
             }
             .await;
             if result.as_ref().is_err_and(|e| service_error(e)) {
@@ -1120,7 +1124,9 @@ async fn sync_workspace(
             if q["path"] == crate::selective_sharing::QUEUE_PATH {
                 return crate::selective_sharing::send(db, owner, q).await;
             }
-            if input["resource"]["files"].is_array() {
+            if q["path"] == crate::context_sharing::QUEUE_PATH {
+                crate::context_sharing::upload(db, owner, q).await?;
+            } else if input["resource"]["files"].is_array() {
                 crate::repair::upload(
                     owner,
                     q["project"].as_str().ok_or("Missing project")?,
@@ -1269,11 +1275,13 @@ async fn sync_workspace(
         }
         // Prepare unsent context only after pending approvals and accepted
         // revisions have arrived; exact-base resources must not freeze early.
-        record_result(
-            db,
-            &format!("{project}:sharing"),
-            crate::context_sharing::queue_waiting(db, p),
-        )?;
+        if project_filter.is_none() {
+            record_result(
+                db,
+                &format!("{project}:sharing"),
+                crate::context_sharing::queue_waiting(db, p),
+            )?;
+        }
         if db::get(&db::open()?, "user")? != owner {
             return Err("Account changed; sync will restart with its own cache".into());
         }
