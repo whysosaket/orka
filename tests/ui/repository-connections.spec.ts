@@ -548,47 +548,63 @@ for (const width of [1160, 900])
     ).toBe(true);
   });
 
-test("discovery is account, repository, and one connect action", async ({
-  page,
-}, info) => {
-  await fixture(page);
-  await panel(page)
-    .getByRole("button", { name: "Connect repository", exact: true })
-    .click();
-  await expect(
-    picker(page).getByRole("combobox", { name: "GitHub account" }),
-  ).toHaveText("fixtures");
-  await choose(
+for (const width of [1160, 900])
+  test(`discovery is account, repository, and one connect action at ${width}`, async ({
     page,
-    picker(page).getByRole("combobox", { name: "Repository", exact: true }),
-    "8484",
-  );
-  await expect(picker(page).getByRole("combobox")).toHaveCount(2);
-  await expect(
-    picker(page).getByRole("button", {
-      name: /Disconnect GitHub|Connect another GitHub account|Manage GitHub access/,
-    }),
-  ).not.toBeVisible();
-  await capture(page, info, "discovery-after");
-  expect(
-    (await new AxeBuilder({ page }).include('[role="dialog"]').analyze())
-      .violations,
-  ).toEqual([]);
-  await picker(page)
-    .getByRole("button", { name: "Connect repository", exact: true })
-    .click();
-  await expect(picker(page)).toHaveCount(0);
-  const operations = await calls(page);
-  expect(
-    operations.find((call) => call.action === "add-source")?.input,
-  ).toEqual({ projectId: "project", repositoryId: "8484" });
-  expect(operations.find((call) => call.action === "clone")?.input).toEqual({
-    projectId: "project",
-    sourceId: "added",
-    directory: "/local/Orka",
-    folderName: "web-app",
+  }, info) => {
+    await page.setViewportSize({ width, height: width === 900 ? 640 : 800 });
+    await fixture(page);
+    await panel(page)
+      .getByRole("button", { name: "Connect repository", exact: true })
+      .click();
+    await expect(
+      picker(page).getByRole("combobox", { name: "GitHub account" }),
+    ).toHaveText("fixtures");
+    await choose(
+      page,
+      picker(page).getByRole("combobox", { name: "Repository", exact: true }),
+      "8484",
+    );
+    await expect(picker(page).getByRole("combobox")).toHaveCount(2);
+    await expect(
+      picker(page).getByRole("button", {
+        name: /Disconnect GitHub|Connect another GitHub account|Manage GitHub access/,
+      }),
+    ).not.toBeVisible();
+    const primary = picker(page).getByRole("button", {
+      name: "Connect repository",
+      exact: true,
+    });
+    const secondary = picker(page).getByRole("button", {
+      name: "Use Local Folder",
+      exact: true,
+    });
+    const primaryBox = await primary.boundingBox();
+    const secondaryBox = await secondary.boundingBox();
+    expect(primaryBox).not.toBeNull();
+    expect(secondaryBox).not.toBeNull();
+    expect(Math.abs(primaryBox!.y - secondaryBox!.y)).toBeLessThanOrEqual(1);
+    expect(secondaryBox!.x + secondaryBox!.width).toBeLessThan(primaryBox!.x);
+    await capture(page, info, `discovery-after-${width}`);
+    expect(
+      (await new AxeBuilder({ page }).include('[role="dialog"]').analyze())
+        .violations,
+    ).toEqual([]);
+    await picker(page)
+      .getByRole("button", { name: "Connect repository", exact: true })
+      .click();
+    await expect(picker(page)).toHaveCount(0);
+    const operations = await calls(page);
+    expect(
+      operations.find((call) => call.action === "add-source")?.input,
+    ).toEqual({ projectId: "project", repositoryId: "8484" });
+    expect(operations.find((call) => call.action === "clone")?.input).toEqual({
+      projectId: "project",
+      sourceId: "added",
+      directory: "/local/Orka",
+      folderName: "web-app",
+    });
   });
-});
 
 test("a failed clone retains its repository binding for retry", async ({
   page,

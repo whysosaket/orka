@@ -132,7 +132,6 @@
     @apply text-heading-md tracking-widest;
   }
   .repository-local-option {
-    @apply w-full;
     outline: 1px solid var(--surface-stroke);
     outline-offset: -1px;
   }

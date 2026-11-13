@@ -594,61 +594,66 @@ export function RepositoryPicker({
                   : "Your existing folder will be linked to GitHub. No clone is needed."}
             </p>
           )}
-          <div className="repository-dialog-footer">
-            {!connected &&
-              (sourceAccess?.state === "access_unavailable" ? (
-                <Button
-                  variant="primary"
-                  disabled={busy}
-                  onClick={() => source && onRequestAccess(source)}
-                >
-                  Request access
-                </Button>
-              ) : sourceAccess?.state === "unavailable" ? (
-                <Button
-                  disabled={busy}
-                  onClick={() => void run(() => controller.recheck(source!.id))}
-                >
-                  Retry access check
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  disabled={
-                    busy ||
-                    loading ||
-                    checkingFolder ||
-                    Boolean(duplicateBinding) ||
-                    Boolean(loadError || matchingError) ||
-                    !selected ||
-                    !canConnectSource ||
-                    (!existing?.path && (!directory || !name))
-                  }
-                  onClick={() => void connect()}
-                >
-                  {busy
-                    ? "Connecting…"
-                    : !canConnectSource
-                      ? "Checking access…"
-                      : "Connect repository"}
-                </Button>
-              ))}
-          </div>
         </>
       )}
-      {onLocalFolder && !source && !authorization && (
-        <Button
-          className="repository-local-option"
-          variant="primary"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              if (await onLocalFolder()) onConnected();
-            })
-          }
-        >
-          Use a local folder instead
-        </Button>
+      {((onLocalFolder && !source && !authorization) ||
+        (status && !needsAuth && !connected)) && (
+        <div className="repository-dialog-footer">
+          {onLocalFolder && !source && !authorization && (
+            <Button
+              className="repository-local-option"
+              variant="secondary"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  if (await onLocalFolder()) onConnected();
+                })
+              }
+            >
+              Use Local Folder
+            </Button>
+          )}
+          {status &&
+            !needsAuth &&
+            !connected &&
+            (sourceAccess?.state === "access_unavailable" ? (
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() => source && onRequestAccess(source)}
+              >
+                Request access
+              </Button>
+            ) : sourceAccess?.state === "unavailable" ? (
+              <Button
+                disabled={busy}
+                onClick={() => void run(() => controller.recheck(source!.id))}
+              >
+                Retry access check
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                disabled={
+                  busy ||
+                  loading ||
+                  checkingFolder ||
+                  Boolean(duplicateBinding) ||
+                  Boolean(loadError || matchingError) ||
+                  !selected ||
+                  !canConnectSource ||
+                  (!existing?.path && (!directory || !name))
+                }
+                onClick={() => void connect()}
+              >
+                {busy
+                  ? "Connecting…"
+                  : !canConnectSource
+                    ? "Checking access…"
+                    : "Connect repository"}
+              </Button>
+            ))}
+        </div>
       )}
       {(error || loadError || matchingError) && (
         <p role="alert">{error || loadError || matchingError}</p>

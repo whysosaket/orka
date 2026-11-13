@@ -26,8 +26,8 @@ The picker normally asks only for the account and repository. It shows the clone
 destination, defaulting to `~/Orka/<repository>`. Open **Change location** only if
 you want another directory or checkout name. A folder already connected on this
 Mac stays connected and has no clone action. Existing local source folders can
-use **⋯ → Link GitHub repository** without cloning again. **Use a local folder
-instead** keeps ordinary folder setup available.
+use **⋯ → Link GitHub repository** without cloning again. **Use Local Folder**
+keeps ordinary folder setup available.
 
 Source rows check GitHub access automatically and show a status icon. Checks run
 in the background when the app opens and daily while it remains open. Results are
