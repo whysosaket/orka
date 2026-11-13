@@ -45,7 +45,12 @@ export async function syncAttentionFixture(page: Page) {
         },
       ],
     });
-    const skill = resource("skill", "Writing guide", "skill");
+    const skill = {
+      ...resource("skill", "Writing guide", "skill"),
+      sourceId: "product-source",
+      source: "shared" as const,
+      logicalPath: "writing-guide",
+    };
     const plan = resource("plan", "Release checklist", "plan");
     const session = resource("session", "Implementation session", "session");
     const copy = resource("copy", "Implementation session (copy)", "session");
@@ -164,6 +169,20 @@ export async function syncAttentionFixture(page: Page) {
             source: "skill",
             error:
               "Local skill edits preserved; resolve them before applying the shared update",
+          },
+          {
+            source: "one:product-source:scan:skills/writing-guide",
+            error:
+              "Local skill edits preserved; resolve them before applying the shared update",
+          },
+          {
+            source: "one:installation:skill",
+            error:
+              "Skill installation recovery pending; local copies preserved",
+          },
+          {
+            source: "one:publish:pending",
+            error: "Publication needs a fresh review",
           },
           { source: "foreign-plan", error: "403: Docs access changed" },
         ],

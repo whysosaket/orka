@@ -16,6 +16,11 @@ export const bindingResourceId = (binding: Binding) =>
 export const bindingProjectId = (binding: Binding) =>
   binding.projectId ?? binding.base?.projectId;
 
+function uniqueResourceId(ids: (string | undefined | null)[]) {
+  const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  return unique.length === 1 ? unique[0] : undefined;
+}
+
 export function latestProjectDrafts(drafts: LocalDraft[], projectId: string) {
   const latest = new Map<string, LocalDraft>();
   for (const draft of drafts) {
@@ -70,6 +75,91 @@ export function projectAttention(
   const allDrafts = (state.drafts ?? []).filter(
     (d) => d.projectId === projectId,
   );
+  const knownResources = new Map(
+    [
+      ...allDrafts.map((draft) => draft.resource),
+      ...state.resources.filter((resource) => resource.projectId === projectId),
+    ].map((resource) => [resource.resourceId, resource]),
+  );
+  const errorResourceId = (source: string): string | undefined => {
+    if (knownResources.has(source)) return source;
+    const installation = `${projectId}:installation:`;
+    if (source.startsWith(installation)) {
+      const id = source.slice(installation.length);
+      return knownResources.has(id) ? id : undefined;
+    }
+    const publication = `${projectId}:publish:`;
+    if (source.startsWith(publication)) {
+      const id = source.slice(publication.length);
+      return uniqueResourceId([
+        ...requests
+          .filter((request) => request.id === id)
+          .map((request) => request.resourceId),
+        ...outbox
+          .filter((upload) => upload.id === id)
+          .map((upload) => upload.resourceId),
+        ...allDrafts
+          .filter((draft) =>
+            [
+              draft.id,
+              draft.requestId,
+              draft.request?.id,
+              draft.submission?.id,
+            ].includes(id),
+          )
+          .map(
+            (draft) =>
+              draft.submission?.resource?.resourceId ??
+              draft.request?.resourceId ??
+              draft.resource.resourceId,
+          ),
+      ]);
+    }
+    const prefix = `${projectId}:`;
+    if (!source.startsWith(prefix)) return;
+    const scan = /^(?:(?:source:)?([^:]+):)?scan:(.+)$/.exec(
+      source.slice(prefix.length),
+    );
+    if (!scan) return;
+    const [, sourceId, target] = scan;
+    return uniqueResourceId(
+      [...knownResources.values()]
+        .filter((resource) => {
+          if (resource.sourceId !== sourceId) return false;
+          if (target.startsWith("skills/"))
+            return (
+              resource.kind === "skill" &&
+              resource.logicalPath === target.slice("skills/".length)
+            );
+          if (target.startsWith("instructions/"))
+            return (
+              resource.kind === "memory" && resource.logicalPath === target
+            );
+          if (target.startsWith("plan:"))
+            return (
+              resource.kind === "plan" &&
+              resource.logicalPath === target.slice("plan:".length)
+            );
+          if (resource.resourceId === target) return true;
+          const path =
+            target.startsWith("plans:") && resource.kind === "plan"
+              ? target.slice("plans:".length)
+              : target.startsWith("/") && resource.kind === "session"
+                ? target
+                : undefined;
+          return (
+            path !== undefined &&
+            state.bindings.some(
+              (binding) =>
+                bindingProjectId(binding) === projectId &&
+                bindingResourceId(binding) === resource.resourceId &&
+                binding.paths?.includes(path),
+            )
+          );
+        })
+        .map((resource) => resource.resourceId),
+    );
+  };
   const latest = latestProjectDrafts(allDrafts, projectId);
   const activeDrafts = latestProjectDrafts(
     allDrafts.filter(
@@ -79,7 +169,9 @@ export function projectAttention(
     projectId,
   );
   const item = (key: string, resourceId?: string, title?: string) => {
-    const resource = resourceId ? resources.get(resourceId) : undefined;
+    const resource = resourceId
+      ? (resources.get(resourceId) ?? knownResources.get(resourceId))
+      : undefined;
     const existing = items.get(key);
     if (existing) return existing;
     const result: AttentionItem = {
@@ -141,17 +233,17 @@ export function projectAttention(
     entry.messages.push(upload.error);
   }
   for (const error of state.errors) {
-    const resource = resources.get(error.source);
+    const resourceId = errorResourceId(error.source);
     if (
-      resource?.projectId !== projectId &&
+      !resourceId &&
       error.source !== projectId &&
       !error.source.startsWith(projectId + ":")
     )
       continue;
     const entry = item(
-      resource ? error.source : `issue:${error.source}`,
-      resource?.resourceId,
-      resource
+      resourceId ?? `issue:${error.source}`,
+      resourceId,
+      resourceId
         ? undefined
         : error.source === projectId
           ? "Project sync"

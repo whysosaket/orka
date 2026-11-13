@@ -22,7 +22,18 @@ test("modal counts unique project resources and preserves completed activity in 
   await expect(
     modal.getByRole("group", { name: "Writing guide", exact: true }),
   ).toHaveCount(1);
-  await expect(modal).toContainText("Local skill edits preserved");
+  await expect(
+    modal.getByText(
+      "Local skill edits preserved; resolve them before applying the shared update",
+      { exact: true },
+    ),
+  ).toHaveCount(1);
+  await expect(
+    modal.getByRole("group", { name: "Writing guide", exact: true }),
+  ).toContainText("Skill installation recovery pending");
+  await expect(
+    modal.getByRole("group", { name: "Writing guide", exact: true }),
+  ).toContainText("Publication needs a fresh review");
   await expect(
     modal.getByRole("group", { name: "Release checklist", exact: true }),
   ).toContainText("409: Resource changed");

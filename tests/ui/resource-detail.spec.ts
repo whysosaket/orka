@@ -444,10 +444,16 @@ for (const [action, title] of [
     const openSession = async () => {
       await page
         .getByRole("button", {
-          name: "Needs attention, 2 notifications",
+          name: "Needs attention, 1 notification",
           exact: true,
         })
         .click();
+      if (action === "View copy")
+        await page
+          .getByRole("dialog", { name: "Sync status and notifications" })
+          .locator("summary")
+          .filter({ hasText: "History (" })
+          .click();
       await page.getByRole("button", { name: action, exact: true }).click();
     };
     const dialog = page.getByRole("dialog", {
@@ -688,7 +694,12 @@ for (const [width, height, memberCatalog] of [
       );
     }
     await page.screenshot({ path: `artifacts/member-names-${width}.png` });
-    await page.getByRole("button", { name: /notifications$/ }).click();
+    await page.locator(".workspace-header .sync-status").click();
+    await page
+      .getByRole("dialog", { name: "Sync status and notifications" })
+      .locator("summary")
+      .filter({ hasText: "History (" })
+      .click();
     await expect(
       page.getByRole("dialog", {
         name: "Sync status and notifications",

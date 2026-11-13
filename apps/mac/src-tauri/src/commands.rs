@@ -753,22 +753,48 @@ pub fn import_bundle(
     bundles::import_into_source(&db, &project_id, &PathBuf::from(path), source_id.as_deref())
 }
 #[tauri::command]
-pub fn retry_uploads(project_id: Option<String>) -> Result<()> {
-    let _lock = projects::lock()?;
-    let db = db::open()?;
-    if let Some(project) = &project_id {
-        projects::active(&db, project)?;
+pub async fn retry_uploads(project_id: Option<String>) -> Result<()> {
+    let scope = {
+        let _lock = projects::lock()?;
+        let db = db::open()?;
+        let scope = if let Some(project) = &project_id {
+            projects::active(&db, project)?;
+            Some((
+                db::get(&db, "user")?
+                    .as_str()
+                    .ok_or("Sign in required")?
+                    .to_string(),
+                db::get(&db, "config")?["apiUrl"]
+                    .as_str()
+                    .ok_or("Configure the service")?
+                    .to_string(),
+                project.clone(),
+            ))
+        } else {
+            None
+        };
+        if project_id.is_none() {
+            db.execute(
+                "DELETE FROM outbox WHERE path='/v2/sessions/resolve' AND error LIKE '409:%'",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        db.execute("UPDATE outbox SET error=NULL WHERE ?1 IS NULL OR (project=?1 AND (error IS NULL OR error NOT GLOB '4[0-9][0-9]:*' OR substr(error,1,3) IN ('401','408','429')))", [&project_id])
+            .map_err(|e| e.to_string())?;
+        scope
+    };
+    if let Some((owner, origin, project)) = scope {
+        tauri::async_runtime::spawn_blocking(move || {
+            tokio::runtime::Runtime::new()
+                .map_err(|error| error.to_string())?
+                .block_on(sync::plugin_once(&owner, &origin, &project))
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    } else {
+        sync_now()
     }
-    if project_id.is_none() {
-        db.execute(
-            "DELETE FROM outbox WHERE path='/v2/sessions/resolve' AND error LIKE '409:%'",
-            [],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    db.execute("UPDATE outbox SET error=NULL WHERE ?1 IS NULL OR (project=?1 AND (error IS NULL OR error NOT GLOB '4[0-9][0-9]:*' OR substr(error,1,3) IN ('401','408','429')))", [&project_id])
-        .map_err(|e| e.to_string())?;
-    sync_now()
 }
 #[tauri::command]
 pub fn background_agent(enabled: bool) -> Result<()> {

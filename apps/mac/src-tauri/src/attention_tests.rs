@@ -369,13 +369,26 @@ fn attention_snapshot_preserves_partial_binding_and_queued_resource_identity() {
 #[test]
 fn attention_retry_is_scoped_to_the_selected_active_project() {
     let f = fixture();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    db::set(&f.db, "config", &json!({"apiUrl":"invalid-fixture-origin"})).unwrap();
+    db::set(&f.db, "syncRequest", &json!("unrelated account request")).unwrap();
+    db::set(
+        &f.db,
+        "syncHandledRequest",
+        &json!("previous account request"),
+    )
+    .unwrap();
     let other = uuid::Uuid::new_v4().to_string();
+    let other_root = f._home.path().join("other-project");
+    let other_skill = other_root.join(".agents/skills/other");
+    fs::create_dir_all(&other_skill).unwrap();
+    fs::write(other_skill.join("SKILL.md"), "Unrelated skill").unwrap();
     db::upsert(
         &f.db,
         "projects",
         &other,
         &other,
-        &json!({"id":other,"name":"Other project"}),
+        &json!({"id":other,"name":"Other project","path":other_root}),
     )
     .unwrap();
     for project in [f.project["id"].as_str().unwrap(), &other] {
@@ -390,14 +403,49 @@ fn attention_retry_is_scoped_to_the_selected_active_project() {
                     format!("{project}-{suffix}"),
                     project,
                     path,
-                    json!({"id":format!("{project}-{suffix}")}).to_string(),
+                    json!({"id":format!("{project}-{suffix}"),"frozen":"Original operation bytes"})
+                        .to_string(),
                     error
                 ],
             )
             .unwrap();
         }
     }
-    commands::retry_uploads(Some(f.project["id"].as_str().unwrap().into())).unwrap();
+    let foreign_before = db::rows(&f.db, "SELECT json_object('id',id,'value',value,'error',error) FROM outbox WHERE project=? ORDER BY id", &[&other]).unwrap();
+    let terminal_before = db::rows(&f.db, "SELECT json_object('id',id,'value',value,'error',error) FROM outbox WHERE project=? AND error LIKE '409:%' ORDER BY id", &[&f.project["id"].as_str()]).unwrap();
+    assert!(runtime
+        .block_on(commands::retry_uploads(Some(
+            f.project["id"].as_str().unwrap().into()
+        )))
+        .is_err());
+    assert_eq!(
+        db::get(
+            &f.db,
+            &format!("plugin-sync:{}", f.project["id"].as_str().unwrap())
+        )
+        .unwrap()["online"],
+        false
+    );
+    assert!(db::get(&f.db, &format!("plugin-sync:{other}"))
+        .unwrap()
+        .is_null());
+    assert!(db::get(&f.db, &format!("firstScan:{other}"))
+        .unwrap()
+        .is_null());
+    assert!(f
+        .resources()
+        .iter()
+        .all(|resource| resource["projectId"] != other));
+    assert_eq!(
+        db::get(&f.db, "syncRequest").unwrap(),
+        "unrelated account request"
+    );
+    assert_eq!(
+        db::get(&f.db, "syncHandledRequest").unwrap(),
+        "previous account request"
+    );
+    assert_eq!(db::rows(&f.db,"SELECT json_object('id',id,'value',value,'error',error) FROM outbox WHERE project=? ORDER BY id",&[&other]).unwrap(),foreign_before);
+    assert_eq!(db::rows(&f.db,"SELECT json_object('id',id,'value',value,'error',error) FROM outbox WHERE project=? AND error LIKE '409:%' ORDER BY id",&[&f.project["id"].as_str()]).unwrap(),terminal_before);
     let rows = db::rows(
         &f.db,
         "SELECT json_object('id',id,'project',project,'error',error) FROM outbox",
@@ -427,5 +475,16 @@ fn attention_retry_is_scoped_to_the_selected_active_project() {
             .unwrap()["error"],
         "409: changed"
     );
-    assert!(commands::retry_uploads(Some("missing".into())).is_err());
+    assert!(runtime
+        .block_on(commands::retry_uploads(Some("missing".into())))
+        .is_err());
+    runtime.block_on(commands::retry_uploads(None)).unwrap();
+    assert_ne!(
+        db::get(&f.db, "syncRequest").unwrap(),
+        "unrelated account request"
+    );
+    assert_eq!(
+        db::get(&f.db, "syncHandledRequest").unwrap(),
+        "previous account request"
+    );
 }

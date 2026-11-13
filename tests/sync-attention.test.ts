@@ -264,3 +264,255 @@ await test("detached bindings with no resource do not invent review targets", ()
     0,
   );
 });
+
+await test("native scanner, installation recovery and publication aliases share one resource review", () => {
+  const skill = { ...resource, sourceId: "source-a", logicalPath: "writing" };
+  const message = "Local skill edits preserved";
+  for (const scanId of ["one:source-a", "one:source:source-a"]) {
+    const selected = projectAttention(
+      snapshot({
+        resources: [skill],
+        bindings: [
+          {
+            resourceId: "skill",
+            projectId: "one",
+            installationState: "locally_modified",
+          },
+        ],
+        drafts: [{ ...draft("local"), resource: skill }],
+        reviewRequests: [request("review-request", "pending", true)],
+        errors: [
+          { source: "skill", error: message },
+          { source: `${scanId}:scan:skills/writing`, error: message },
+          {
+            source: "one:installation:skill",
+            error: "Installation recovery pending",
+          },
+          {
+            source: "one:publish:review-request",
+            error: "Publication needs review",
+          },
+          { source: "one:publish:local", error: "Local draft needs review" },
+        ],
+      }),
+      "one",
+    );
+    assert.equal(selected.items.length, 1);
+    assert.equal(selected.items[0].resourceId, "skill");
+    assert.equal(selected.items[0].messages.length, 4);
+    assert.equal(selected.items[0].requests.length, 1);
+    assert.equal(selected.items[0].draft?.id, "local");
+  }
+});
+
+await test("legacy unscoped scanner aliases match only the exact unscoped logical identity", () => {
+  const instruction = {
+    ...resource,
+    resourceId: "instruction",
+    kind: "memory" as const,
+    logicalPath: "instructions/AGENTS.md",
+  };
+  const skill = { ...resource, logicalPath: "writing" };
+  const selected = projectAttention(
+    snapshot({
+      resources: [skill, instruction],
+      errors: [
+        { source: "skill", error: "Skill differs" },
+        { source: "one:scan:skills/writing", error: "Skill differs" },
+        { source: "instruction", error: "Instructions differ" },
+        {
+          source: "one:scan:instructions/AGENTS.md",
+          error: "Instructions differ",
+        },
+      ],
+    }),
+    "one",
+  );
+  assert.deepEqual(
+    selected.items.map((item) => item.resourceId),
+    ["skill", "instruction"],
+  );
+});
+
+await test("publication aliases follow frozen prepared IDs and queued operation identities", () => {
+  const prepared = {
+    ...resource,
+    resourceId: "published-memory",
+    kind: "memory" as const,
+  };
+  const original = { ...prepared, resourceId: "private-memory" };
+  const saved: LocalDraft = {
+    ...draft("draft-record", "proposed"),
+    resource: original,
+    requestId: "request-id",
+    submission: {
+      id: "frozen-operation",
+      resource: { resourceId: prepared.resourceId },
+    },
+    automaticSharing: true,
+  };
+  const selected = projectAttention(
+    snapshot({
+      resources: [prepared],
+      drafts: [saved],
+      outbox: [
+        {
+          id: "queued-operation",
+          project: "one",
+          resourceId: prepared.resourceId,
+          error: "Upload blocked",
+        },
+      ],
+      errors: [
+        { source: "one:publish:request-id", error: "Review required" },
+        { source: "one:publish:draft-record", error: "Review required" },
+        { source: "one:publish:frozen-operation", error: "Review required" },
+        { source: "one:publish:queued-operation", error: "Review required" },
+      ],
+    }),
+    "one",
+  );
+  assert.equal(selected.items.length, 1);
+  assert.equal(selected.items[0].resourceId, prepared.resourceId);
+  assert.deepEqual(selected.items[0].messages, [
+    "Upload blocked",
+    "Review required",
+  ]);
+});
+
+await test("unknown and ambiguous scanner aliases remain separate diagnostics despite equal messages", () => {
+  const first = {
+    ...resource,
+    resourceId: "first",
+    sourceId: "source-a",
+    logicalPath: "writing",
+  };
+  const second = { ...first, resourceId: "second", sourceId: "source-b" };
+  const errors = [
+    { source: "first", error: "Local edits preserved" },
+    { source: "second", error: "Local edits preserved" },
+    { source: "one:scan:skills/writing", error: "Local edits preserved" },
+    {
+      source: "one:source-unknown:scan:skills/writing",
+      error: "Local edits preserved",
+    },
+    {
+      source: "one:source-a:scan:skills/unknown",
+      error: "Local edits preserved",
+    },
+  ];
+  const selected = projectAttention(
+    snapshot({ resources: [first, second], errors }),
+    "one",
+  );
+  assert.equal(selected.items.length, errors.length);
+  assert.equal(selected.items.filter((item) => item.resourceId).length, 2);
+  const ambiguous = projectAttention(
+    snapshot({
+      resources: [first, { ...first, resourceId: "same-source-duplicate" }],
+      errors: [
+        {
+          source: "one:source-a:scan:skills/writing",
+          error: "Review required",
+        },
+      ],
+    }),
+    "one",
+  );
+  assert.equal(ambiguous.items.length, 1);
+  assert.equal(ambiguous.items[0].resourceId, undefined);
+});
+
+await test("unknown installation/publication aliases and conflicting publication identities are not guessed", () => {
+  const selected = projectAttention(
+    snapshot({
+      reviewRequests: [request("ambiguous", "pending", true)],
+      outbox: [
+        {
+          id: "ambiguous",
+          project: "one",
+          resourceId: "another-resource",
+          error: "Review required",
+        },
+      ],
+      errors: [
+        { source: "one:publish:ambiguous", error: "Review required" },
+        { source: "one:publish:unknown", error: "Review required" },
+        { source: "one:installation:unknown", error: "Review required" },
+        { source: "two:installation:skill", error: "Foreign project" },
+      ],
+    }),
+    "one",
+  );
+  assert.equal(selected.items.length, 5);
+  assert.equal(selected.items.filter((item) => !item.resourceId).length, 3);
+  assert.equal(
+    selected.items.some((item) => item.messages.includes("Foreign project")),
+    false,
+  );
+});
+
+await test("exact scanner binding paths and resource deletion IDs retain source boundaries", () => {
+  const session = {
+    ...resource,
+    resourceId: "session",
+    sourceId: "source-a",
+    kind: "session" as const,
+  };
+  const plan = {
+    ...session,
+    resourceId: "plan",
+    kind: "plan" as const,
+    logicalPath: "codex/sessions/native/plan.md",
+  };
+  const selected = projectAttention(
+    snapshot({
+      resources: [session, plan],
+      bindings: [
+        {
+          resourceId: "session",
+          projectId: "one",
+          paths: ["/synthetic/transcript.jsonl"],
+        },
+        { resourceId: "plan", projectId: "one", paths: ["/synthetic/plan.md"] },
+      ],
+      errors: [
+        { source: "session", error: "Session differs" },
+        {
+          source: "one:source-a:scan:/synthetic/transcript.jsonl",
+          error: "Session differs",
+        },
+        { source: "one:source-a:scan:session", error: "Session differs" },
+        { source: "plan", error: "Plan differs" },
+        {
+          source: "one:source-a:scan:plans:/synthetic/plan.md",
+          error: "Plan differs",
+        },
+        {
+          source: "one:source-a:scan:plan:codex/sessions/native/plan.md",
+          error: "Plan differs",
+        },
+        {
+          source: "one:source-b:scan:/synthetic/transcript.jsonl",
+          error: "Wrong source",
+        },
+      ],
+    }),
+    "one",
+  );
+  assert.equal(selected.items.length, 3);
+  assert.equal(
+    selected.items.find((item) => item.resourceId === "session")?.messages
+      .length,
+    1,
+  );
+  assert.equal(
+    selected.items.find((item) => item.resourceId === "plan")?.messages.length,
+    1,
+  );
+  assert.equal(
+    selected.items.find((item) => item.messages.includes("Wrong source"))
+      ?.resourceId,
+    undefined,
+  );
+});

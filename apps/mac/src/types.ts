@@ -135,6 +135,8 @@ export interface LocalDraft {
   createdAt: string;
   updatedAt?: string;
   request?: ReviewRequest;
+  requestId?: string;
+  submission?: { id?: string; resource?: Pick<Resource, "resourceId"> };
   dismissalReason?: string;
   archivedAt?: string;
 }
