@@ -24,6 +24,8 @@ use std::{
 use zeroize::Zeroizing;
 
 static SESSION_EPOCH: AtomicU64 = AtomicU64::new(0);
+const ENV_CONFLICT: &str =
+    "ENV changed or a retry is stale. Pull the latest version and review before publishing again";
 
 pub fn enabled() -> bool {
     serde_json::from_str::<Value>(include_str!("../../../src/features.json"))
@@ -332,7 +334,7 @@ async fn api(ctx: &Context, keys: &Keys, operation: &str, input: Value) -> Resul
     if !status.is_success() {
         // Do not relay arbitrary server text into an error: it could contain a secret.
         return Err(match status.as_u16() {
-            409 => "ENV changed or a retry is stale. Pull the latest version and review before publishing again",
+            409 => ENV_CONFLICT,
             401 => "Sign in again to use ENVs",
             403 => "ENV permission denied. Check publishing access, recipients, device approval or set replacement",
             404 => "ENV sharing is unavailable or the set was deleted",
@@ -420,7 +422,7 @@ async fn send_pending(ctx: &Context, keys: &Keys, id: &str) -> Result<Value> {
         return Err("No pending ENV publication".into());
     }
     let result = api(ctx, keys, "mutate", pending["mutation"].clone()).await.map_err(|error| {
-        if !pending["sourceRemoval"].is_null() && error.starts_with("409:") {
+            if !pending["sourceRemoval"].is_null() && error == ENV_CONFLICT {
             format!("{error} The encrypted ENV publication is preserved on this Mac after its source folder was removed.")
         } else { error }
     })?;
