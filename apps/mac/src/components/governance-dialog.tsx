@@ -1,6 +1,13 @@
 import { sourcePath } from "./project-sources.js";
 import { ENV_ENABLED } from "../lib/features.js";
-import React, { useCallback, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useToastNotice } from "./toasts.js";
 import { XIcon } from "@primer/octicons-react";
 import type { Project, Snapshot } from "../types.js";
@@ -36,45 +43,17 @@ export function GovernanceDialog({
     [error, setError] = useState("");
   const selectedResource = initialResource;
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [previewSignature, setPreviewSignature] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [stale, setStale] = useState(false);
   const setMessage = useToastNotice();
   const [replacement, setReplacement] = useState("");
+  const preservationId = useId();
   const call = useCallback(
     <T,>(action: string, input: Record<string, unknown> = {}) =>
       governanceCall<T>(action, { projectId: project.id, ...input }),
     [project.id],
   );
-  const refresh = useCallback(async () => {
-    const c = await call<Catalog>("catalog");
-    setCatalog(c);
-    await onRefresh();
-  }, [call, onRefresh]);
-  useEffect(() => {
-    let active = true;
-    void call<Catalog>("catalog")
-      .then((c) => {
-        if (active) setCatalog(c);
-      })
-      .catch((e) => {
-        if (active) setError(String(e));
-      });
-    return () => {
-      active = false;
-    };
-  }, [call]);
-  const run = async (fn: () => Promise<void>) => {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      await fn();
-      await refresh();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
   const resources = [
     ...state.resources.filter(
       (r) =>
@@ -108,189 +87,273 @@ export function GovernanceDialog({
     (b) => b.base?.resourceId === selectedResource,
   );
   const selected = resources.find((r) => r.resourceId === selectedResource);
+  const instructions =
+    selected?.kind === "memory" &&
+    selected.logicalPath.startsWith("instructions/");
+  const hasSource = Boolean(
+    sourcePath(
+      project,
+      selected && "sourceId" in selected
+        ? (selected.sourceId as string)
+        : undefined,
+    ),
+  );
+  const removal = Boolean(
+    selected && "deleted" in selected && selected.deleted,
+  );
+  const signature = JSON.stringify([
+    selected && "revision" in selected ? selected.revision : undefined,
+    selected && "hash" in selected ? selected.hash : undefined,
+    binding,
+  ]);
+  const latestSignature = useRef(signature);
+  useLayoutEffect(() => {
+    latestSignature.current = signature;
+  }, [signature]);
+  const generation = useRef({ value: 0 });
+  const load = useCallback(async () => {
+    const current = ++generation.current.value;
+    setLoading(true);
+    setError("");
+    setPreview(null);
+    setStale(false);
+    try {
+      const c = await call<Catalog>("catalog");
+      if (current !== generation.current.value) return;
+      setCatalog(c);
+      if (c.governed && instructions && hasSource) {
+        const reviewedSignature = latestSignature.current;
+        const value = await call<Preview>("preview-install", {
+          resourceId: selectedResource,
+        });
+        if (current !== generation.current.value) return;
+        setPreview(value);
+        setPreviewSignature(reviewedSignature);
+      }
+    } catch (e) {
+      if (current === generation.current.value) setError(String(e));
+    } finally {
+      if (current === generation.current.value) setLoading(false);
+    }
+  }, [call, instructions, hasSource, selectedResource]);
+  useEffect(() => {
+    const pending = generation.current;
+    void load();
+    return () => {
+      pending.value++;
+    };
+  }, [load]);
+  const run = async (fn: () => Promise<void>) => {
+    if (busy) return false;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await fn();
+      setCatalog(await call<Catalog>("catalog"));
+      await onRefresh();
+      return true;
+    } catch (e) {
+      const message = String(e);
+      if (/review the update again/i.test(message)) setStale(true);
+      setError(message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const previewStale = stale || (preview && previewSignature !== signature);
   const title = initialEnv ? "Replace ENV set" : "Review local update";
   return (
     <Overlay
       open
-      onClose={onClose}
+      onClose={() => {
+        if (!busy) onClose();
+      }}
       title={title}
-      className="governance-dialog"
+      className="changes-review-modal governance-dialog"
+      onEscapeKeyDown={(event) => {
+        if (busy) event.preventDefault();
+      }}
       onKeyDownCapture={handleReviewTab}
     >
-      <div className="actions">
+      <header className="review-header">
         <h2>{title}</h2>
-        <span className="spacer" />
         <IconButton
           icon={XIcon}
           aria-label={`Close ${title.toLowerCase()}`}
+          disabled={busy}
           onClick={onClose}
           variant="tertiary"
           size="sm"
         />
-      </div>
-      {error && <p role="alert">{error}</p>}
-      {!catalog ? (
-        <p role="status">Loading update…</p>
-      ) : !catalog.governed ? (
-        <p>Enable project permissions in Manage first.</p>
-      ) : (
-        <>
-          {catalog.governed && (
-            <section>
-              <h3>{displayText(selected?.title ?? "Shared item")}</h3>
-              {selected && (
-                <>
-                  {!initialEnv && (
-                    <p>
-                      Local version:{" "}
-                      {(binding?.installationState ?? "current").replaceAll(
-                        "_",
-                        " ",
-                      )}
-                    </p>
+      </header>
+      <div className="changes-review-body">
+        <h3>{displayText(selected?.title ?? "Shared item")}</h3>
+        {error && <p role="alert">{error}</p>}
+        {loading ? (
+          <p role="status">Loading update…</p>
+        ) : !catalog ? (
+          <Button size="sm" onClick={() => void load()}>
+            Try again
+          </Button>
+        ) : !catalog.governed ? (
+          <p>Enable project permissions in Manage first.</p>
+        ) : (
+          <>
+            {selected?.kind === "env" && catalog.owner && (
+              <section>
+                <p>
+                  An approved device first prepares and publishes a fresh
+                  encrypted set. Choose it below to disable the old set. Signed
+                  history stays unchanged.
+                </p>
+                <label>
+                  Replacement set
+                  <select
+                    value={replacement}
+                    onChange={(e) => setReplacement(e.target.value)}
+                  >
+                    <option value="">Choose a published replacement</option>
+                    {(catalog.envSets ?? [])
+                      .filter((r) => r.resourceId !== selectedResource)
+                      .map((r) => (
+                        <option value={r.resourceId} key={r.resourceId}>
+                          {r.title}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <Button
+                  disabled={busy || !replacement}
+                  onClick={() =>
+                    void run(async () => {
+                      await call("replace-env", {
+                        setId: selectedResource,
+                        replacementId: replacement,
+                        expectedPolicyRevision: catalog.policyRevision,
+                      });
+                      setMessage(
+                        "Old ENV set disabled. Recipients must review the replacement’s trust.",
+                      );
+                    })
+                  }
+                >
+                  Mark old ENV set replaced
+                </Button>
+              </section>
+            )}
+            {instructions && (
+              <>
+                <p>
+                  Local version:{" "}
+                  {(binding?.installationState ?? "current").replaceAll(
+                    "_",
+                    " ",
                   )}
-                  {selected.kind === "env" && catalog.owner && (
-                    <section>
-                      <h4>Replace ENV set</h4>
-                      <p>
-                        An approved device first prepares and publishes a fresh
-                        encrypted set. Choose it below to disable the old set.
-                        Signed history stays unchanged.
+                </p>
+                {!hasSource ? (
+                  <p role="status">
+                    Connect this project’s source folder to review and install
+                    the update.
+                  </p>
+                ) : preview ? (
+                  <>
+                    <FileReview
+                      files={preview.after}
+                      before={preview.before}
+                      beforeManifest={preview.beforeManifest}
+                      afterManifest={preview.afterManifest}
+                    />
+                    {preview.copies
+                      ?.slice(1)
+                      .filter(
+                        (c) =>
+                          JSON.stringify(c.files) !==
+                          JSON.stringify(preview.before),
+                      )
+                      .map((c) => (
+                        <section key={c.path}>
+                          <h4>Other local copy: {c.path}</h4>
+                          <FileReview
+                            files={preview.after}
+                            before={c.files}
+                            beforeManifest={c.manifest}
+                            afterManifest={preview.afterManifest}
+                          />
+                        </section>
+                      ))}
+                    {previewStale && (
+                      <p role="status">
+                        Files changed since this preview. Review the latest
+                        update before installing.
                       </p>
-                      <label>
-                        Replacement set
-                        <select
-                          value={replacement}
-                          onChange={(e) => setReplacement(e.target.value)}
-                        >
-                          <option value="">
-                            Choose a published replacement
-                          </option>
-                          {(catalog.envSets ?? [])
-                            .filter((r) => r.resourceId !== selectedResource)
-                            .map((r) => (
-                              <option value={r.resourceId} key={r.resourceId}>
-                                {r.title}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                      <Button
-                        disabled={busy || !replacement}
-                        onClick={() =>
-                          void run(async () => {
-                            await call("replace-env", {
-                              setId: selectedResource,
-                              replacementId: replacement,
-                              expectedPolicyRevision: catalog.policyRevision,
-                            });
-                            setMessage(
-                              "Old ENV set disabled. Recipients must review the replacement’s trust.",
-                            );
-                          })
-                        }
-                      >
-                        Mark old ENV set replaced
-                      </Button>
-                    </section>
-                  )}
-                  {selected.kind === "memory" &&
-                    selected.logicalPath.startsWith("instructions/") && (
-                      <section>
-                        <h4>
-                          {"deleted" in selected && selected.deleted
-                            ? "Review approved removal on this Mac"
-                            : "Install an approved version on this Mac"}
-                        </h4>
-                        <Button
-                          size="sm"
-                          disabled={
-                            busy ||
-                            !sourcePath(
-                              project,
-                              "sourceId" in selected
-                                ? (selected.sourceId as string)
-                                : undefined,
-                            )
-                          }
-                          onClick={() =>
-                            void run(async () => {
-                              setPreview(
-                                await call<Preview>("preview-install", {
-                                  resourceId: selectedResource,
-                                }),
-                              );
-                            })
-                          }
-                        >
-                          {"deleted" in selected && selected.deleted
-                            ? "Review local removal"
-                            : "Review local update"}
-                        </Button>
-                        {preview && (
-                          <>
-                            <FileReview
-                              files={preview.after}
-                              before={preview.before}
-                              beforeManifest={preview.beforeManifest}
-                              afterManifest={preview.afterManifest}
-                            />
-                            {preview.copies
-                              ?.slice(1)
-                              .filter(
-                                (c) =>
-                                  JSON.stringify(c.files) !==
-                                  JSON.stringify(preview.before),
-                              )
-                              .map((c) => (
-                                <section key={c.path}>
-                                  <h4>Other local copy: {c.path}</h4>
-                                  <FileReview
-                                    files={preview.after}
-                                    before={c.files}
-                                    beforeManifest={c.manifest}
-                                    afterManifest={preview.afterManifest}
-                                  />
-                                </section>
-                              ))}
-                            {preview.dirty && (
-                              <p>
-                                Your local edits will be saved privately on this
-                                Mac before installation.
-                              </p>
-                            )}
-                            <Button
-                              disabled={busy}
-                              onClick={() =>
-                                void run(async () => {
-                                  await call("apply-install", {
-                                    resourceId: selectedResource,
-                                    token: preview.token,
-                                    preserveLocal: true,
-                                  });
-                                  setPreview(null);
-                                  setMessage(
-                                    "deleted" in selected && selected.deleted
-                                      ? "Reviewed version removed"
-                                      : "Reviewed update installed",
-                                  );
-                                })
-                              }
-                            >
-                              {"deleted" in selected && selected.deleted
-                                ? "Preserve edits and remove reviewed version"
-                                : "Preserve edits and install reviewed version"}
-                            </Button>
-                          </>
-                        )}
-                      </section>
                     )}
-                </>
-              )}
-            </section>
-          )}
-        </>
-      )}
+                  </>
+                ) : (
+                  <Button size="sm" disabled={busy} onClick={() => void load()}>
+                    Try again
+                  </Button>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </div>
+      <footer className="review-footer">
+        {preview?.dirty && (
+          <p id={preservationId} className="review-footer-note">
+            Your local edits will be saved privately on this Mac before{" "}
+            {removal ? "removal" : "installation"}.
+          </p>
+        )}
+        <Button variant="tertiary" disabled={busy} onClick={onClose}>
+          Cancel
+        </Button>
+        {preview &&
+          !loading &&
+          (previewStale ? (
+            <Button
+              variant="primary"
+              disabled={busy}
+              onClick={() => void load()}
+            >
+              Review latest
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              disabled={busy}
+              aria-busy={busy}
+              aria-describedby={preview.dirty ? preservationId : undefined}
+              onClick={() =>
+                void (async () => {
+                  const installed = await run(async () => {
+                    await call("apply-install", {
+                      resourceId: selectedResource,
+                      token: preview.token,
+                      preserveLocal: true,
+                    });
+                    setMessage(
+                      removal
+                        ? "Reviewed version removed"
+                        : "Reviewed update installed",
+                    );
+                  });
+                  if (installed) onClose();
+                })()
+              }
+            >
+              {removal
+                ? preview.dirty
+                  ? "Keep edits and remove"
+                  : "Remove from this Mac"
+                : preview.dirty
+                  ? "Keep edits and install"
+                  : "Install update"}
+            </Button>
+          ))}
+      </footer>
     </Overlay>
   );
 }

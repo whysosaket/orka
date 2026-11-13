@@ -1,8 +1,12 @@
 import React, { useState } from "react";
+import { XIcon } from "@primer/octicons-react";
 import type { ReviewRequest, Resource } from "@portable/protocol";
 import type { Project, Snapshot } from "../types.js";
 import { displayText } from "./resource-presentation.js";
 import { Button } from "./button.js";
+import { IconButton } from "./icon-button.js";
+import { Overlay } from "./overlay.js";
+import { handleReviewTab } from "./review-focus.js";
 import { FileReview } from "./file-review.js";
 import {
   ProjectChangeReview,
@@ -48,6 +52,9 @@ export function ProjectRequests({
   onReviewFile: (id: string) => void;
 }) {
   const [visibleCount, setVisibleCount] = useState(5);
+  const [selectedRequest, setSelectedRequest] = useState<ReviewRequest | null>(
+    null,
+  );
   const [request, setRequest] = useState<RequestDetail | null>(null);
   const [suggestion, setSuggestion] = useState<SuggestionDetail | null>(null);
   const suggestions = (state.drafts ?? []).filter(
@@ -65,6 +72,15 @@ export function ProjectRequests({
   const labelMember = (id: string) =>
     memberLabel(id, state.user, catalog.members);
   const requests = catalog.requests.filter(visibleRequest);
+  const loadRequest = (id: string) =>
+    run(async () => {
+      setRequest(await call<RequestDetail>("request", { id }));
+      await call("read-notification", { id });
+    });
+  const closeRequest = () => {
+    setSelectedRequest(null);
+    setRequest(null);
+  };
   return (
     <div className="project-requests">
       <section>
@@ -85,14 +101,11 @@ export function ProjectRequests({
               size="sm"
               variant="tertiary"
               disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  setRequest(
-                    await call<RequestDetail>("request", { id: r.id }),
-                  );
-                  await call("read-notification", { id: r.id });
-                })
-              }
+              onClick={() => {
+                setSelectedRequest(r);
+                setRequest(null);
+                void loadRequest(r.id);
+              }}
             >
               Review request
             </Button>
@@ -107,78 +120,137 @@ export function ProjectRequests({
             View more requests
           </Button>
         )}
-        {request && (
-          <section>
-            <h4>{displayText(request.request.title)}</h4>
-            {request.content?.resource?.memory && (
-              <p>
-                Topic: {request.content?.resource.memory.topic} · Scope:{" "}
-                {request.content?.resource.memory.scope || "Project"} ·
-                Provider: {request.content?.resource.memory.provider}
-              </p>
-            )}
-            {(request.content?.resource?.memory?.supersedes?.length ?? 0) >
-              0 && (
-              <p>
-                Replaces active knowledge:{" "}
-                {request.content?.resource!.memory!.supersedes.join(", ")}
-              </p>
-            )}
-            {request.audience && (
-              <p>
-                Visible after approval:{" "}
-                {request.audience.map(labelMember).join(", ")}. Known source
-                restrictions continue to apply.
-              </p>
-            )}
-            {request.files && (
-              <FileReview
-                files={request.content?.resource?.deleted ? {} : request.files}
-                before={request.before}
-                beforeManifest={request.beforeManifest}
-                afterManifest={
-                  request.content?.resource?.deleted
-                    ? []
-                    : (request.manifest ?? request.content?.resource?.files)
-                }
+        {selectedRequest && (
+          <Overlay
+            open
+            title="Review request"
+            className="changes-review-modal request-review-modal"
+            onClose={() => {
+              if (!busy) closeRequest();
+            }}
+            onEscapeKeyDown={(event) => {
+              if (busy) event.preventDefault();
+            }}
+            onKeyDownCapture={handleReviewTab}
+          >
+            <header className="review-header">
+              <h2>Review request</h2>
+              <IconButton
+                icon={XIcon}
+                size="sm"
+                variant="tertiary"
+                aria-label="Close review request"
+                disabled={busy}
+                onClick={closeRequest}
               />
-            )}
-            <p>
-              {request.request.type === "access"
-                ? `Requested access: ${accessNames[request.request.requestedMode!]}`
-                : "Approval publishes exactly this prepared version."}
-            </p>
-            {request.request.status === "pending" &&
-              request.request.canReview && (
-                <div className="actions">
-                  {(["approve", "reject"] as const).map((decision) => (
-                    <Button
-                      key={decision}
-                      disabled={busy}
-                      variant={decision === "approve" ? "primary" : "secondary"}
-                      onClick={() =>
-                        void run(async () => {
-                          const result = await call<ReviewRequest>("decide", {
-                            id: request.request.id,
-                            decision,
-                            previewHash: request.request.previewHash,
-                            expectedPolicyRevision: catalog.policyRevision,
-                          });
-                          setRequest(null);
-                          setMessage(
-                            result.status === "stale"
-                              ? "The resource or permissions changed. A refreshed suggestion is needed."
-                              : `Request ${result.status}.`,
-                          );
-                        })
+            </header>
+            <div className="changes-review-body">
+              <h3>{displayText(selectedRequest.title)}</h3>
+              {error && <p role="alert">{error}</p>}
+              {!request ? (
+                busy ? (
+                  <p role="status">Loading request…</p>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => void loadRequest(selectedRequest.id)}
+                  >
+                    Try again
+                  </Button>
+                )
+              ) : (
+                <>
+                  {request.content?.resource?.memory && (
+                    <p>
+                      Topic: {request.content?.resource.memory.topic} · Scope:{" "}
+                      {request.content?.resource.memory.scope || "Project"} ·
+                      Provider: {request.content?.resource.memory.provider}
+                    </p>
+                  )}
+                  {(request.content?.resource?.memory?.supersedes?.length ??
+                    0) > 0 && (
+                    <p>
+                      Replaces active knowledge:{" "}
+                      {request.content?.resource!.memory!.supersedes.join(", ")}
+                    </p>
+                  )}
+                  {request.audience && (
+                    <p>
+                      Visible after approval:{" "}
+                      {request.audience.map(labelMember).join(", ")}. Known
+                      source restrictions continue to apply.
+                    </p>
+                  )}
+                  {request.files && (
+                    <FileReview
+                      files={
+                        request.content?.resource?.deleted ? {} : request.files
                       }
-                    >
-                      {decision === "approve" ? "Approve request" : "Reject"}
-                    </Button>
-                  ))}
-                </div>
+                      before={request.before}
+                      beforeManifest={request.beforeManifest}
+                      afterManifest={
+                        request.content?.resource?.deleted
+                          ? []
+                          : (request.manifest ??
+                            request.content?.resource?.files)
+                      }
+                    />
+                  )}
+                  <p>
+                    {request.request.type === "access"
+                      ? `Requested access: ${accessNames[request.request.requestedMode!]}`
+                      : "Approval publishes exactly this prepared version."}
+                  </p>
+                </>
               )}
-          </section>
+            </div>
+            <footer className="review-footer">
+              <Button variant="tertiary" disabled={busy} onClick={closeRequest}>
+                Cancel
+              </Button>
+              {request?.request.status === "pending" &&
+                request.request.canReview && (
+                  <>
+                    {(["reject", "approve"] as const).map((decision) => (
+                      <Button
+                        key={decision}
+                        disabled={busy}
+                        aria-busy={busy}
+                        variant={
+                          decision === "approve" ? "primary" : "secondary"
+                        }
+                        onClick={() =>
+                          void (async () => {
+                            let decided = false;
+                            await run(async () => {
+                              const result = await call<ReviewRequest>(
+                                "decide",
+                                {
+                                  id: request.request.id,
+                                  decision,
+                                  previewHash: request.request.previewHash,
+                                  expectedPolicyRevision:
+                                    catalog.policyRevision,
+                                },
+                              );
+                              setMessage(
+                                result.status === "stale"
+                                  ? "The resource or permissions changed. A refreshed suggestion is needed."
+                                  : `Request ${result.status}.`,
+                              );
+                              decided = true;
+                            });
+                            if (decided) closeRequest();
+                          })()
+                        }
+                      >
+                        {decision === "approve" ? "Approve request" : "Reject"}
+                      </Button>
+                    ))}
+                  </>
+                )}
+            </footer>
+          </Overlay>
         )}
       </section>
       <section aria-label="Local updates">

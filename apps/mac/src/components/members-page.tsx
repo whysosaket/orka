@@ -247,29 +247,37 @@ export function MembersPage({
                 >
                   <h3>Set up permissions for this project</h3>
                   <p>
-                    Already shared content stays shared. Personal memory stays
-                    local and writable. Shared memory and skill changes will
-                    need approval unless you allow editing.
+                    Enable access and change requests. Shared memory and skill
+                    changes will need approval unless you allow editing.
+                    Existing shared content and personal memory stay as they
+                    are.
                   </p>
-                  <p>
-                    {catalog.resourceCount} shared items and{" "}
-                    {
-                      state.outbox.filter((item) => item.project === project.id)
-                        .length
-                    }{" "}
-                    queued changes on this Mac will keep their content. Queued
-                    changes are checked against permissions on reconnect.
-                    Existing Macs need an updated app.
-                  </p>
-                  <p>
-                    Authorized skills install automatically when Skills sharing
-                    is enabled on this Mac. Local edits are preserved. Project
-                    instructions need local review before installation.
-                    {ENV_ENABLED &&
-                      " ENV sets keep their encrypted recipient and trusted device requirements."}
-                  </p>
+                  <details className="permission-activation-details">
+                    <summary>What happens to existing work?</summary>
+                    <p>
+                      {catalog.resourceCount} shared items and{" "}
+                      {
+                        state.outbox.filter(
+                          (item) => item.project === project.id,
+                        ).length
+                      }{" "}
+                      queued changes on this Mac keep their content. Queued
+                      changes are checked against permissions on reconnect.
+                      Personal memory stays local and writable. Existing Macs
+                      need an updated app.
+                    </p>
+                    <p>
+                      Authorized skills install automatically when Skills
+                      sharing is enabled on this Mac. Local edits are preserved.
+                      Project instructions need local review before
+                      installation.
+                      {ENV_ENABLED &&
+                        " ENV sets keep their encrypted recipient and trusted device requirements."}
+                    </p>
+                  </details>
                   {catalog.owner ? (
                     <Button
+                      variant="primary"
                       disabled={busy}
                       onClick={() =>
                         void run(async () => {

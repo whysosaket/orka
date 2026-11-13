@@ -14,12 +14,20 @@ import {
   ZapIcon,
   LockIcon,
 } from "@primer/octicons-react";
+import {
+  defaultProjectRules,
+  type AccessMode,
+  type ClassRule,
+  type ProjectRules,
+} from "@portable/protocol";
 import type { Project, Snapshot } from "../../types.js";
 import {
   governanceCall,
+  memberLabel,
   type GovernanceCatalog,
 } from "../project-permissions.js";
 import { Button } from "../button.js";
+import { resourceDisplayTitle } from "../resource-presentation.js";
 import { PermissionSelect } from "../permission-select.js";
 import { ActivityIndicator } from "../activity-indicator.js";
 import { Skeleton } from "skullet/react";
@@ -56,13 +64,13 @@ type Migration = {
   previous: {
     project: {
       governed: boolean;
-      policy: Record<string, { mode: string; create: string }> | null;
+      policy: Partial<ProjectRules> | null;
     };
     members: { user_id: string; role: string }[];
     memberRules: {
       user_id: string;
-      class: string;
-      rule: { mode: string; create: string };
+      class: keyof ProjectRules;
+      rule: ClassRule;
     }[];
     resourceRules: {
       user_id: string;
@@ -87,6 +95,26 @@ type Phase =
   | "loading-latest";
 const nameOf = (value: Access) =>
   accessOptions.find((option) => option.value === value)?.label ?? value;
+const existingAccessNames: Record<AccessMode, string> = {
+  hidden: nameOf("none"),
+  read: nameOf("read"),
+  suggest: "Suggest changes for approval",
+  publish: nameOf("write"),
+};
+const newItemNames: Record<ClassRule["create"], string> = {
+  hidden: "Cannot add",
+  suggest: "Suggest for approval",
+  publish: "Publish directly",
+};
+const roleAccess: Record<
+  Access,
+  { mode: AccessMode; create: ClassRule["create"] }
+> = {
+  none: { mode: "hidden", create: "hidden" },
+  read: { mode: "read", create: "hidden" },
+  add: { mode: "hidden", create: "publish" },
+  write: { mode: "publish", create: "publish" },
+};
 
 export function RoleTables({
   policies,
@@ -609,7 +637,7 @@ export const SettingsPermissions = forwardRef<
         </Button>
       )}
       {(query.data?.catalog.resourceRules?.length ?? 0) > 0 && (
-        <details>
+        <details className="settings-restrictions">
           <summary>
             Retained file and source restrictions (
             {query.data!.catalog.resourceRules!.length})
@@ -619,14 +647,61 @@ export const SettingsPermissions = forwardRef<
             continue to apply to the people listed.
           </p>
           <ul>
-            {query.data!.catalog.resourceRules!.map((rule) => (
-              <li key={`${rule.resourceId}:${rule.userId}`}>
-                {query.data?.catalog.members.find(
-                  (member) => member.id === rule.userId,
-                )?.name ?? `Member ${rule.userId.slice(0, 8)}`}{" "}
-                · {rule.resourceId} · {rule.rule.mode}
-              </li>
-            ))}
+            {query.data!.catalog.resourceRules!.map((rule) => {
+              const resource = state.resources.find(
+                (item) =>
+                  item.projectId === projectId &&
+                  item.resourceId === rule.resourceId,
+              );
+              const source = project.sources?.find(
+                (item) => item.id === (resource?.sourceId ?? rule.resourceId),
+              );
+              const envSet = query.data?.catalog.envSets?.find(
+                (item) => item.resourceId === rule.resourceId,
+              );
+              return (
+                <li key={`${rule.resourceId}:${rule.userId}`}>
+                  <div className="settings-restriction-content">
+                    <strong>
+                      {resource
+                        ? resourceDisplayTitle(
+                            resource.title ||
+                              resource.logicalPath ||
+                              "Untitled content",
+                            source?.path ?? project.path,
+                          )
+                        : source?.name ||
+                          envSet?.title ||
+                          "Content unavailable"}
+                    </strong>
+                    <span>
+                      {resource
+                        ? [source?.name, resource.logicalPath]
+                            .filter(Boolean)
+                            .join(" · ")
+                        : source
+                          ? "Source folder"
+                          : envSet
+                            ? "ENV set"
+                            : "Name unavailable on this Mac"}
+                    </span>
+                    <span className="settings-restriction-id">
+                      ID: {rule.resourceId}
+                    </span>
+                  </div>
+                  <div className="settings-restriction-person">
+                    <span>
+                      {memberLabel(
+                        rule.userId,
+                        user,
+                        query.data?.catalog.members,
+                      )}
+                    </span>
+                    <span>{existingAccessNames[rule.rule.mode]}</span>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </details>
       )}
@@ -634,86 +709,142 @@ export const SettingsPermissions = forwardRef<
         <Overlay
           open
           title="Review role migration"
-          className="settings-migration"
+          className="settings-migration settings-migration--permissions"
           onClose={() => setMigrationOpen(false)}
         >
           <h2>Review role migration</h2>
-          <p>
-            Every current non-owner stays a Member. Personal category exceptions
-            will be replaced by the Member policy. Restricted files and sources,
-            ENV rules, pending reviews, private drafts, local files, and queued
-            changes are retained. Queued writes are checked again by the
-            service.
-          </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Person / category</th>
-                <th>Current access / additions</th>
-                <th>After migration</th>
-              </tr>
-            </thead>
-            <tbody>
-              {migration.previous.members
-                .filter((member) => member.role !== "owner")
-                .flatMap((member) =>
-                  ["instructions", ...categories].map((category) => {
-                    const rule =
-                      migration.previous.memberRules.find(
-                        (rule) =>
-                          rule.user_id === member.user_id &&
-                          rule.class === category,
-                      )?.rule ?? migration.previous.project.policy?.[category];
-                    const key =
-                      category === "instructions"
-                        ? "memory"
-                        : (category as keyof RolePolicies["member"]);
-                    return (
-                      <tr key={`${member.user_id}:${category}`}>
-                        <td>
-                          {query.data?.catalog.members.find(
-                            (person) => person.id === member.user_id,
-                          )?.name ?? member.user_id}{" "}
-                          / {category}
-                        </td>
-                        <td>
-                          {migration.previous.project.governed
-                            ? `${rule?.mode ?? "legacy"} / ${rule?.create ?? "legacy"}`
-                            : "Full legacy access"}
-                        </td>
-                        <td>{nameOf(migration.proposed.member[key])}</td>
-                      </tr>
-                    );
-                  }),
-                )}
-            </tbody>
-          </table>
-          <p>
-            {migration.previous.resourceRules.length} file/source rules and{" "}
-            {migration.previous.pending.length} pending reviews retained.
-            “Suggest changes” is a review workflow; any change to direct
-            publication is shown above.
-          </p>
-          <label className="settings-check">
-            <input
-              type="checkbox"
-              checked={ack}
-              onChange={(event) => setAck(event.target.checked)}
-            />
-            I reviewed the access changes for every current Member.
-          </label>
-          <div className="settings-confirm-actions">
-            <Button onClick={() => setMigrationOpen(false)}>Stay</Button>
-            <Button
-              variant="primary"
-              disabled={!ack || phase === "saving"}
-              onClick={() => {
-                setMigrationOpen(false);
-                void save();
-              }}
-            >
-              Confirm migration
-            </Button>
+          <div
+            className="settings-migration-body"
+            role="region"
+            aria-label="Migration comparison"
+            tabIndex={0}
+          >
+            <p>
+              People keep their current roles. Personal category exceptions will
+              be replaced by role permissions. Project instructions and Memories
+              will use the same permission. Changed permissions are highlighted.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Person and category</th>
+                  <th>Current permissions</th>
+                  <th>After migration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {migration.previous.members
+                  .filter((member) => member.role !== "owner")
+                  .flatMap((member) =>
+                    (["instructions", ...categories] as const).map(
+                      (category) => {
+                        const rule = migration.previous.project.governed
+                          ? (migration.previous.memberRules.find(
+                              (rule) =>
+                                rule.user_id === member.user_id &&
+                                rule.class === category,
+                            )?.rule ??
+                            migration.previous.project.policy?.[category] ??
+                            defaultProjectRules[category])
+                          : defaultProjectRules[category];
+                        const key =
+                          category === "instructions" ? "memory" : category;
+                        const role =
+                          member.role === "admin" ? "admin" : "member";
+                        const access = migration.proposed[role][key];
+                        const after = roleAccess[access];
+                        return (
+                          <tr key={`${member.user_id}:${category}`}>
+                            <td>
+                              <span className="settings-migration-line">
+                                {memberLabel(
+                                  member.user_id,
+                                  user,
+                                  query.data?.catalog.members,
+                                )}
+                              </span>
+                              <span className="settings-migration-line">
+                                {category === "instructions"
+                                  ? "Project instructions"
+                                  : categoryNames[category]}
+                              </span>
+                              <span className="settings-migration-line">
+                                {role === "admin" ? "Admin" : "Member"}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="settings-migration-line">
+                                Existing items: {existingAccessNames[rule.mode]}
+                              </span>
+                              <span className="settings-migration-line">
+                                New items: {newItemNames[rule.create]}
+                              </span>
+                            </td>
+                            <td>
+                              <span
+                                className="settings-migration-line"
+                                data-changed={
+                                  access === "add" ||
+                                  rule.mode !== after.mode ||
+                                  undefined
+                                }
+                              >
+                                Existing items:{" "}
+                                {access === "add"
+                                  ? "Read own items only"
+                                  : existingAccessNames[after.mode]}
+                              </span>
+                              <span
+                                className="settings-migration-line"
+                                data-changed={
+                                  rule.create !== after.create || undefined
+                                }
+                              >
+                                New items: {newItemNames[after.create]}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      },
+                    ),
+                  )}
+              </tbody>
+            </table>
+            <p>
+              {migration.previous.resourceRules.length} file/source rules and{" "}
+              {migration.previous.pending.length} pending reviews are retained.
+              Restricted files and sources can further limit the access shown
+              above. ENV rules, private drafts, local files and queued changes
+              are retained. Queued writes are checked again by the service.
+            </p>
+            <p>
+              Suggesting sends changes for approval. Publishing applies changes
+              directly. Existing session and plan authorship protections still
+              apply.
+            </p>
+          </div>
+          <div className="settings-migration-footer">
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={ack}
+                onChange={(event) => setAck(event.target.checked)}
+              />
+              I reviewed the access changes for every current Admin and Member.
+            </label>
+            <div className="settings-confirm-actions">
+              <Button onClick={() => setMigrationOpen(false)}>Stay</Button>
+              <Button
+                variant="primary"
+                disabled={!ack || phase === "saving"}
+                onClick={() => {
+                  setMigrationOpen(false);
+                  void save();
+                }}
+              >
+                Confirm migration
+              </Button>
+            </div>
           </div>
         </Overlay>
       )}
@@ -721,98 +852,107 @@ export const SettingsPermissions = forwardRef<
         <Overlay
           open
           title="Review latest permissions"
-          className="settings-migration"
+          className="settings-migration settings-migration--permissions"
           onClose={() => setConflict(null)}
         >
           <h2>Review latest permissions</h2>
-          <p>
-            Your draft is kept. Unedited values follow the latest policy. Choose
-            which value to keep for each conflict.
-          </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th>Before</th>
-                <th>Your draft</th>
-                <th>Latest</th>
-                <th>Resolution</th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparison.map((cell) => (
-                <tr key={`${cell.role}:${cell.category}`}>
-                  <td>
-                    {cell.role} / {categoryNames[cell.category]}
-                  </td>
-                  <td>{nameOf(cell.before)}</td>
-                  <td>{nameOf(cell.draft)}</td>
-                  <td>{nameOf(cell.latest)}</td>
-                  <td>
-                    {cell.conflict ? (
-                      <PermissionSelect
-                        label={`Resolve ${cell.role} ${categoryNames[cell.category]}`}
-                        value={
-                          conflict.choices[`${cell.role}:${cell.category}`] ??
-                          ""
-                        }
-                        placeholder="Choose"
-                        options={[
-                          { value: "draft", label: "Keep my edit" },
-                          { value: "latest", label: "Use latest" },
-                        ]}
-                        onChange={(value) =>
-                          setConflict({
-                            ...conflict,
-                            choices: {
-                              ...conflict.choices,
-                              [`${cell.role}:${cell.category}`]: value as
-                                "draft" | "latest",
-                            },
-                          })
-                        }
-                      />
-                    ) : cell.edited ? (
-                      "Keep my edit"
-                    ) : (
-                      "Use latest"
-                    )}
-                  </td>
+          <div
+            className="settings-migration-body"
+            role="region"
+            aria-label="Permission comparison"
+            tabIndex={0}
+          >
+            <p>
+              Your draft is kept. Unedited values follow the latest policy.
+              Choose which value to keep for each conflict.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Before</th>
+                  <th>Your draft</th>
+                  <th>Latest</th>
+                  <th>Resolution</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="settings-confirm-actions">
-            <Button onClick={() => setConflict(null)}>Stay</Button>
-            <Button
-              variant="primary"
-              disabled={comparison.some(
-                (cell) =>
-                  cell.conflict &&
-                  !conflict.choices[`${cell.role}:${cell.category}`],
-              )}
-              onClick={() => {
-                const draft = structuredClone(conflict.latest.policies);
-                for (const cell of comparison)
-                  if (
-                    cell.edited &&
-                    (!cell.conflict ||
-                      conflict.choices[`${cell.role}:${cell.category}`] ===
-                        "draft")
-                  )
-                    draft[cell.role][cell.category] = cell.draft;
-                setRecord({
-                  baseline: conflict.latest.policies,
-                  draft,
-                  revision: conflict.latest.policyRevision,
-                });
-                setConflict(null);
-                setPhase("idle");
-                setError("");
-              }}
-            >
-              Use reviewed values
-            </Button>
+              </thead>
+              <tbody>
+                {comparison.map((cell) => (
+                  <tr key={`${cell.role}:${cell.category}`}>
+                    <td>
+                      {cell.role} / {categoryNames[cell.category]}
+                    </td>
+                    <td>{nameOf(cell.before)}</td>
+                    <td>{nameOf(cell.draft)}</td>
+                    <td>{nameOf(cell.latest)}</td>
+                    <td>
+                      {cell.conflict ? (
+                        <PermissionSelect
+                          label={`Resolve ${cell.role} ${categoryNames[cell.category]}`}
+                          value={
+                            conflict.choices[`${cell.role}:${cell.category}`] ??
+                            ""
+                          }
+                          placeholder="Choose"
+                          options={[
+                            { value: "draft", label: "Keep my edit" },
+                            { value: "latest", label: "Use latest" },
+                          ]}
+                          onChange={(value) =>
+                            setConflict({
+                              ...conflict,
+                              choices: {
+                                ...conflict.choices,
+                                [`${cell.role}:${cell.category}`]: value as
+                                  "draft" | "latest",
+                              },
+                            })
+                          }
+                        />
+                      ) : cell.edited ? (
+                        "Keep my edit"
+                      ) : (
+                        "Use latest"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="settings-migration-footer">
+            <div className="settings-confirm-actions">
+              <Button onClick={() => setConflict(null)}>Stay</Button>
+              <Button
+                variant="primary"
+                disabled={comparison.some(
+                  (cell) =>
+                    cell.conflict &&
+                    !conflict.choices[`${cell.role}:${cell.category}`],
+                )}
+                onClick={() => {
+                  const draft = structuredClone(conflict.latest.policies);
+                  for (const cell of comparison)
+                    if (
+                      cell.edited &&
+                      (!cell.conflict ||
+                        conflict.choices[`${cell.role}:${cell.category}`] ===
+                          "draft")
+                    )
+                      draft[cell.role][cell.category] = cell.draft;
+                  setRecord({
+                    baseline: conflict.latest.policies,
+                    draft,
+                    revision: conflict.latest.policyRevision,
+                  });
+                  setConflict(null);
+                  setPhase("idle");
+                  setError("");
+                }}
+              >
+                Use reviewed values
+              </Button>
+            </div>
           </div>
         </Overlay>
       )}

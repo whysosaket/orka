@@ -2,19 +2,21 @@
   .repository-panel {
     @apply flex min-w-0 flex-col gap-4 border-b border-line pb-4;
   }
-  .repository-onboarding {
-    @apply mx-auto flex min-w-0 flex-col gap-5 overflow-y-auto p-8;
-    max-width: 900px;
-    height: 100vh;
-  }
-  .repository-onboarding form {
-    @apply flex flex-col gap-4;
-  }
-  .repository-onboarding .actions {
-    @apply flex flex-wrap gap-2;
-  }
   .repository-panel .actions {
     @apply flex flex-wrap gap-2;
+  }
+  .repository-requests > .ui-button {
+    @apply self-start;
+  }
+  .repository-request-review,
+  .repository-request-status {
+    @apply flex min-w-0 flex-col gap-3;
+  }
+  .repository-request-status {
+    @apply gap-2;
+  }
+  .repository-request-review .actions {
+    @apply justify-start;
   }
   .repository-panel p {
     overflow-wrap: anywhere;
@@ -103,10 +105,6 @@
   .repository-picker-field {
     @apply flex min-w-0 flex-col gap-2 text-label-xs;
   }
-  .repository-onboarding select {
-    @apply min-h-10 w-full min-w-0 border border-line bg-raised px-3 text-body-xs;
-    border-radius: var(--radius-control);
-  }
   .repository-dialog-footer {
     @apply flex items-center justify-end gap-3 border-t border-line pt-4;
   }
@@ -157,16 +155,10 @@
     @apply flex flex-col items-start gap-3 rounded-lg border border-line bg-raised p-4;
   }
   .repository-source-choice {
-    @apply flex flex-wrap gap-4 border-0 p-0 text-body-xs;
+    @apply mt-3 flex min-w-0 flex-wrap items-center gap-3 text-body-xs;
   }
-  .repository-source-choice legend {
-    @apply mb-2 text-label-sm;
-  }
-  .repository-source-choice label {
-    @apply flex items-center gap-2;
-  }
-  .repository-source-choice input {
-    width: auto;
+  .repository-source-choice-label {
+    @apply text-label-sm;
   }
   .create-project-source-hint {
     @apply m-0 text-body-xs text-muted;
@@ -361,11 +353,11 @@
     @apply z-40 w-[480px];
   }
   .settings-confirm h2,
-  .settings-migration h2 {
+  .modal.settings-migration h2 {
     @apply m-0 text-heading-xs;
   }
   .settings-confirm p,
-  .settings-migration p {
+  .modal.settings-migration p {
     @apply text-body-sm text-secondary;
   }
   .settings-confirm-actions {
@@ -633,15 +625,70 @@
   .settings-panel .project-sharing-choice--switch .ui-switch-control {
     @apply order-1;
   }
-  .settings-migration {
+  .modal.settings-migration {
     @apply flex max-h-[85vh] w-[850px] flex-col gap-5 overflow-y-auto;
+  }
+  .modal.settings-migration--permissions {
+    @apply overflow-hidden p-6;
+  }
+  .settings-migration--permissions > h2 {
+    @apply shrink-0;
+  }
+  .modal.settings-migration--permissions p {
+    @apply m-0 text-body-sm;
+  }
+  .settings-migration-body {
+    @apply flex min-h-0 flex-col gap-4 overflow-auto;
+  }
+  .settings-migration-body table {
+    min-width: 640px;
+  }
+  .settings-migration-footer {
+    @apply flex shrink-0 flex-col gap-4 border-t border-line pt-4;
+  }
+  .settings-migration-footer .settings-check {
+    @apply m-0 flex-row;
+  }
+  .settings-migration-line {
+    @apply block;
+  }
+  .settings-migration-line + .settings-migration-line {
+    @apply mt-1;
+  }
+  .settings-migration-line[data-changed] {
+    @apply font-semibold text-foreground;
+  }
+  .settings-restrictions ul {
+    @apply mt-3 list-none p-0;
+  }
+  .settings-restrictions li {
+    @apply flex flex-wrap items-start justify-between gap-4 border-b border-line py-3;
+  }
+  .settings-restriction-content {
+    @apply flex min-w-0 flex-1 flex-col gap-1;
+    overflow-wrap: anywhere;
+  }
+  .settings-restriction-content strong {
+    @apply text-label-sm;
+  }
+  .settings-restriction-content > span {
+    @apply text-body-xs text-secondary;
+  }
+  .settings-restriction-content .settings-restriction-id {
+    @apply text-muted;
+  }
+  .settings-restriction-person {
+    @apply flex flex-col gap-1 text-body-xs;
+  }
+  .settings-restriction-person > span + span {
+    @apply text-secondary;
   }
   .settings-migration table {
     @apply w-full border-collapse text-body-xs;
   }
   .settings-migration th,
   .settings-migration td {
-    @apply border-b border-line px-2 py-3 text-left;
+    @apply border-b border-line px-2 py-3 text-left align-top;
   }
   .settings-migration .permission-select-trigger {
     @apply max-w-full;

@@ -72,7 +72,7 @@ export function Onboarding({
   useEffect(() => {
     title.current?.focus();
     setShowProgress(true);
-  }, [step]);
+  }, [step, githubSetup]);
   useEffect(() => {
     if (step !== "ready" || !showProgress) return;
     const timer = setTimeout(() => {
@@ -136,15 +136,6 @@ export function Onboarding({
       ? 3
       : 2;
   const go = (next: OnboardingStep) => flow.go(next);
-  if (githubSetup && repositoryEnabled)
-    return (
-      <RepositoryOnboarding
-        state={state}
-        refresh={refresh}
-        onBack={() => setGithubSetup(false)}
-        onComplete={flow.completeProject}
-      />
-    );
   if (step === "profile")
     return (
       <ProfileStep
@@ -377,241 +368,298 @@ export function Onboarding({
       <section
         className={`onboarding-flow__canvas${stage === 1 ? " onboarding-flow__canvas--discovery" : ""}`}
       >
-        {(step === "discover" || step === "scanning" || step === "select") && (
+        {githubSetup && repositoryEnabled ? (
           <>
             {header(
-              "Add Project",
-              "Orka looks for projects you’ve used with Claude Code and Codex. You’ll choose which ones to connect.",
+              "Connect a repository",
+              "Choose an Orka project, then connect your GitHub repository.",
               "project-folder.png",
               true,
             )}
-            {step !== "select" ? (
-              <div className="onboarding-flow__discovery-actions">
-                <Button variant="primary" disabled={busy} onClick={flow.find}>
-                  <Icon icon={FileDirectoryIcon} />
-                  Find my projects
-                </Button>
-                <Button disabled={busy} onClick={() => go("folder")}>
-                  Choose a folder instead
-                </Button>
-                <Button
-                  variant="tertiary"
-                  disabled={busy || step === "scanning"}
-                  onClick={flow.defer}
-                >
-                  Set up later
-                </Button>
-                {repositoryEnabled && (
-                  <Button disabled={busy} onClick={() => setGithubSetup(true)}>
-                    Connect a GitHub repository
-                  </Button>
+            <RepositoryOnboarding
+              state={state}
+              refresh={refresh}
+              onBack={() => setGithubSetup(false)}
+              onComplete={flow.completeProject}
+            />
+          </>
+        ) : (
+          <>
+            {(step === "discover" ||
+              step === "scanning" ||
+              step === "select") && (
+              <>
+                {header(
+                  "Add Project",
+                  "Orka looks for projects you’ve used with Claude Code and Codex. You’ll choose which ones to connect.",
+                  "project-folder.png",
+                  true,
                 )}
-              </div>
-            ) : (
-              <div className="onboarding-flow__selection">
-                <TextField
-                  type="search"
-                  aria-label="Search projects"
-                  placeholder="Search by project name or folder"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-                <div className="onboarding-flow__selection-toolbar">
-                  <span aria-live="polite">
-                    {draft.selected.length} of {draft.projects.length} selected
-                  </span>
-                  <Button
-                    size="sm"
-                    disabled={busy || !visiblePaths.length}
-                    onClick={() => flow.toggleVisible(visiblePaths)}
-                  >
-                    {visiblePaths.length > 0 &&
-                    visiblePaths.every((path) => draft.selected.includes(path))
-                      ? query
-                        ? "Unselect visible"
-                        : "Unselect all"
-                      : query
-                        ? "Select visible"
-                        : "Select all"}
-                  </Button>
-                </div>
-                <div className="onboarding-flow__project-list">
-                  {visibleProjects.length === 0 && (
-                    <p className="onboarding-flow__no-results">
-                      No projects match this search.
-                    </p>
-                  )}
-                  {visibleProjects.map((project) => (
-                    <label
-                      className="onboarding-flow__project"
-                      key={project.path}
+                {step !== "select" ? (
+                  <div className="onboarding-flow__discovery-actions">
+                    <Button
+                      variant="primary"
+                      disabled={busy}
+                      onClick={flow.find}
                     >
-                      <input
-                        type="checkbox"
-                        checked={draft.selected.includes(project.path)}
-                        disabled={busy || project.readable === false}
-                        onChange={() => flow.toggle(project.path)}
-                      />
-                      <span className="onboarding-flow__project-details">
-                        <strong>{project.name}</strong>
-                        <small title={project.path}>
-                          {project.displayPath}
-                        </small>
+                      <Icon icon={FileDirectoryIcon} />
+                      Find my projects
+                    </Button>
+                    <div
+                      className="onboarding-flow__source-methods"
+                      role="group"
+                      aria-label="Choose a project source"
+                    >
+                      <Button disabled={busy} onClick={() => go("folder")}>
+                        Choose a folder instead
+                      </Button>
+                      {repositoryEnabled && (
+                        <Button
+                          disabled={busy}
+                          onClick={() => setGithubSetup(true)}
+                        >
+                          Connect a GitHub repository
+                        </Button>
+                      )}
+                    </div>
+                    <Button
+                      variant="tertiary"
+                      disabled={busy || step === "scanning"}
+                      onClick={flow.defer}
+                    >
+                      Set up later
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="onboarding-flow__selection">
+                    <TextField
+                      type="search"
+                      aria-label="Search projects"
+                      placeholder="Search by project name or folder"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                    />
+                    <div className="onboarding-flow__selection-toolbar">
+                      <span aria-live="polite">
+                        {draft.selected.length} of {draft.projects.length}{" "}
+                        selected
                       </span>
-                      <span className="onboarding-flow__tools">
-                        {project.sources.map((tool) => (
-                          <span className="onboarding-flow__tool" key={tool}>
-                            <img
-                              src={onboardingAsset(`tool-${tool}.png`)}
-                              srcSet={`${onboardingAsset(`tool-${tool}@2x.png`)} 2x`}
-                              width={28}
-                              height={28}
-                              alt={tool === "claude" ? "Claude Code" : "Codex"}
-                            />
+                      <Button
+                        size="sm"
+                        disabled={busy || !visiblePaths.length}
+                        onClick={() => flow.toggleVisible(visiblePaths)}
+                      >
+                        {visiblePaths.length > 0 &&
+                        visiblePaths.every((path) =>
+                          draft.selected.includes(path),
+                        )
+                          ? query
+                            ? "Unselect visible"
+                            : "Unselect all"
+                          : query
+                            ? "Select visible"
+                            : "Select all"}
+                      </Button>
+                    </div>
+                    <div className="onboarding-flow__project-list">
+                      {visibleProjects.length === 0 && (
+                        <p className="onboarding-flow__no-results">
+                          No projects match this search.
+                        </p>
+                      )}
+                      {visibleProjects.map((project) => (
+                        <label
+                          className="onboarding-flow__project"
+                          key={project.path}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={draft.selected.includes(project.path)}
+                            disabled={busy || project.readable === false}
+                            onChange={() => flow.toggle(project.path)}
+                          />
+                          <span className="onboarding-flow__project-details">
+                            <strong>{project.name}</strong>
+                            <small title={project.path}>
+                              {project.displayPath}
+                            </small>
                           </span>
-                        ))}
+                          <span className="onboarding-flow__tools">
+                            {project.sources.map((tool) => (
+                              <span
+                                className="onboarding-flow__tool"
+                                key={tool}
+                              >
+                                <img
+                                  src={onboardingAsset(`tool-${tool}.png`)}
+                                  srcSet={`${onboardingAsset(`tool-${tool}@2x.png`)} 2x`}
+                                  width={28}
+                                  height={28}
+                                  alt={
+                                    tool === "claude" ? "Claude Code" : "Codex"
+                                  }
+                                />
+                              </span>
+                            ))}
+                          </span>
+                          {project.readable === false && (
+                            <span>Needs access</span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                    <div className="onboarding-flow__actions">
+                      <Button
+                        disabled={busy}
+                        onClick={() => flow.chooseFolder(true)}
+                      >
+                        Add more
+                      </Button>
+                      <Button
+                        variant="primary"
+                        disabled={busy || !draft.selected.length}
+                        onClick={flow.proceed}
+                      >
+                        Proceed
+                        <Icon icon={ArrowRightIcon} />
+                      </Button>
+                    </div>
+                    <Button
+                      variant="tertiary"
+                      disabled={busy}
+                      onClick={flow.defer}
+                    >
+                      Set up later
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+            {syncing && !showProgress && (
+              <div
+                className="onboarding-flow__recovery onboarding-flow__live-sync"
+                data-figma-frame="715:3596"
+              >
+                <div className="onboarding-flow__copy">
+                  <h1 ref={title} tabIndex={-1}>
+                    Syncing your projects
+                  </h1>
+                  <p>You can explore Orka while the remaining projects sync.</p>
+                </div>
+                <div
+                  className="onboarding-flow__sync-status"
+                  aria-live="polite"
+                >
+                  {projects.map((project) => (
+                    <div key={project.path}>
+                      <strong>{project.name}</strong>
+                      <span>
+                        {project.status === "synced"
+                          ? "Synced"
+                          : project.status === "error"
+                            ? "Needs attention"
+                            : project.status
+                              ? "Syncing"
+                              : "Queued"}
                       </span>
-                      {project.readable === false && <span>Needs access</span>}
-                    </label>
+                    </div>
                   ))}
                 </div>
-                <div className="onboarding-flow__actions">
-                  <Button
-                    disabled={busy}
-                    onClick={() => flow.chooseFolder(true)}
-                  >
-                    Add more
+                <div className="onboarding-flow__project-progress">
+                  <progress
+                    aria-label="Projects synced"
+                    value={synced}
+                    max={projects.length || 1}
+                  />
+                  <span>
+                    {synced} of {projects.length} projects synced
+                  </span>
+                </div>
+                <p className="onboarding-flow__keep-open">
+                  Keep Orka open until syncing finishes. You can follow progress
+                  in Sync.
+                </p>
+                <div className="onboarding-flow__recovery-actions">
+                  <Button onClick={() => setShowProgress(true)}>
+                    View sync progress
                   </Button>
                   <Button
                     variant="primary"
-                    disabled={busy || !draft.selected.length}
-                    onClick={flow.proceed}
+                    disabled={busy}
+                    onClick={flow.complete}
                   >
-                    Proceed
-                    <Icon icon={ArrowRightIcon} />
+                    Open Orka
                   </Button>
                 </div>
-                <Button variant="tertiary" disabled={busy} onClick={flow.defer}>
-                  Set up later
-                </Button>
               </div>
             )}
-          </>
-        )}
-        {syncing && !showProgress && (
-          <div
-            className="onboarding-flow__recovery onboarding-flow__live-sync"
-            data-figma-frame="715:3596"
-          >
-            <div className="onboarding-flow__copy">
-              <h1 ref={title} tabIndex={-1}>
-                Syncing your projects
-              </h1>
-              <p>You can explore Orka while the remaining projects sync.</p>
-            </div>
-            <div className="onboarding-flow__sync-status" aria-live="polite">
-              {projects.map((project) => (
-                <div key={project.path}>
-                  <strong>{project.name}</strong>
-                  <span>
-                    {project.status === "synced"
-                      ? "Synced"
-                      : project.status === "error"
-                        ? "Needs attention"
-                        : project.status
-                          ? "Syncing"
-                          : "Queued"}
-                  </span>
+            {(step === "review" ||
+              (syncing && showProgress) ||
+              step === "ready" ||
+              step === "background") && (
+              <>
+                {header(
+                  "Sync Project",
+                  "Choose what to sync across your selected projects.",
+                  "sync-folders.png",
+                )}
+                <div className="onboarding-flow__sync">{syncChoices}</div>
+              </>
+            )}
+            <RecoveryStep flow={flow} headingRef={title} />
+            {step === "invite" && (
+              <>
+                {header(
+                  "Invite teammates",
+                  "Create an invite for each teammate you want to add. You can also do this later.",
+                  "invite-teammates.png",
+                )}
+                <div className="onboarding-flow__invitations">
+                  {projects
+                    .filter((p) =>
+                      state.projects.some(
+                        (actual) =>
+                          actual.id === p.projectId && actual.role === "owner",
+                      ),
+                    )
+                    .map((project) => (
+                      <div
+                        className="onboarding-flow__invite-row"
+                        key={project.path}
+                      >
+                        <img
+                          src={onboardingAsset("invite-folder.svg")}
+                          width={16}
+                          height={16}
+                          alt=""
+                        />
+                        <span className="onboarding-flow__project-details">
+                          <strong>{project.name}</strong>
+                          <small title={project.path}>
+                            {project.displayPath}
+                          </small>
+                        </span>
+                        <Button
+                          size="sm"
+                          disabled={busy}
+                          title="Invite a teammate by email or joining link"
+                          onClick={() => {
+                            if (project.projectId)
+                              setInviteProject({
+                                id: project.projectId,
+                                name: project.name,
+                              });
+                          }}
+                        >
+                          <Icon icon={PersonAddIcon} size="sm" />
+                          Invite teammate
+                        </Button>
+                      </div>
+                    ))}
+                  {actions(() => go("ready"), "Open Orka", flow.complete)}
                 </div>
-              ))}
-            </div>
-            <div className="onboarding-flow__project-progress">
-              <progress
-                aria-label="Projects synced"
-                value={synced}
-                max={projects.length || 1}
-              />
-              <span>
-                {synced} of {projects.length} projects synced
-              </span>
-            </div>
-            <p className="onboarding-flow__keep-open">
-              Keep Orka open until syncing finishes. You can follow progress in
-              Sync.
-            </p>
-            <div className="onboarding-flow__recovery-actions">
-              <Button onClick={() => setShowProgress(true)}>
-                View sync progress
-              </Button>
-              <Button variant="primary" disabled={busy} onClick={flow.complete}>
-                Continue to Orka
-              </Button>
-            </div>
-          </div>
-        )}
-        {(step === "review" ||
-          (syncing && showProgress) ||
-          step === "ready" ||
-          step === "background") && (
-          <>
-            {header(
-              "Sync Project",
-              "Choose what to sync across your selected projects.",
-              "sync-folders.png",
+              </>
             )}
-            <div className="onboarding-flow__sync">{syncChoices}</div>
-          </>
-        )}
-        <RecoveryStep flow={flow} headingRef={title} />
-        {step === "invite" && (
-          <>
-            {header(
-              "Invite teammates",
-              "Create an invite for each teammate you want to add. You can also do this later.",
-              "invite-teammates.png",
-            )}
-            <div className="onboarding-flow__invitations">
-              {projects
-                .filter((p) =>
-                  state.projects.some(
-                    (actual) =>
-                      actual.id === p.projectId && actual.role === "owner",
-                  ),
-                )
-                .map((project) => (
-                  <div
-                    className="onboarding-flow__invite-row"
-                    key={project.path}
-                  >
-                    <img
-                      src={onboardingAsset("invite-folder.svg")}
-                      width={16}
-                      height={16}
-                      alt=""
-                    />
-                    <span className="onboarding-flow__project-details">
-                      <strong>{project.name}</strong>
-                      <small title={project.path}>{project.displayPath}</small>
-                    </span>
-                    <Button
-                      size="sm"
-                      disabled={busy}
-                      title="Invite a teammate by email or joining link"
-                      onClick={() => {
-                        if (project.projectId)
-                          setInviteProject({
-                            id: project.projectId,
-                            name: project.name,
-                          });
-                      }}
-                    >
-                      <Icon icon={PersonAddIcon} size="sm" />
-                      Invite teammate
-                    </Button>
-                  </div>
-                ))}
-              {actions(() => go("ready"), "Go to Dashboard", flow.complete)}
-            </div>
           </>
         )}
         <div className="onboarding-flow__error">
@@ -703,7 +751,7 @@ export function Onboarding({
                   disabled={busy}
                   onClick={flow.complete}
                 >
-                  Continue to Orka
+                  Open Orka
                 </Button>
               </div>
             )}

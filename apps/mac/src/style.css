@@ -1401,6 +1401,8 @@
   .modal {
     @apply fixed left-1/2 top-1/2 z-20 max-h-[90vh] w-[440px] max-w-[calc(100vw-48px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-panel p-7;
     box-shadow: var(--shadow-modal);
+    --button-secondary-bg: var(--surface-tertiary);
+    --button-secondary-bg-hover: var(--interaction-hover);
   }
   .modal h2 {
     @apply mb-6;
@@ -1480,10 +1482,7 @@
     @apply overflow-hidden rounded-lg bg-surface-tertiary;
   }
   .project-sharing-choice {
-    @apply mb-0 flex cursor-pointer flex-row items-center gap-3 px-3 py-2;
-  }
-  .project-sharing-choice:hover {
-    @apply bg-hover;
+    @apply mb-0 flex flex-row items-center gap-3 px-3 py-2;
   }
   .project-sharing-choice input:not(.ui-switch) {
     @apply m-0 h-4 w-4 shrink-0;
@@ -1505,6 +1504,19 @@
   }
   .project-sharing-description {
     @apply text-body-xs text-secondary;
+  }
+  .create-project-modal .project-sharing-choice {
+    padding-block: 4px;
+  }
+  .create-project-modal .project-sharing-choice .permission-select-trigger {
+    padding-block: 6px;
+  }
+  .create-project-modal .source-folder-selection {
+    gap: 8px;
+  }
+  .create-project-modal .source-folders-heading {
+    margin-top: 8px;
+    margin-bottom: 0;
   }
   .project-sharing:disabled .project-sharing-choice {
     @apply cursor-default opacity-60;
@@ -1675,9 +1687,15 @@
   }
 }
 
-.governance-dialog {
+.modal.governance-dialog {
+  display: flex;
+  flex-direction: column;
   width: min(870px, calc(100vw - 48px));
   max-width: 870px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface-secondary);
+  border-radius: var(--radius-overlay);
 }
 .governance-dialog section,
 .governance-dialog form {
@@ -1696,6 +1714,40 @@
   border: 1px solid var(--surface-stroke);
   border-radius: var(--radius-control);
   padding: 8px;
+}
+.governance-dialog .review-header h2,
+.request-review-modal .review-header h2 {
+  @apply text-heading-xs;
+  margin: 0;
+}
+.governance-dialog .changes-review-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+}
+.governance-dialog .changes-review-body section,
+.governance-dialog .changes-review-body form {
+  margin-block: 0;
+}
+.governance-dialog .changes-review-body > h3,
+.governance-dialog .changes-review-body > p {
+  margin: 0;
+}
+.governance-dialog .review-footer > p {
+  margin: 0;
+  margin-right: auto;
+}
+.changes-review-modal .review-footer-note {
+  margin: 0 auto 0 0;
+  flex: 1 1 300px;
+  text-align: left;
+}
+.permission-activation-details summary {
+  @apply cursor-pointer text-body-xs text-secondary;
+}
+.permission-activation-details p {
+  margin-block: 12px 0;
 }
 .governance-row {
   display: flex;

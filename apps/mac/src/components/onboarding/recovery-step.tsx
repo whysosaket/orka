@@ -221,7 +221,7 @@ export function RecoveryStep({
         </div>
         {actions(
           <Button disabled={busy} onClick={flow.complete}>
-            {step === "offline" ? "Continue to Orka" : "Continue"}
+            {step === "offline" ? "Open Orka" : "Continue"}
           </Button>,
           <Button
             variant="primary"

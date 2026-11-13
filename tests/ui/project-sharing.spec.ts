@@ -14,9 +14,14 @@ const off: ProjectSharing = {
 const automaticDefault = { ...off, memory: true, plan: true, skill: true };
 const inviteToken = "ab".repeat(24);
 
-async function fixture(page: Page, failCreate = false, browserInvites = true) {
+async function fixture(
+  page: Page,
+  failCreate = false,
+  browserInvites = true,
+  repositoryEnabled = false,
+) {
   await page.addInitScript(
-    ({ off, failCreate, browserInvites, inviteToken }) => {
+    ({ off, failCreate, browserInvites, inviteToken, repositoryEnabled }) => {
       Object.defineProperty(navigator, "clipboard", {
         value: {
           writeText: async (text: string) => {
@@ -71,6 +76,8 @@ async function fixture(page: Page, failCreate = false, browserInvites = true) {
             calls.push({ command, args });
             if (command === "plugin:dialog|open") return "/test/new-project";
             if (command.startsWith("plugin:")) return null;
+            if (command === "auth_capabilities")
+              return { repositories: { github: repositoryEnabled ? 1 : 0 } };
             if (command === "governance_command" && args.action === "catalog")
               return {
                 owner: true,
@@ -79,6 +86,11 @@ async function fixture(page: Page, failCreate = false, browserInvites = true) {
                 members: [{ id: "user", name: "Owner", role: "owner" }],
                 requests: [],
               };
+            if (
+              command === "repository_command" &&
+              args.action === "capabilities"
+            )
+              return { enabled: repositoryEnabled };
             if (command === "cloud_action") {
               if (args.action === "invite-capabilities")
                 return { email: false };
@@ -125,7 +137,7 @@ async function fixture(page: Page, failCreate = false, browserInvites = true) {
         },
       });
     },
-    { off, failCreate, browserInvites, inviteToken },
+    { off, failCreate, browserInvites, inviteToken, repositoryEnabled },
   );
   await page.goto("/");
   await expect(
@@ -212,6 +224,77 @@ for (const size of [
     expect((await calls(page)).some((c) => c.command === "env_command")).toBe(
       false,
     );
+  });
+}
+
+for (const size of [
+  { width: 1160, height: 800 },
+  { width: 900, height: 640 },
+]) {
+  test(`source selection keeps sharing defaults visible and keyboard accessible at ${size.width}`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize(size);
+    await fixture(page, false, true, true);
+    await page
+      .getByRole("button", { name: "Add project", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", {
+      name: "Create project",
+      exact: true,
+    });
+    const source = dialog.getByRole("group", { name: "Repository source" });
+    const github = source.getByRole("button", {
+      name: "GitHub repository",
+      exact: true,
+    });
+    const folder = source.getByRole("button", {
+      name: "Local folder",
+      exact: true,
+    });
+    await expect(github).toHaveAttribute("aria-pressed", "true");
+    for (const mode of ["github", "folder"]) {
+      if (mode === "folder") {
+        await github.focus();
+        await page.keyboard.press("Tab");
+        await expect(folder).toBeFocused();
+        await page.keyboard.press("Space");
+        await expect(folder).toHaveAttribute("aria-pressed", "true");
+        await expect(github).toHaveAttribute("aria-pressed", "false");
+        await expect(
+          dialog.getByRole("button", { name: "Add folders", exact: true }),
+        ).toBeInViewport();
+      }
+      for (const label of ["Memories", "Sessions", "Plans", "Skills"]) {
+        const choice = dialog.getByRole("combobox", {
+          name: `${label} sharing`,
+          exact: true,
+        });
+        await expect(choice).toContainText(
+          label === "Sessions" ? "Only when asked" : "Share automatically",
+        );
+        await expect(choice).toBeInViewport({ ratio: 1 });
+      }
+      await page.screenshot({
+        path: info.outputPath(`source-${mode}-${size.width}.png`),
+      });
+    }
+    const memoryRow = dialog.locator('[data-sharing-kind="memory"]');
+    const restingBackground = await memoryRow.evaluate(
+      (row) => getComputedStyle(row).backgroundColor,
+    );
+    await memoryRow.hover();
+    await expect(memoryRow).not.toHaveCSS("cursor", "pointer");
+    await expect(memoryRow).toHaveCSS("background-color", restingBackground);
+    await memoryRow.getByText("Memories", { exact: true }).click();
+    await expect(page.getByRole("option")).toHaveCount(0);
+    await expect(
+      dialog.getByRole("combobox", { name: "Memories sharing", exact: true }),
+    ).toContainText("Share automatically");
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect(
+      (await calls(page)).some((call) => call.command === "cloud_action"),
+    ).toBe(false);
   });
 }
 
@@ -421,9 +504,7 @@ for (const browserInvites of [true, false]) {
           ? `https://test.orka/join/${inviteToken}`
           : `orka://join/${inviteToken}`,
       );
-    await expect(invite.getByRole("status")).toHaveText(
-      "Joining link copied. It can be used once and expires in 24 hours.",
-    );
+    await expect(invite.getByRole("status")).toHaveText("Link copied.");
     expect(
       (await calls(page))
         .filter(
