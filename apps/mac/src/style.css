@@ -391,8 +391,8 @@
   .sidebar[data-motion="instant"] *:not(.project-section-highlight) {
     transition: none !important;
   }
-  .project-navigation-header {
-    @apply relative flex min-w-0 shrink-0 items-center;
+  .sidebar-window-controls {
+    @apply shrink-0;
     height: 38px;
   }
   .project-selector-actions {
@@ -405,14 +405,11 @@
     align-items: center;
     width: 100%;
   }
-  .sidebar-collapsed .project-navigation-header {
-    height: 38px;
-  }
   .project-selector {
-    @apply inline-flex min-w-0 flex-1 items-center justify-between gap-2 bg-transparent text-label-sm;
+    @apply inline-flex min-w-0 flex-1 items-center justify-between gap-2 bg-raised text-label-sm;
   }
   .sidebar .project-selector[data-selected="true"] {
-    @apply bg-transparent text-label-sm;
+    @apply bg-raised text-label-sm;
   }
   .sidebar .project-selector[data-selected="true"]:hover,
   .sidebar .project-selector[data-state="open"] {
