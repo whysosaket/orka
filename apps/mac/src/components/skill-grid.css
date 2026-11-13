@@ -1,0 +1,25 @@
+.skill-card-description-skeleton {
+  display: flex;
+  width: 100%;
+  min-height: 52px;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  padding-block: 4px;
+}
+
+.skill-card-description-skeleton > span {
+  display: block;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: var(--radius-detail);
+  background: var(--surface-stroke);
+}
+
+.skill-card-description-skeleton > span:nth-child(2) {
+  width: 86%;
+}
+
+.skill-card-description-skeleton > span:nth-child(3) {
+  width: 58%;
+}

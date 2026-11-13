@@ -178,6 +178,21 @@
   white-space: nowrap;
 }
 
+.home-update-title-skeleton {
+  display: block;
+  width: min(76%, 360px);
+  height: var(--label-sm-line-height);
+  padding-block: 4px;
+}
+
+.home-update-title-skeleton > span {
+  display: block;
+  width: 100%;
+  height: 12px;
+  border-radius: var(--radius-detail);
+  background: var(--surface-stroke);
+}
+
 .home-update-chevron {
   display: flex;
   flex-shrink: 0;

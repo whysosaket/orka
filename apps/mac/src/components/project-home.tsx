@@ -86,6 +86,17 @@ export function ProjectHome({
   // Reuse the reading views' bounded, cached metadata lookups for these six rows.
   const sessionTitles = useSessionTitles(recent, true, scope);
   const skillSummaries = useSkillSummaries(recent, scope);
+  const pendingTitles = new Set(
+    recent
+      .filter((item) =>
+        item.kind === "skill"
+          ? skillSummaries[skillSummaryKey(item)] === undefined
+          : item.kind === "session" &&
+            sessionTitles.loading &&
+            sessionTitles.previews[item.resourceId] === undefined,
+      )
+      .map((item) => item.resourceId),
+  );
   const now = Date.now();
 
   return (
@@ -116,12 +127,17 @@ export function ProjectHome({
       </section>
       <section className="home-updates" aria-labelledby="home-updates-title">
         <h2 id="home-updates-title">Recent Updates</h2>
+        {pendingTitles.size > 0 && (
+          <span className="sr-only" role="status">
+            Loading recent updates…
+          </span>
+        )}
         {recent.length ? (
           <ul
             className="home-updates-list"
             aria-label="Recently updated resources"
           >
-            {recent.map((item) => {
+            {recent.map((item, index) => {
               const collection = collections.find(
                 ({ kind }) => kind === item.kind,
               )!;
@@ -152,7 +168,20 @@ export function ProjectHome({
                     </span>
                     <span className="home-update-description">
                       <span className="home-update-title" title={title}>
-                        {title}
+                        {pendingTitles.has(item.resourceId) ? (
+                          <>
+                            <span className="sr-only">{title}</span>
+                            <span
+                              className="home-update-title-skeleton"
+                              aria-hidden="true"
+                              style={{ opacity: 1 - index * 0.12 }}
+                            >
+                              <span className="loading-fade" />
+                            </span>
+                          </>
+                        ) : (
+                          title
+                        )}
                         <span className="sr-only"> ({collection.noun})</span>
                       </span>
                       <span className="home-update-metadata">
