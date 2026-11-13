@@ -26,7 +26,7 @@ for (const section of ["General", "Profile"])
         })
         .click();
       await page
-        .getByRole("button", { name: "Open requests", exact: true })
+        .getByRole("button", { name: "Review changes", exact: true })
         .click();
     };
     const returnToSection = async () => {

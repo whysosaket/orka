@@ -6,12 +6,7 @@ import {
   SyncIcon,
   XIcon,
 } from "@primer/octicons-react";
-import type {
-  Resource,
-  SessionConflict,
-  Activity,
-  ReviewRequest,
-} from "@portable/protocol";
+import type { Resource } from "@portable/protocol";
 import type { Snapshot } from "../types.js";
 import { Button } from "./button.js";
 import { IconButton } from "./icon-button.js";
@@ -19,13 +14,11 @@ import { Icon } from "./icon.js";
 import { useMemberLabel } from "./member-names.js";
 
 import { syncIssueRecovery } from "./sync-issues.js";
+import type { ProjectAttention } from "./sync-attention.js";
 
 export function SyncMenu({
   state,
-  issues,
-  issueCount,
-  conflicts,
-  notifications,
+  attention,
   busy,
   onSync,
   onRetry,
@@ -35,9 +28,6 @@ export function SyncMenu({
   canConnect = true,
   open: controlledOpen,
   onOpenChange,
-  reviewRequests = [],
-  localUpdates = 0,
-  privateDrafts = 0,
   onReview,
   placement = "sidebar",
   actionError = "",
@@ -51,10 +41,7 @@ export function SyncMenu({
   onResumeSetup?: () => void;
   skillUsagePartial?: boolean;
   state: Snapshot;
-  issues: Map<string, string[]>;
-  issueCount: number;
-  conflicts: SessionConflict[];
-  notifications: Activity[];
+  attention: ProjectAttention;
   busy: boolean;
   onSync: () => void;
   onRetry: () => void;
@@ -64,9 +51,6 @@ export function SyncMenu({
   canConnect?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  reviewRequests?: ReviewRequest[];
-  localUpdates?: number;
-  privateDrafts?: number;
   onReview?: () => void;
 }) {
   const memberName = useMemberLabel(state.user);
@@ -74,7 +58,7 @@ export function SyncMenu({
   const open = controlledOpen ?? localOpen;
   const setOpen = onOpenChange ?? setLocalOpen;
   const running = Boolean(state.daemon?.running);
-  const connected = running && state.sync?.online && !state.sync?.error;
+  const connected = running && state.sync?.online && !attention.accountError;
   const progress = running && state.user ? state.syncProgress : null;
   const total = progress?.total;
   const completed =
@@ -83,23 +67,29 @@ export function SyncMenu({
       : null;
   const percentage =
     completed !== null && total ? Math.round((completed / total) * 100) : null;
-  const pending = state.outbox.filter((item) => item.error);
+  const pending = attention.outbox.filter((item) => item.error);
   const setup = state.onboarding?.setup;
   const setupProjects =
     setup?.projects.filter((p) => setup.selected.includes(p.path)) ?? [];
   const setupRunning = setup?.step === "syncing" || setup?.step === "retrying";
-  const needsReconnect = [...issues.keys()].some((message) =>
-    /folder (changed|unavailable)|mount is missing/i.test(message),
+  const needsReconnect = attention.items.some((item) =>
+    item.messages.some((message) =>
+      /folder (changed|unavailable)|mount is missing/i.test(message),
+    ),
   );
+  const independentActionError =
+    actionError &&
+    actionError !== attention.accountError &&
+    !attention.items.some((item) => item.messages.includes(actionError));
   const count =
-    issueCount +
-    conflicts.length +
-    notifications.length +
-    reviewRequests.length +
-    localUpdates +
-    privateDrafts +
-    Number(Boolean(actionError)) +
-    Number(Boolean(setup));
+    attention.items.length +
+    Number(Boolean(attention.accountError)) +
+    Number(Boolean(independentActionError)) +
+    Number(Boolean(setup && !setup.deferred && !setupRunning));
+  const historyCount =
+    attention.historyRequests.length +
+    attention.historyDrafts.length +
+    attention.activity.length;
   const status = !running
     ? "Sync stopped"
     : connected
@@ -108,7 +98,7 @@ export function SyncMenu({
   const visibleStatus = progress
     ? "Syncing…"
     : placement === "header" && connected
-      ? state.outbox.length
+      ? attention.outbox.some((item) => !item.error)
         ? "Changes pending"
         : count
           ? "Needs attention"
@@ -141,7 +131,7 @@ export function SyncMenu({
             (state.sync?.online === false &&
               !!state.sync.error &&
               count === 1 &&
-              issues.size === 0 &&
+              attention.items.length === 0 &&
               pending.length === 0) ||
             undefined
           }
@@ -248,7 +238,11 @@ export function SyncMenu({
               )}
             </div>
           </div>
-          <div className="sync-menu-feed">
+          <div
+            className="sync-menu-feed"
+            tabIndex={0}
+            aria-label="Sync details"
+          >
             {skillUsagePartial && (
               <section
                 className="sync-menu-notification"
@@ -306,7 +300,7 @@ export function SyncMenu({
                 )}
               </section>
             )}
-            {actionError && (
+            {independentActionError && (
               <section
                 className="sync-menu-notification"
                 aria-label="Action details"
@@ -320,117 +314,230 @@ export function SyncMenu({
                 )}
               </section>
             )}
-            {onReview &&
-              reviewRequests.length + localUpdates + privateDrafts > 0 && (
-                <section className="sync-menu-notification">
-                  <h3>Requests and updates</h3>
-                  {reviewRequests.map((r) => (
-                    <p key={r.id}>
-                      {r.title} · {r.status}
-                    </p>
-                  ))}
-                  {localUpdates > 0 && (
-                    <p>{localUpdates} local updates need review.</p>
-                  )}
-                  {privateDrafts > 0 && (
-                    <p>{privateDrafts} local changes are ready for review.</p>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => leave(onReview)}
-                  >
-                    Open requests
-                  </Button>
-                </section>
-              )}
-            {issueCount > 0 && (
-              <h3>
-                {issueCount} sync {issueCount === 1 ? "issue" : "issues"}
-              </h3>
+            {attention.accountError && (
+              <section
+                className="sync-menu-notification"
+                aria-label="Account sync"
+              >
+                <h3>Account sync</h3>
+                <p>{attention.accountError}</p>
+              </section>
             )}
-            {state.sync?.error && !issues.has(state.sync.error) && (
-              <div className="sync-menu-notification">
-                <p>{state.sync.error}</p>
-              </div>
-            )}
-            {pending.length > 0 && (
-              <div className="sync-menu-notification">
-                <h4>Failed uploads</h4>
-                <p className="muted">Upload queue across all projects.</p>
-                <ul>
-                  {pending.map((item) => (
-                    <li key={item.id}>{item.error}</li>
-                  ))}
-                </ul>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={busy}
-                  onClick={onRetry}
-                >
-                  Retry uploads
-                </Button>
-              </div>
-            )}
-            {[...issues].map(([message, sources]) => (
-              <div className="sync-menu-notification" key={message}>
-                <p>{message}</p>
+            {attention.accountIssues.length > 0 && (
+              <section
+                className="sync-menu-notification"
+                aria-label="Account diagnostics"
+              >
                 <details>
                   <summary>
                     <ChevronRightIcon
                       className="sync-disclosure-chevron"
                       size={14}
                       aria-hidden="true"
-                      focusable="false"
                     />
-                    Show affected items ({sources.length})
+                    Account diagnostics ({attention.accountIssues.length})
                   </summary>
-                  <ul>
-                    {sources.map((source, index) => (
-                      <li key={`${source}-${index}`}>{source}</li>
-                    ))}
-                  </ul>
+                  {attention.accountIssues.map((issue) => (
+                    <div key={issue.source}>
+                      <p>{issue.error}</p>
+                      <small>
+                        {issue.source.slice("history:unattributed:".length)}
+                      </small>
+                    </div>
+                  ))}
                 </details>
-                {syncIssueRecovery(message) && (
-                  <small>{syncIssueRecovery(message)}</small>
+              </section>
+            )}
+            {attention.items.length > 0 && (
+              <h3>
+                {attention.items.length}{" "}
+                {attention.items.length === 1 ? "item needs" : "items need"}{" "}
+                attention
+              </h3>
+            )}
+            {attention.items.map((item) => (
+              <section
+                className="sync-menu-notification"
+                key={item.key}
+                role="group"
+                aria-label={item.title}
+              >
+                <h4>{item.title}</h4>
+                {item.requests.length > 0 && (
+                  <p>
+                    {item.requests.length === 1
+                      ? "A request is ready for your decision."
+                      : `${item.requests.length} requests are ready for your decision.`}
+                  </p>
                 )}
-                {/unsupported.*version|unsupported.*format/i.test(message) && (
+                {item.binding && (
+                  <p>
+                    {item.binding.installationState === "locally_modified"
+                      ? "Local edits are preserved. Review the shared update and local copies."
+                      : "A local update needs review."}
+                  </p>
+                )}
+                {item.draft && !item.binding && (
+                  <p>Local changes are ready for review.</p>
+                )}
+                {item.messages.map((message) => (
+                  <p key={message}>{message}</p>
+                ))}
+                {item.paths.length > 0 && (
+                  <details>
+                    <summary>
+                      <ChevronRightIcon
+                        className="sync-disclosure-chevron"
+                        size={14}
+                        aria-hidden="true"
+                      />
+                      Show affected copies ({item.paths.length})
+                    </summary>
+                    <ul>
+                      {item.paths.map((path) => (
+                        <li key={path}>{path}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {item.messages.map(
+                  (message) =>
+                    syncIssueRecovery(message) && (
+                      <small key={message}>{syncIssueRecovery(message)}</small>
+                    ),
+                )}
+                {item.messages.some((message) =>
+                  /unsupported.*version|unsupported.*format/i.test(message),
+                ) && (
                   <small>
                     Requires compatible tool or transcript support in Orka.
                   </small>
                 )}
-              </div>
+                {item.conflicts.length > 0 ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      leave(() => onOpen(item.conflicts[0].resourceId))
+                    }
+                  >
+                    Review conflict
+                  </Button>
+                ) : item.requests.length > 0 || item.binding || item.draft ? (
+                  onReview && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => leave(onReview)}
+                    >
+                      Review changes
+                    </Button>
+                  )
+                ) : item.uploads.length > 0 ? (
+                  item.uploads.every(
+                    (upload) =>
+                      !/^4\d\d:/.test(upload.error ?? "") ||
+                      /^(401|408|429):/.test(upload.error ?? ""),
+                  ) ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={busy}
+                      onClick={onRetry}
+                    >
+                      Retry uploads
+                    </Button>
+                  ) : (
+                    item.resourceId && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => leave(() => onOpen(item.resourceId!))}
+                      >
+                        View change
+                      </Button>
+                    )
+                  )
+                ) : null}
+              </section>
             ))}
-            {conflicts.length > 0 && <h3>Session conflicts</h3>}
-            {conflicts.map((conflict) => (
-              <div className="sync-menu-notification" key={conflict.id}>
-                <p>{resourceTitle(conflict.resourceId)}</p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => leave(() => onOpen(conflict.resourceId))}
-                >
-                  Review conflict
-                </Button>
-              </div>
-            ))}
-            {notifications.length > 0 && <h3>Session activity</h3>}
-            {notifications.map((item) => (
-              <div className="sync-menu-notification" key={item.id}>
-                <p>
-                  {memberName(item.author)} continued your session as a copy.
-                </p>
-                <small>{resourceTitle(item.copyId)}</small>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => leave(() => onOpen(item.copyId))}
-                >
-                  View copy
-                </Button>
-              </div>
-            ))}
+            {attention.waitingRequests.length > 0 && (
+              <section className="sync-menu-notification">
+                <h3>Waiting for approval</h3>
+                {attention.waitingRequests.map((request) => (
+                  <p key={request.id}>{request.title}</p>
+                ))}
+                {onReview && (
+                  <Button
+                    size="sm"
+                    variant="tertiary"
+                    onClick={() => leave(onReview)}
+                  >
+                    Open requests
+                  </Button>
+                )}
+              </section>
+            )}
+            {historyCount > 0 && (
+              <section className="sync-menu-notification">
+                <details>
+                  <summary>
+                    <ChevronRightIcon
+                      className="sync-disclosure-chevron"
+                      size={14}
+                      aria-hidden="true"
+                    />
+                    History ({historyCount})
+                  </summary>
+                  {attention.historyRequests.map((request) => (
+                    <p key={request.id}>
+                      {request.title} · {request.status}
+                    </p>
+                  ))}
+                  {attention.historyDrafts.slice(0, 5).map((draft) => (
+                    <p key={draft.id}>
+                      {draft.resource.title} ·{" "}
+                      {draft.dismissalReason === "superseded"
+                        ? "superseded"
+                        : draft.status}
+                    </p>
+                  ))}
+                  {attention.historyDrafts.length > 5 && (
+                    <p>
+                      {attention.historyDrafts.length - 5} more saved changes
+                    </p>
+                  )}
+                  {attention.activity.map((activity) => (
+                    <div key={activity.id}>
+                      <p>
+                        {memberName(activity.author)} continued your session as
+                        a copy.
+                      </p>
+                      <small>{resourceTitle(activity.copyId)}</small>
+                      <Button
+                        variant="tertiary"
+                        size="sm"
+                        onClick={() => leave(() => onOpen(activity.copyId))}
+                      >
+                        View copy
+                      </Button>
+                    </div>
+                  ))}
+                  {onReview &&
+                    attention.historyRequests.length +
+                      attention.historyDrafts.length >
+                      0 && (
+                      <Button
+                        size="sm"
+                        variant="tertiary"
+                        onClick={() => leave(onReview)}
+                      >
+                        Open request history
+                      </Button>
+                    )}
+                </details>
+              </section>
+            )}
           </div>
           {progress && (
             <div className="sync-menu-progress">
