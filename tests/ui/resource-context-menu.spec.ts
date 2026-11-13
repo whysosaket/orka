@@ -358,6 +358,81 @@ test("shared deletion retries a network failure with the same reviewed token bef
   ).toEqual(new Set(["frozen-preview-delete-plan-own"]));
 });
 
+test("removing shared history from Home refreshes a cached collection for newly discovered local sessions", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date("2026-11-14T10:00:00Z"));
+  await menuFixture(page, { emptyLocal: true });
+  await page.evaluate(async () => {
+    const host = window as unknown as MenuWindow;
+    const original = host.__TAURI_INTERNALS__.invoke;
+    const snapshot = (await original("snapshot")) as Snapshot;
+    const shared = snapshot.resources.find(
+      (resource) => resource.resourceId === "session-own",
+    )!;
+    host.__TAURI_INTERNALS__.invoke = async (command, args = {}) => {
+      const result = await original(command, args);
+      if (
+        command === "local_resource_catalog" &&
+        args.kind === "session" &&
+        host.resourceMenu.deleted.includes(shared.resourceId)
+      )
+        return {
+          resources: [
+            {
+              ...shared,
+              resourceId: "session-retained",
+              title: "New private session notes",
+              local: true,
+              revision: 0,
+            },
+          ],
+          errors: [],
+        };
+      return result;
+    };
+  });
+  const scans = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as MenuWindow).library.calls.filter(
+          (call) =>
+            call.command === "local_resource_catalog" &&
+            call.args.kind === "session",
+        ).length,
+    );
+  const home = page.getByRole("button", { name: "Home", exact: true });
+  await collection(page, "Sessions");
+  await expect(resourceRow(page, "My shared session")).toBeVisible();
+  expect(await scans()).toBe(1);
+  await home.click();
+  await collection(page, "Sessions");
+  expect(await scans()).toBe(1);
+  await home.click();
+  await page
+    .getByRole("list", { name: "Recently updated resources" })
+    .locator('[data-resource-id="session-own"]')
+    .click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "Remove from history…", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Remove from history",
+    exact: true,
+  });
+  await dialog
+    .getByRole("button", { name: "Confirm deletion", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await collection(page, "Sessions");
+  await expect.poll(scans).toBe(2);
+  await expect(resourceRow(page, "New private session notes")).toContainText(
+    "On this Mac",
+  );
+  await expect(resourceRow(page, "My shared session")).toHaveCount(0);
+  expect(await resourceCalls(page, "delete")).toHaveLength(1);
+});
+
 test("a changed shared resource invalidates an open deletion review", async ({
   page,
 }) => {
