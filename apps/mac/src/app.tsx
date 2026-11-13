@@ -563,7 +563,7 @@ function WorkspaceApp({
       >
         <motion.aside
           initial={false}
-          animate={{ width: sidebarCollapsed ? 80 : 240 }}
+          animate={{ width: sidebarCollapsed ? 64 : 240 }}
           transition={
             sidebarInstant || reducedMotion
               ? { duration: 0 }

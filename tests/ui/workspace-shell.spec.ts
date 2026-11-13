@@ -279,10 +279,21 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
   });
   await toggle.focus();
   await toggle.press("Enter");
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "80px");
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
   await expect(
     page.getByRole("button", { name: "Settings", exact: true }),
   ).toBeVisible();
+  const rail = (await page.locator(".sidebar").boundingBox())!;
+  for (const icon of [
+    nav.locator(".project-section-icon").first(),
+    page.locator(".sidebar-bottom .navigation-action-icon").first(),
+    page.locator(".project-selector-symbol"),
+  ]) {
+    const bounds = (await icon.boundingBox())!;
+    expect(
+      Math.abs(bounds.x + bounds.width / 2 - (rail.x + rail.width / 2)),
+    ).toBeLessThanOrEqual(2);
+  }
   await page.screenshot({ path: "artifacts/sidebar-collapsed.png" });
   await page
     .getByRole("combobox", { name: "Select project: Orka", exact: true })
@@ -372,7 +383,7 @@ test("reduced motion keeps shell controls and project selection usable", async (
   await page
     .getByRole("button", { name: "Collapse sidebar", exact: true })
     .click();
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "80px");
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
   await page
     .getByRole("combobox", { name: "Select project: Orka", exact: true })
     .click();
