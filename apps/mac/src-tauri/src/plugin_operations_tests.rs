@@ -746,3 +746,86 @@ fn installation_recovery_keeps_removed_journals_and_files_while_repairing_active
         assert_eq!(fs::read(journals[0].2.join("SKILL.md")).unwrap(), desired);
     }
 }
+
+#[test]
+fn proposed_removed_source_recovery_keeps_request_references_without_a_queued_snapshot() {
+    let mut f = Fixture::new();
+    let (removed, _) = removed_and_active_sources(&mut f);
+    f.project["sources"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("removedAt");
+    f.project["governed"] = json!(true);
+    f.project["sharing"] = json!({"memory":true});
+    let project_id = f.project["id"].as_str().unwrap().to_string();
+    let project = project_id.as_str();
+    db::upsert(&f.db, "projects", project, "", &f.project).unwrap();
+    db::set(
+        &f.db,
+        &format!("governance:{project}"),
+        &json!({"owner":true}),
+    )
+    .unwrap();
+    let secret = "Private proposed source content";
+    let resource = json!({"resourceId":uuid::Uuid::new_v4().to_string(),"sourceId":removed["id"],"kind":"memory","source":"claude","logicalPath":"claude/MEMORY.md","title":secret,"deleted":false,"files":[{"path":"content.md","hash":db::blob(secret.as_bytes()).unwrap(),"size":secret.len(),"executable":false}]});
+    let draft_id = crate::governance::capture(&f.db, &f.project, &resource, &json!([])).unwrap();
+    crate::context_sharing::queue(&f.db, &f.project, &draft_id).unwrap();
+    let queued = db::rows(
+        &f.db,
+        "SELECT json_object('id',id,'project',project,'path',path,'value',json(value)) FROM outbox",
+        &[],
+    )
+    .unwrap()
+    .remove(0);
+    let owner = db::get(&f.db, "user").unwrap();
+    let request = json!({"id":queued["id"],"projectId":project,"resourceId":queued["value"]["resource"]["resourceId"],"status":"pending","author":owner,"canReview":true});
+    crate::context_sharing::complete(&f.db, &queued, &json!({"proposal":request})).unwrap();
+    f.db.execute("DELETE FROM outbox WHERE id=?", [queued["id"].as_str()])
+        .unwrap();
+    f.project["sources"][0]["removedAt"] = removed["removedAt"].clone();
+    db::upsert(&f.db, "projects", project, "", &f.project).unwrap();
+    assert!(crate::context_sharing::pending_publications(
+        &f.db,
+        owner.as_str().unwrap(),
+        &f.project,
+        &json!({"requests":[request]})
+    )
+    .unwrap()
+    .is_empty());
+    let mut preserved = db::rows(&f.db, "SELECT value FROM drafts WHERE id=?", &[&draft_id])
+        .unwrap()
+        .remove(0);
+    assert!(preserved["sourceRemoval"].is_object());
+    assert!(preserved["sourceRemoval"]["queued"].is_null());
+    let status = operations::status(&f.db, &f.project, &json!({})).unwrap();
+    assert_eq!(status["health"], "needs_review");
+    assert_eq!(status["recoveries"][0]["requestId"], queued["id"]);
+    assert_eq!(status["recoveries"][0]["draftId"], draft_id);
+    assert_eq!(status["recoveries"][0]["sourceId"], removed["id"]);
+    assert!(!status.to_string().contains(secret));
+    assert_eq!(
+        db::rows(&f.db, "SELECT value FROM drafts WHERE id=?", &[&draft_id]).unwrap()[0],
+        preserved
+    );
+    let frozen_id = uuid::Uuid::new_v4().to_string();
+    preserved["sourceRemoval"]["queued"] = json!({"id":frozen_id,"value":{"private":secret}});
+    db::upsert(&f.db, "drafts", &draft_id, project, &preserved).unwrap();
+    let status = operations::status(&f.db, &f.project, &json!({})).unwrap();
+    assert_eq!(
+        status["recoveries"][0]["requestId"], frozen_id,
+        "the preserved frozen queue identity remains authoritative"
+    );
+    assert!(!status.to_string().contains(secret));
+    preserved["sourceRemoval"]
+        .as_object_mut()
+        .unwrap()
+        .remove("queued");
+    preserved["requestId"] = Value::Null;
+    db::upsert(&f.db, "drafts", &draft_id, project, &preserved).unwrap();
+    assert_eq!(
+        operations::status(&f.db, &f.project, &json!({})).unwrap()["recoveries"][0]["requestId"],
+        request["id"],
+        "the stored server request is the final metadata fallback"
+    );
+    assert!(f.outbox().is_empty());
+}
