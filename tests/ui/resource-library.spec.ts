@@ -415,7 +415,149 @@ test("refresh failures retain private entries and retry discovery without syncin
   });
   await page.getByRole("button", { name: "Try again", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByText("Local sessions refreshed", { exact: true }),
+  ).toBeVisible();
   await expect(privateItem).toBeVisible();
+});
+
+for (const { kind, label } of kinds) {
+  for (const width of [1160, 900]) {
+    test(`${label} discovery banner keeps its action left and reports retry outcomes at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: width === 900 ? 640 : 800 });
+      await resourceLibraryFixture(page);
+      await page.getByRole("button", { name: new RegExp(`^${label}`) }).click();
+      const item = page.getByRole("button", {
+        name: `Private ${kind} notes`,
+        exact: true,
+      });
+      await expect(item).toBeVisible();
+      await page.evaluate(() => {
+        const library = (window as unknown as LibraryWindow).library;
+        library.failCatalog = true;
+        library.catalogError =
+          "A sync or project operation is in progress. Wait for it to finish and try again.";
+      });
+      await page
+        .getByRole("button", { name: "Refresh local items", exact: true })
+        .click();
+      const banner = page.locator(".resource-discovery-status");
+      await expect(banner.getByRole("alert")).toContainText(
+        "A sync or project operation is in progress",
+      );
+      const action = banner.getByRole("button", {
+        name: "Try again",
+        exact: true,
+      });
+      await expect(action).toBeEnabled();
+      const geometry = await banner.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const left =
+          element.getBoundingClientRect().left +
+          parseFloat(style.borderLeftWidth) +
+          parseFloat(style.paddingLeft);
+        return {
+          left,
+          button: element.querySelector("button")!.getBoundingClientRect().left,
+          border: style.borderTopWidth,
+          overflow: element.scrollWidth > element.clientWidth,
+        };
+      });
+      expect(geometry.border).toBe("1px");
+      expect(Math.abs(geometry.left - geometry.button)).toBeLessThanOrEqual(1);
+      expect(geometry.overflow).toBe(false);
+      for (const name of ["Mine", "Shared with me", "All"]) {
+        await page
+          .getByRole("group", { name: "Filter by ownership" })
+          .getByRole("button", { name, exact: true })
+          .click();
+        await expect(banner).toBeVisible();
+      }
+      await page.evaluate(() => {
+        (window as unknown as LibraryWindow).library.deferCatalog = true;
+      });
+      await action.focus();
+      await page.keyboard.press("Enter");
+      await expect(
+        banner.getByRole("button", { name: "Checking…", exact: true }),
+      ).toBeDisabled();
+      await expect(banner.getByRole("status")).toContainText(
+        `Checking local ${label.toLowerCase()}…`,
+      );
+      await expect(banner).not.toContainText("A sync or project operation");
+      await expect(item).toBeVisible();
+      await page.evaluate(() =>
+        (window as unknown as LibraryWindow).library.finishCatalog?.(),
+      );
+      await expect(action).toBeEnabled();
+      await expect(banner.getByRole("alert")).toContainText(
+        `Couldn’t refresh local ${label.toLowerCase()}`,
+      );
+      await page.evaluate(() => {
+        (window as unknown as LibraryWindow).library.failCatalog = false;
+      });
+      await action.click();
+      await expect(
+        banner.getByRole("button", { name: "Checking…", exact: true }),
+      ).toBeDisabled();
+      await page.evaluate(() =>
+        (window as unknown as LibraryWindow).library.finishCatalog?.(),
+      );
+      await expect(banner).toHaveCount(0);
+      await expect(
+        page.getByText(`Local ${label.toLowerCase()} refreshed`, {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(item).toBeVisible();
+      const calls = await page.evaluate(
+        () => (window as unknown as LibraryWindow).library.calls,
+      );
+      expect(
+        calls.filter((call) => call.command === "local_resource_catalog"),
+      ).toHaveLength(4);
+      expect(
+        calls.some((call) =>
+          /^(sync_now|cloud_action|session_action|set_project_sharing)$/.test(
+            call.command,
+          ),
+        ),
+      ).toBe(false);
+    });
+  }
+}
+
+test("partial discovery errors wrap inside the banner with the sidebar collapsed", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 640 });
+  await resourceLibraryFixture(page);
+  await page.evaluate(() => {
+    (window as unknown as LibraryWindow).library.catalogErrors = [
+      `Could not read /synthetic/${"long-folder-name/".repeat(30)}plans`,
+      "One repository is temporarily unavailable.",
+    ];
+  });
+  await page.getByRole("button", { name: /^Plans/ }).click();
+  const banner = page.locator(".resource-discovery-status");
+  await expect(banner).toContainText(
+    "One repository is temporarily unavailable.",
+  );
+  await page
+    .getByRole("button", { name: "Collapse sidebar", exact: true })
+    .click();
+  expect(
+    await banner.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await expect(
+    page.getByRole("button", { name: "Private plan notes", exact: true }),
+  ).toBeVisible();
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations).toEqual([]);
 });
 
 test("restricted shared access does not suppress independent local content", async ({

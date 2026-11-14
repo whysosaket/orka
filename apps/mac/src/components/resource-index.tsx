@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { SyncIcon } from "@primer/octicons-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { AlertIcon, SyncIcon } from "@primer/octicons-react";
 import type { ProjectResource as Resource } from "../types.js";
 import { SegmentedControl } from "./segmented-control.js";
 import { IconButton } from "./icon-button.js";
 import { Button } from "./button.js";
+import { Icon } from "./icon.js";
+import { useToasts } from "./toasts.js";
 import {
   IndexToolbar,
   applyIndexFilters,
@@ -43,7 +45,7 @@ export interface ResourceIndexProps {
   /** Session titles still loading. */
   loading?: boolean;
   discovering?: boolean;
-  discoveryErrors?: string[];
+  discoveryResult?: { errors: string[] };
   onRefreshLocal?: () => void;
   /** A notice above the toolbar, such as unavailable session titles. */
   status?: React.ReactNode;
@@ -74,7 +76,7 @@ export function ResourceIndex({
   noAccess,
   loading,
   discovering = false,
-  discoveryErrors = [],
+  discoveryResult,
   onRefreshLocal,
   status,
   accessRequest,
@@ -84,6 +86,33 @@ export function ResourceIndex({
   onOpen,
 }: ResourceIndexProps) {
   const memberName = useMemberLabel(user);
+  const { notify } = useToasts();
+  const discoveryErrors = discoveryResult?.errors ?? [];
+  const [refreshRequest, setRefreshRequest] = useState<{
+    result: typeof discoveryResult;
+  } | null>(null);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const refreshing = discovering || refreshRequest !== null;
+  const refreshLocal = () => {
+    if (!onRefreshLocal || refreshing) return;
+    setRefreshRequest({ result: discoveryResult });
+    onRefreshLocal();
+  };
+  useEffect(() => {
+    if (
+      !refreshRequest ||
+      !discoveryResult ||
+      discoveryResult === refreshRequest.result
+    )
+      return;
+    setRefreshRequest(null);
+    setRefreshFailed(Boolean(discoveryResult?.errors.length));
+    if (!discoveryResult?.errors.length)
+      notify({
+        kind: "success",
+        title: `Local ${collectionNoun(kind)} refreshed`,
+      });
+  }, [discoveryResult, refreshRequest, kind, notify]);
   const ownership = kind === "skill" ? "all" : (filters.ownership ?? "all");
   const root = useRef<HTMLElement>(null);
   const visible = useMemo(
@@ -149,8 +178,8 @@ export function ResourceIndex({
                 variant="tertiary"
                 aria-label="Refresh local items"
                 title={`Refresh local ${collectionNoun(kind)}`}
-                disabled={discovering}
-                onClick={onRefreshLocal}
+                disabled={refreshing}
+                onClick={refreshLocal}
               />
             )}
           </div>
@@ -161,22 +190,39 @@ export function ResourceIndex({
           </span>
         )}
         {kind !== "skill" && discoveryErrors.length > 0 && (
-          <div className="resource-discovery-status" role="alert">
-            <p>
-              Some local {collectionNoun(kind)} couldn’t be checked. Previously
-              discovered items are kept.
-            </p>
-            {discoveryErrors.map((error, index) => (
-              <p key={index}>{error}</p>
-            ))}
-            <Button
-              size="sm"
-              variant="tertiary"
-              onClick={onRefreshLocal}
-              disabled={discovering}
-            >
-              Try again
-            </Button>
+          <div className="resource-discovery-status">
+            <div role={refreshing ? "status" : "alert"} aria-atomic="true">
+              <p className="resource-discovery-title">
+                <Icon icon={AlertIcon} size="sm" variant="secondary" />
+                {refreshing
+                  ? `Checking local ${collectionNoun(kind)}…`
+                  : refreshFailed
+                    ? `Couldn’t refresh local ${collectionNoun(kind)}`
+                    : `Some local ${collectionNoun(kind)} couldn’t be checked`}
+              </p>
+              <p className="resource-discovery-message">
+                Previously discovered items are still available.
+              </p>
+              {!refreshing &&
+                discoveryErrors.map((error, index) => (
+                  <p className="resource-discovery-message" key={index}>
+                    {error}
+                  </p>
+                ))}
+            </div>
+            {onRefreshLocal && (
+              <Button
+                size="sm"
+                variant="tertiary"
+                onClick={refreshLocal}
+                disabled={refreshing}
+              >
+                <span className={refreshing ? "sync-activity-icon" : ""}>
+                  <Icon icon={SyncIcon} size="sm" />
+                </span>
+                {refreshing ? "Checking…" : "Try again"}
+              </Button>
+            )}
           </div>
         )}
         {(resources.length > 0 || filtered) && (

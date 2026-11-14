@@ -1010,7 +1010,7 @@ function WorkspaceApp({
                     )}
                     loading={sessionTitles.loading}
                     discovering={localCatalog.loading}
-                    discoveryErrors={localCatalog.errors}
+                    discoveryResult={localCatalog.result}
                     onRefreshLocal={localCatalog.refresh}
                     status={
                       sessionTitles.unavailable && !sessionTitles.loading ? (
