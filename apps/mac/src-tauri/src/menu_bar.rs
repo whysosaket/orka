@@ -45,8 +45,15 @@ pub(crate) fn snapshot(db: &rusqlite::Connection, running: bool) -> db::Result<V
         .iter()
         .filter_map(|project| project["issues"].as_u64())
         .sum();
+    let account_issues: u64 = db
+        .query_row(
+            "SELECT count(*) FROM errors WHERE source LIKE 'history:unattributed:%'",
+            [],
+            |row| row.get::<_, i64>(0).map(|count| count as u64),
+        )
+        .map_err(|error| error.to_string())?;
     let status = db::get(db, "sync")?;
-    let issues = project_issues.max(u64::from(
+    let issues = (project_issues + account_issues).max(u64::from(
         status["error"]
             .as_str()
             .is_some_and(|error| !error.is_empty()),

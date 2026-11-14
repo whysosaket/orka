@@ -120,3 +120,29 @@ fn menu_bar_cannot_invoke_workspace_or_credential_commands() {
         assert!(!crate::menu_bar::allows_command(command));
     }
 }
+
+#[test]
+fn menu_bar_keeps_account_history_issues_visible_after_successful_sync() {
+    let f = Fixture::new();
+    f.db.execute("INSERT INTO errors VALUES('history:unattributed:codex', 'Session needs project attribution')", []).unwrap();
+    db::set(
+        &f.db,
+        "sync",
+        &json!({"online":true,"lastSync":"2026-11-14T10:00:00Z"}),
+    )
+    .unwrap();
+    let result = crate::menu_bar::snapshot(&f.db, false).unwrap();
+    assert_eq!(result["issues"], 1);
+    assert_eq!(result["projects"][0]["issues"], 0);
+    assert!(result["sync"]["error"].is_null());
+    db::set(
+        &f.db,
+        "sync",
+        &json!({"online":false,"error":"Session needs project attribution"}),
+    )
+    .unwrap();
+    assert_eq!(
+        crate::menu_bar::snapshot(&f.db, false).unwrap()["issues"],
+        1
+    );
+}

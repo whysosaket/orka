@@ -257,8 +257,8 @@ export const SettingsModal = forwardRef<
       if (normalized(next) !== section) request({ section: next, projectId });
     },
   }));
-  const exitGuard = useRef({ dirty, request });
-  exitGuard.current = { dirty, request };
+  const exitGuard = useRef({ dirty, request, close: onClose });
+  exitGuard.current = { dirty, request, close: onClose };
   useEffect(() => {
     const unload = (event: BeforeUnloadEvent) => {
       if (exitGuard.current.dirty()) {
@@ -274,13 +274,18 @@ export const SettingsModal = forwardRef<
       "settings-close-requested",
       ({ payload }) => {
         exitGuard.current.request(() => {
-          window.removeEventListener("beforeunload", unload);
+          if (payload === "quit")
+            window.removeEventListener("beforeunload", unload);
           void invoke("finish_settings_close", {
             quit: payload === "quit",
-          }).catch((error) => {
-            window.addEventListener("beforeunload", unload);
-            setError(String(error));
-          });
+          })
+            .then(() => {
+              if (payload === "close") exitGuard.current.close();
+            })
+            .catch((error) => {
+              window.addEventListener("beforeunload", unload);
+              setError(String(error));
+            });
         });
       },
     )

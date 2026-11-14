@@ -54,14 +54,15 @@ pub fn finish_settings_close(
     window: tauri::WebviewWindow,
     quit: bool,
 ) -> Result<(), String> {
-    app.state::<SettingsCloseGuard>()
-        .0
-        .store(false, Ordering::SeqCst);
     if quit {
+        app.state::<SettingsCloseGuard>()
+            .0
+            .store(false, Ordering::SeqCst);
         app.exit(0);
         Ok(())
     } else {
-        window.close().map_err(|error| error.to_string())
+        // Settings remain mounted while the workspace is hidden.
+        window.hide().map_err(|error| error.to_string())
     }
 }
 
