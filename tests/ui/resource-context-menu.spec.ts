@@ -1036,6 +1036,7 @@ test("removing shared history from Home refreshes a cached collection for newly 
         (window as unknown as MenuWindow).library.calls.filter(
           (call) =>
             call.command === "local_resource_catalog" &&
+            call.args.refresh !== false &&
             call.args.kind === "session",
         ).length,
     );

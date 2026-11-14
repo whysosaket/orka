@@ -6,6 +6,8 @@ export interface LibraryState {
   apiUrl: string;
   calls: { command: string; args: Record<string, unknown> }[];
   failCatalog: boolean;
+  busyCatalog: boolean;
+  folderState: "connected" | "reconnect";
   catalogError?: string;
   catalogErrors: string[];
   deferCatalog: boolean;
@@ -26,6 +28,7 @@ export async function resourceLibraryFixture(
     restricted?: boolean;
     withoutRepositories?: boolean;
     teammateAvatar?: string;
+    cachedLocal?: boolean;
   } = {},
 ) {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -35,6 +38,8 @@ export async function resourceLibraryFixture(
       apiUrl: "https://library.example",
       calls: [],
       failCatalog: false,
+      busyCatalog: false,
+      folderState: "connected",
       catalogErrors: [],
       deferCatalog: options.defer ?? false,
       finishCatalogs: [],
@@ -155,7 +160,7 @@ export async function resourceLibraryFixture(
                           id: "desktop",
                           name: "desktop",
                           path: "/synthetic/library/desktop",
-                          folderState: "connected",
+                          folderState: library.folderState,
                         },
                         {
                           id: "backend",
@@ -203,6 +208,19 @@ export async function resourceLibraryFixture(
           if (command === "sync_progress")
             return { user: library.user, progress: null };
           if (command === "local_resource_catalog") {
+            if (args.refresh === false)
+              return {
+                resources: options.cachedLocal
+                  ? local(args.kind as "memory" | "session" | "plan")
+                  : [],
+                errors: [],
+              };
+            if (library.busyCatalog)
+              return {
+                resources: local(args.kind as "memory" | "session" | "plan"),
+                errors: [],
+                refreshPending: true,
+              };
             const error = library.failCatalog
               ? new Error(
                   library.catalogError ??

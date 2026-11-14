@@ -183,10 +183,23 @@ pub fn catalog(db: &Connection, project: &Value, kind: &str) -> Result<Value> {
         return Err("Choose memories, sessions, or plans".into());
     }
     let errors = indexer::discover_library(db, project, kind)?;
+    read_catalog(db, project, kind, errors, true)
+}
+
+fn read_catalog(
+    db: &Connection,
+    project: &Value,
+    kind: &str,
+    errors: Vec<String>,
+    remember_origins: bool,
+) -> Result<Value> {
+    if !matches!(kind, "memory" | "session" | "plan") {
+        return Err("Choose memories, sessions, or plans".into());
+    }
     let mut resources = BTreeMap::new();
     for mut entry in entries(db, project, kind)? {
         if let Some(mut resource) = normalize(db, project, &entry)? {
-            if resource["revision"].as_u64().unwrap_or(0) > 0 {
+            if remember_origins && resource["revision"].as_u64().unwrap_or(0) > 0 {
                 entry["owner"] = resource["owner"].clone();
                 let mut native = entry["resource"].clone();
                 native["owner"] = resource["owner"].clone();
@@ -256,20 +269,35 @@ pub async fn local_resource_catalog(
     kind: String,
     account_id: String,
     service_origin: String,
+    refresh: Option<bool>,
 ) -> Result<Value> {
     tauri::async_runtime::spawn_blocking(move || {
-        let _lock = projects::lock()?;
+        let refresh = refresh.unwrap_or(true);
+        let lock = if refresh { projects::try_lock()? } else { None };
         let db = db::open()?;
-        if db::get(&db, "user")? != account_id
-            || db::get(&db, "config")?["apiUrl"]
+        // A read transaction sees one committed catalog even while the daemon
+        // updates projects, ownership, and discoveries on another connection.
+        let tx = db
+            .unchecked_transaction()
+            .map_err(|error| error.to_string())?;
+        if db::get(&tx, "user")? != account_id
+            || db::get(&tx, "config")?["apiUrl"]
                 .as_str()
                 .map(|value| value.trim_end_matches('/'))
                 != Some(service_origin.trim_end_matches('/'))
         {
             return Err("Account or service changed. Open the collection again.".into());
         }
-        let project = governance::project(&db, &project_id)?;
-        catalog(&db, &project, &kind)
+        let project = governance::project(&tx, &project_id)?;
+        if lock.is_some() {
+            // Discovery owns per-source transactions and provenance writes.
+            tx.commit().map_err(|error| error.to_string())?;
+            catalog(&db, &project, &kind)
+        } else {
+            let mut catalog = read_catalog(&tx, &project, &kind, Vec::new(), false)?;
+            catalog["refreshPending"] = json!(refresh);
+            Ok(catalog)
+        }
     })
     .await
     .map_err(|error| error.to_string())?

@@ -27,6 +27,122 @@ fn prepare(f: &mut Fixture) {
     }
 }
 
+#[tokio::test]
+async fn local_library_restores_every_persistent_collection_while_sync_is_busy() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    let origin = "https://library.example";
+    db::set(&f.db, "config", &json!({"apiUrl":origin})).unwrap();
+    let user = db::get(&f.db, "user").unwrap().as_str().unwrap().to_owned();
+    let mut catalogs = Vec::new();
+    for kind in ["memory", "session", "plan"] {
+        let catalog = local_resources::catalog(&f.db, &f.project, kind).unwrap();
+        assert!(
+            !catalog["resources"].as_array().unwrap().is_empty(),
+            "{kind}"
+        );
+        catalogs.push((kind, catalog));
+    }
+    // Reopen the on-disk index, then make a new scan impossible. Reading the
+    // saved catalog must work without tool histories or a connected folder.
+    f.db = db::open().unwrap();
+    fs::remove_dir_all(&f.root).unwrap();
+    fs::remove_dir_all(native::codex_home().unwrap()).unwrap();
+    let claude = native::claude_home().unwrap();
+    if claude.exists() {
+        fs::remove_dir_all(claude).unwrap();
+    }
+    let lock = crate::projects::lock().unwrap();
+    // WAL readers must also work while a discovery transaction is uncommitted.
+    f.db.execute_batch("BEGIN IMMEDIATE").unwrap();
+    db::set(&f.db, "uncommitted-discovery", &json!(true)).unwrap();
+    for (kind, expected) in &catalogs {
+        for refresh in [false, true] {
+            let actual = local_resources::local_resource_catalog(
+                f.project["id"].as_str().unwrap().into(),
+                (*kind).into(),
+                user.clone(),
+                origin.into(),
+                Some(refresh),
+            )
+            .await
+            .unwrap();
+            assert_eq!(actual["resources"], expected["resources"], "{kind}");
+            assert_eq!(actual["errors"], json!([]));
+            assert_eq!(actual["refreshPending"], refresh);
+        }
+    }
+    f.db.execute_batch("ROLLBACK").unwrap();
+    drop(lock);
+    assert!(f.outbox().is_empty());
+    assert!(f.resources().is_empty());
+}
+
+#[tokio::test]
+async fn local_library_cached_reads_are_read_only_and_preserve_scope_and_ownership() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    let origin = "https://library.example";
+    db::set(&f.db, "config", &json!({"apiUrl":origin})).unwrap();
+    let user = db::get(&f.db, "user").unwrap().as_str().unwrap().to_owned();
+    let first = local_resources::catalog(&f.db, &f.project, "session").unwrap();
+    let mut published = first["resources"][0].clone();
+    published["revision"] = json!(1);
+    published["local"] = Value::Null;
+    published["owner"] = json!(uuid::Uuid::new_v4().to_string());
+    let id = published["resourceId"].as_str().unwrap();
+    db::upsert(
+        &f.db,
+        "resources",
+        id,
+        f.project["id"].as_str().unwrap(),
+        &published,
+    )
+    .unwrap();
+    // A lock-free read may normalize a shared version but must not persist
+    // provenance or change any catalog metadata while another writer runs.
+    let before: i64 =
+        f.db.pragma_query_value(None, "data_version", |row| row.get(0))
+            .unwrap();
+    let project_id = f.project["id"].as_str().unwrap().to_owned();
+    let read = |refresh| {
+        local_resources::local_resource_catalog(
+            project_id.clone(),
+            "session".into(),
+            user.clone(),
+            origin.into(),
+            Some(refresh),
+        )
+    };
+    let cached = read(false).await.unwrap();
+    assert!(cached["resources"].as_array().unwrap().contains(&published));
+    let after: i64 =
+        f.db.pragma_query_value(None, "data_version", |row| row.get(0))
+            .unwrap();
+    assert_eq!(before, after, "cached reads must not write provenance");
+    // A normal refresh records ownership; removing shared access cannot turn
+    // that teammate's snapshot into a personal local resource on restart.
+    read(true).await.unwrap();
+    f.db.execute("DELETE FROM resources WHERE id=?", [id])
+        .unwrap();
+    let revoked = read(false).await.unwrap();
+    assert!(!revoked["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|resource| resource["resourceId"] == id));
+    f.project["path"] = json!(f.root.join("different-folder"));
+    db::upsert(
+        &f.db,
+        "projects",
+        f.project["id"].as_str().unwrap(),
+        "",
+        &f.project,
+    )
+    .unwrap();
+    assert_eq!(read(false).await.unwrap()["resources"], json!([]));
+}
+
 #[test]
 fn local_library_lists_and_reads_private_categories_without_publishing() {
     let mut f = Fixture::new();
@@ -718,14 +834,17 @@ async fn local_library_rejects_stale_account_and_service_before_discovery() {
             "https://other.example",
         ),
     ] {
-        assert!(local_resources::local_resource_catalog(
-            f.project["id"].as_str().unwrap().into(),
-            "session".into(),
-            account,
-            origin.into()
-        )
-        .await
-        .is_err());
+        for refresh in [false, true] {
+            assert!(local_resources::local_resource_catalog(
+                f.project["id"].as_str().unwrap().into(),
+                "session".into(),
+                account.clone(),
+                origin.into(),
+                Some(refresh),
+            )
+            .await
+            .is_err());
+        }
     }
     assert!(db::rows(&f.db, "SELECT value FROM local_resources", &[])
         .unwrap()
