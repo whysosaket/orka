@@ -51,14 +51,14 @@ export function SessionIdentity({
         <SourceLabel source={resource.source} />
       </span>
       <span className="session-identity-avatar" aria-hidden="true">
-        <PersonIcon size={16} />
+        <PersonIcon size={20} />
         {photo && (
           <img
             key={photo}
             src={photo}
             alt=""
-            width={28}
-            height={28}
+            width={20}
+            height={20}
             loading="lazy"
             onError={(event) => {
               event.currentTarget.hidden = true;

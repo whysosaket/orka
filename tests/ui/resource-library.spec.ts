@@ -29,7 +29,7 @@ for (const width of [1160, 900]) {
         name: "Filter by ownership",
       });
       for (const [tab, count] of [
-        [`All ${noun}`, null],
+        ["All", null],
         ["Mine", 3],
         ["Shared with me", 1],
       ] as const) {
@@ -124,7 +124,7 @@ for (const width of [1160, 900]) {
     });
     expect(geometry).toEqual({
       height: 56,
-      overlap: 9,
+      overlap: 4,
       toolLeft: true,
       front: 1,
       cells: 5,
@@ -161,7 +161,7 @@ for (const width of [1160, 900]) {
       teammate.locator(".session-identity-avatar svg"),
     ).toBeVisible();
     const tabs = page.getByRole("group", { name: "Filter by ownership" });
-    const all = tabs.getByRole("button", { name: "All sessions", exact: true });
+    const all = tabs.getByRole("button", { name: "All", exact: true });
     await expect(all).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     expect(
       await all.evaluate(
@@ -179,7 +179,7 @@ for (const width of [1160, 900]) {
     expect(results.violations).toEqual([]);
     await page.getByRole("button", { name: /^Memories/ }).click();
     await expect(
-      tabs.getByRole("button", { name: "All memories", exact: true }),
+      tabs.getByRole("button", { name: "All", exact: true }),
     ).toBeVisible();
   });
 }
@@ -245,7 +245,7 @@ for (const { kind, label } of kinds) {
     const table = page.getByRole("table");
     await expect(
       ownership.getByRole("button", {
-        name: `All ${label.toLowerCase()}`,
+        name: "All",
         exact: true,
       }),
     ).toHaveAttribute("aria-pressed", "true");
