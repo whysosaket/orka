@@ -7,6 +7,19 @@ publication. See [sharing and private memory](governed-sharing.md) for setup,
 agent operations and migration. There is no background conversation extraction or
 private memory sync.
 
+## Menu bar and background operation
+
+Closing Orka's main window keeps the app running. Click the white Orka icon in
+macOS's menu bar to see project and queued-change counts, sync health, and
+current sync progress. Choose **Sync now** to request a sync through the same
+native service used by the main window. **Open Orka** and the Dock icon restore
+the workspace; Escape or clicking elsewhere dismisses the panel. You can also
+choose **Window → Sync overview** or press **⌘⇧S** to reach the same panel
+from the keyboard.
+
+Choose **Quit Orka** to exit the app. Unsaved Settings are confirmed before
+closing or quitting.
+
 ## Develop
 
 Requires macOS 12+, Node 24+, Rust, and Apple's Command Line Tools.

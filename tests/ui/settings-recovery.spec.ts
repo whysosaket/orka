@@ -367,6 +367,54 @@ test("C1: native quit and reload guard drafts and honor Stay or Discard", async 
     .toEqual([true]);
 });
 
+test("closing to the menu bar discards Settings and protects edits after reopening", async ({
+  page,
+}) => {
+  const settings = await settingsFixture(page);
+  const name = settings.getByRole("textbox", {
+    name: "Project name",
+    exact: true,
+  });
+  const original = await name.inputValue();
+  await name.fill("Discarded before hiding");
+  await page.evaluate(() =>
+    (window as any).settingsEmit("settings-close-requested", "close"),
+  );
+  const dialog = page.getByRole("dialog", { name: "Save your changes?" });
+  await button(dialog, "Discard").click();
+  await expect(settings).toHaveCount(0);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(name).toHaveValue(original);
+  await name.fill("Protected after reopening");
+  expect(
+    await page.evaluate(
+      () =>
+        !window.dispatchEvent(new Event("beforeunload", { cancelable: true })),
+    ),
+  ).toBe(true);
+  expect(
+    (await settingsCalls(page))
+      .filter((call) => call.command === "guard_settings_close")
+      .map((call) => call.args.enabled),
+  ).toEqual([true, false, true]);
+  await page.evaluate(() =>
+    (window as any).settingsEmit("settings-close-requested", "quit"),
+  );
+  await button(dialog, "Stay").click();
+  await expect(name).toHaveValue("Protected after reopening");
+  await page.evaluate(() =>
+    (window as any).settingsEmit("settings-close-requested", "quit"),
+  );
+  await button(dialog, "Discard").click();
+  await expect
+    .poll(async () =>
+      (await settingsCalls(page))
+        .filter((call) => call.command === "finish_settings_close")
+        .map((call) => call.args.quit),
+    )
+    .toEqual([false, true]);
+});
+
 test("C2: uncertain save offers Leave and check later and keeps its operation", async ({
   page,
 }) => {
