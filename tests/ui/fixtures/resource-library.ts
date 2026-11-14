@@ -6,6 +6,10 @@ export interface LibraryState {
   apiUrl: string;
   calls: { command: string; args: Record<string, unknown> }[];
   failCatalog: boolean;
+  busyCatalog: boolean;
+  folderState: "connected" | "reconnect";
+  catalogError?: string;
+  catalogErrors: string[];
   deferCatalog: boolean;
   finishCatalog?: () => void;
   finishCatalogs: (() => void)[];
@@ -34,6 +38,9 @@ export async function resourceLibraryFixture(
       apiUrl: "https://library.example",
       calls: [],
       failCatalog: false,
+      busyCatalog: false,
+      folderState: "connected",
+      catalogErrors: [],
       deferCatalog: options.defer ?? false,
       finishCatalogs: [],
       tail: 0,
@@ -153,7 +160,7 @@ export async function resourceLibraryFixture(
                           id: "desktop",
                           name: "desktop",
                           path: "/synthetic/library/desktop",
-                          folderState: "connected",
+                          folderState: library.folderState,
                         },
                         {
                           id: "backend",
@@ -208,17 +215,29 @@ export async function resourceLibraryFixture(
                   : [],
                 errors: [],
               };
-            if (library.failCatalog)
-              throw new Error("Local folder temporarily unavailable");
+            if (library.busyCatalog)
+              return {
+                resources: local(args.kind as "memory" | "session" | "plan"),
+                errors: [],
+                refreshPending: true,
+              };
+            const error = library.failCatalog
+              ? new Error(
+                  library.catalogError ??
+                    "Local folder temporarily unavailable",
+                )
+              : undefined;
             const result = {
               resources: local(args.kind as "memory" | "session" | "plan"),
-              errors: [],
+              errors: [...library.catalogErrors],
             };
             if (library.deferCatalog)
-              return new Promise((resolve) => {
-                library.finishCatalog = () => resolve(result);
+              return new Promise((resolve, reject) => {
+                library.finishCatalog = () =>
+                  error ? reject(error) : resolve(result);
                 library.finishCatalogs.push(library.finishCatalog);
               });
+            if (error) throw error;
             return result;
           }
           if (command === "session_display_title") return null;
