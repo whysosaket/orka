@@ -69,16 +69,25 @@
   text-align: right;
 }
 
-.modal.resource-command-dialog {
+.modal.toast-host-modal.resource-command-dialog {
+  display: flex;
+  flex-direction: column;
+  height: min(560px, calc(100vh - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
   padding: 24px;
 }
 
 .modal.resource-command-dialog h2 {
+  flex-shrink: 0;
+  overflow: hidden;
   margin: 0 0 20px;
   font-size: var(--heading-xs-font-size);
   font-weight: var(--heading-xs-font-weight);
   line-height: var(--heading-xs-line-height);
   letter-spacing: var(--heading-xs-letter-spacing);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modal.resource-command-dialog p {
@@ -92,6 +101,8 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  flex: 0 0 84px;
+  overflow: hidden;
   padding: 12px;
   border: 1px solid var(--surface-stroke);
   border-radius: var(--radius-control);
@@ -104,6 +115,7 @@
 
 .resource-command-item > div {
   min-width: 0;
+  flex: 1;
 }
 
 .resource-command-kind {
@@ -117,9 +129,10 @@
 
 .modal.resource-command-dialog .resource-command-item p {
   display: -webkit-box;
+  height: calc(2 * var(--label-sm-line-height));
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   color: var(--text-primary);
   font-size: var(--label-sm-font-size);
   font-weight: var(--label-sm-font-weight);
@@ -129,6 +142,7 @@
 .resource-command-destination {
   display: grid;
   gap: 6px;
+  flex-shrink: 0;
   margin: 16px 0 10px;
   font-size: var(--body-xs-font-size);
   line-height: var(--body-xs-line-height);
@@ -145,30 +159,46 @@
 }
 
 .resource-command-destination dd {
+  overflow: hidden;
   margin: 0;
   color: var(--text-primary);
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modal.resource-command-dialog .command-copy,
 .modal.resource-command-dialog .resource-command-note {
+  flex-shrink: 0;
   color: var(--text-secondary);
 }
 
-.modal.resource-command-dialog .resource-command-note {
+.resource-command-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
   margin-top: 16px;
 }
 
+.resource-command-workspace > p {
+  flex-shrink: 0;
+}
+
 .resource-command-manifest {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 78px;
   overflow: hidden;
-  margin-top: 16px;
   border: 1px solid var(--surface-stroke);
   border-radius: var(--radius-control);
 }
 
 .resource-command-manifest-heading {
   display: flex;
-  flex-wrap: wrap;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 6px 12px;
@@ -188,7 +218,9 @@
 }
 
 .resource-command-files {
-  max-height: min(200px, 24vh);
+  flex: 1;
+  min-height: 0;
+  max-height: 200px;
   overflow-y: auto;
   margin: 0;
   padding: 0;
@@ -206,7 +238,8 @@
 }
 
 .resource-command-files:focus-visible,
-.resource-command-paths ul:focus-visible {
+.resource-command-paths ul:focus-visible,
+.resource-command-workspace:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
@@ -218,8 +251,10 @@
 .resource-command-filename {
   min-width: 0;
   flex: 1;
+  overflow: hidden;
   color: var(--text-primary);
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .resource-command-filesize {
@@ -229,7 +264,7 @@
 }
 
 .resource-command-paths {
-  margin-top: 16px;
+  flex-shrink: 0;
 }
 
 .resource-command-paths ul {
@@ -251,7 +286,7 @@
 }
 
 .resource-command-progress {
-  margin-top: 16px;
+  flex: 0 0 84px;
   padding: 12px;
   border: 1px solid var(--surface-stroke);
   border-radius: var(--radius-control);
@@ -262,6 +297,7 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  height: 40px;
   color: var(--text-secondary);
   font-size: var(--body-xs-font-size);
   line-height: var(--body-xs-line-height);
@@ -274,19 +310,29 @@
 
 .resource-command-progress-status strong {
   display: block;
+  overflow: hidden;
   color: var(--text-primary);
   font-weight: var(--label-xs-font-weight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modal.resource-command-dialog .resource-command-progress-status p {
+  overflow: hidden;
   margin-top: 4px;
   color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.resource-command-progress-status > span:last-child:not(.ui-icon) {
-  flex-shrink: 0;
+.resource-command-progress-count {
+  flex: 0 0 64px;
+  overflow: hidden;
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .resource-command-progress-track {
@@ -335,15 +381,37 @@
 }
 
 .modal.resource-command-dialog p[role="alert"] {
-  margin-top: 16px;
   color: var(--text-danger);
 }
 
 .modal.resource-command-dialog .actions {
-  justify-content: flex-end;
-  margin-top: 20px;
-  padding-top: 20px;
+  flex-shrink: 0;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid var(--surface-stroke);
+}
+
+.resource-command-main-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.modal.resource-command-dialog .resource-command-confirm {
+  display: grid;
+  grid-template-areas: "label";
+  place-items: center;
+}
+
+.modal.resource-command-dialog .resource-command-confirm > span {
+  grid-area: label;
+}
+
+.resource-command-button-size {
+  visibility: hidden;
 }
 
 .item-menu-content .resource-diagnostics {

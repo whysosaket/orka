@@ -14,14 +14,18 @@ interface MenuControls {
   deferPreview: boolean;
   previewFailures: number;
   previewTitle?: string;
+  previewNote?: string;
+  projectName?: string;
   previewFiles?: { path: string; size: number }[];
   previewProgress?: (progress: SyncProgress) => void;
   previewProgresses: ((progress: SyncProgress) => void)[];
   finishPreview?: () => void;
+  failPreview?: () => void;
   finishPreviews: (() => void)[];
   deferShare: boolean;
   shareProgress?: (progress: SyncProgress) => void;
   finishShare?: () => void;
+  failShare?: () => void;
   resourceVersion: number;
   deleted: string[];
 }
@@ -84,13 +88,20 @@ async function menuFixture(
             totalBytes: files.reduce((total, file) => total + file.size, 0),
             paths: ["/synthetic/library/content.md"],
             note:
-              action === "preview-delete"
+              controls.previewNote ??
+              (action === "preview-delete"
                 ? "This removes the shared snapshot and its installed copies through sync."
-                : "Only this exact snapshot will be shared. Later changes stay private.",
+                : "Only this exact snapshot will be shared. Later changes stay private."),
           };
           if (controls.deferPreview)
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
               controls.finishPreview = () => resolve(preview);
+              controls.failPreview = () =>
+                reject(
+                  new Error(
+                    "Local folder temporarily unavailable. Reconnect the source folder and try preparing this snapshot again.",
+                  ),
+                );
               controls.finishPreviews.push(controls.finishPreview);
             });
           return preview;
@@ -98,9 +109,15 @@ async function menuFixture(
         if (action === "share") {
           controls.shareProgress = onProgress?.onmessage;
           if (controls.deferShare)
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
               controls.finishShare = () =>
                 resolve({ status: controls.shareStatus });
+              controls.failShare = () =>
+                reject(
+                  new Error(
+                    "Connection interrupted while sharing. The reviewed snapshot is still available; retry when you are connected.",
+                  ),
+                );
             });
           return { status: controls.shareStatus };
         }
@@ -118,6 +135,10 @@ async function menuFixture(
       const result = await original(command, args);
       if (command === "snapshot") {
         const snapshot = result as Snapshot;
+        snapshot.projects = snapshot.projects.map((project) => ({
+          ...project,
+          name: controls.projectName ?? project.name,
+        }));
         snapshot.resources = snapshot.resources.map((resource) => ({
           ...resource,
           deleted: controls.deleted.includes(resource.resourceId),
@@ -511,6 +532,183 @@ for (const viewport of [
       }),
     ).toBeFocused();
   });
+}
+
+for (const viewport of [
+  { width: 1160, height: 800 },
+  { width: 900, height: 640 },
+]) {
+  for (const motion of ["reduce", "no-preference"] as const) {
+    test(`snapshot review controls stay stationary through every state at ${viewport.width}px with ${motion} motion`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(viewport);
+      await menuFixture(page);
+      await page.emulateMedia({ reducedMotion: motion });
+      await page.evaluate(() => {
+        const controls = (window as unknown as MenuWindow).resourceMenu;
+        controls.deferPreview = true;
+        controls.deferShare = true;
+        controls.previewTitle =
+          "A much longer reviewed session title that must remain inside its reserved title area without moving the project details, status area or footer buttons across review states.";
+        controls.previewNote =
+          "Only this exact snapshot will be shared. Later changes remain private. The local original and automatic sharing choices are preserved. "
+            .repeat(5)
+            .trim();
+        controls.previewFiles = Array.from({ length: 18 }, (_, index) => ({
+          path: `references/${"long-snapshot-filename-".repeat(6)}${index}.md`,
+          size: 12_500 + index,
+        }));
+      });
+      await collection(page, "Sessions");
+      await resourceMenu(
+        page,
+        "Private session notes",
+        "Share snapshot with project…",
+      );
+      const dialog = page.getByRole("dialog", {
+        name: "Share snapshot with project",
+        exact: true,
+      });
+      await page.evaluate(() => document.fonts.ready);
+      const geometry = () =>
+        dialog.evaluate((el) => {
+          const selectors = [
+            "h2[title]",
+            ".resource-command-item",
+            ".resource-command-destination",
+            ".command-copy",
+            ".resource-command-workspace",
+            ".actions",
+            ".resource-command-main-actions > button:first-child",
+            ".resource-command-confirm",
+          ];
+          return [
+            el,
+            ...selectors.map((selector) => el.querySelector(selector)!),
+          ].map((node) => {
+            const rect = node.getBoundingClientRect();
+            return [rect.x, rect.y, rect.width, rect.height].map(
+              (value) => Math.round(value * 100) / 100,
+            );
+          });
+        });
+      const initial = await geometry();
+      const stationary = async () => {
+        await expect.poll(geometry).toEqual(initial);
+      };
+      const confirm = dialog.getByRole("button", {
+        name: "Share this snapshot",
+        exact: true,
+      });
+      await expect(confirm).toBeDisabled();
+      await page.evaluate(() => {
+        (window as unknown as MenuWindow).resourceMenu.projectName =
+          "A long project name that must truncate within the destination row instead of increasing the modal height or moving any controls";
+      });
+      await expect(
+        dialog.locator(".resource-command-destination dd").first(),
+      ).toContainText("A long project name");
+      await stationary();
+      await expect(
+        dialog.locator(".resource-command-destination dd").first(),
+      ).toHaveAttribute("title", /A long project name/);
+      await page.evaluate(() =>
+        (window as unknown as MenuWindow).resourceMenu.previewProgress?.({
+          label: "Checking local files",
+          detail: "session.jsonl",
+        }),
+      );
+      await expect(dialog.getByRole("progressbar")).toHaveAttribute(
+        "aria-label",
+        "Checking local files",
+      );
+      await stationary();
+      await page.evaluate(() =>
+        (window as unknown as MenuWindow).resourceMenu.failPreview?.(),
+      );
+      await expect(dialog.getByRole("alert")).toContainText(
+        "Local folder temporarily unavailable",
+      );
+      await expect(dialog.getByRole("alert")).toBeInViewport({ ratio: 1 });
+      await stationary();
+      await dialog
+        .getByRole("button", { name: "Try again", exact: true })
+        .click();
+      await expect(dialog.getByRole("progressbar")).toBeVisible();
+      await expect(dialog.getByRole("progressbar")).toBeInViewport({
+        ratio: 1,
+      });
+      await stationary();
+      await page.evaluate(() =>
+        (window as unknown as MenuWindow).resourceMenu.finishPreview?.(),
+      );
+      await expect(confirm).toBeEnabled();
+      await stationary();
+      const itemTitle = dialog.locator(".resource-command-item p");
+      await expect(itemTitle).toHaveAttribute(
+        "title",
+        /A much longer reviewed session title/,
+      );
+      const filename = dialog.locator(".resource-command-filename").first();
+      expect(
+        await filename.evaluate((el) => el.scrollWidth > el.clientWidth),
+      ).toBe(true);
+      await expect(filename).toHaveAttribute(
+        "title",
+        /references\/long-snapshot-filename/,
+      );
+      const note = dialog.locator(".resource-command-note");
+      const fullNote = await page.evaluate(
+        () => (window as unknown as MenuWindow).resourceMenu.previewNote,
+      );
+      await expect(note).toHaveText(fullNote!);
+      await expect(note).toHaveCSS("-webkit-line-clamp", "none");
+      const details = dialog.getByRole("region", {
+        name: "Review details",
+        exact: true,
+      });
+      expect(
+        await details.evaluate((el) => el.scrollHeight > el.clientHeight),
+      ).toBe(true);
+      await note.scrollIntoViewIfNeeded();
+      await stationary();
+      await confirm.click();
+      await expect(
+        dialog.getByRole("button", { name: "Working…", exact: true }),
+      ).toBeDisabled();
+      await expect(dialog.getByRole("progressbar")).toBeVisible();
+      await expect(dialog.getByRole("progressbar")).toBeInViewport({
+        ratio: 1,
+      });
+      await stationary();
+      await page.evaluate(() =>
+        (window as unknown as MenuWindow).resourceMenu.failShare?.(),
+      );
+      await expect(dialog.getByRole("alert")).toContainText(
+        "Connection interrupted while sharing",
+      );
+      await expect(dialog.getByRole("alert")).toBeInViewport({ ratio: 1 });
+      await expect(confirm).toBeEnabled();
+      await stationary();
+      await expect(note).toHaveText(fullNote!);
+      if (motion === "reduce")
+        await page.screenshot({
+          path: testInfo.outputPath(
+            `snapshot-error-stable-${viewport.width}.png`,
+          ),
+        });
+      await confirm.click();
+      await expect(
+        dialog.getByRole("button", { name: "Working…", exact: true }),
+      ).toBeDisabled();
+      await stationary();
+      await page.evaluate(() =>
+        (window as unknown as MenuWindow).resourceMenu.finishShare?.(),
+      );
+      await expect(dialog).toHaveCount(0);
+    });
+  }
 }
 
 test("snapshot file review bounds long manifests in a compact window", async ({
