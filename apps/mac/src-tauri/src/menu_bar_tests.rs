@@ -94,7 +94,12 @@ fn menu_bar_reports_pending_changes_failures_and_account_status() {
 
 #[test]
 fn menu_bar_cannot_invoke_workspace_or_credential_commands() {
-    for command in ["menu_bar_snapshot", "menu_bar_action", "sync_now"] {
+    for command in [
+        "menu_bar_snapshot",
+        "menu_bar_action",
+        "menu_bar_resize",
+        "sync_now",
+    ] {
         assert!(crate::menu_bar::allows_command(command));
     }
     for command in [
@@ -135,4 +140,52 @@ fn menu_bar_keeps_account_history_issues_visible_after_successful_sync() {
         crate::menu_bar::snapshot(&f.db, false).unwrap()["issues"],
         1
     );
+}
+
+#[test]
+fn menu_bar_resize_is_scoped_and_bounds_requested_content_height() {
+    assert_eq!(
+        crate::menu_bar::resize_height("menu-bar", 260.2).unwrap(),
+        261.0
+    );
+    assert_eq!(
+        crate::menu_bar::resize_height("menu-bar", 20.0).unwrap(),
+        120.0
+    );
+    assert_eq!(
+        crate::menu_bar::resize_height("menu-bar", 900.0).unwrap(),
+        480.0
+    );
+    assert!(crate::menu_bar::resize_height("main", 260.0).is_err());
+    assert!(crate::menu_bar::resize_height("menu-bar", f64::NAN).is_err());
+    assert!(crate::menu_bar::resize_height("menu-bar", f64::INFINITY).is_err());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn menu_bar_resize_grows_and_shrinks_below_its_top_edge() {
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    let frame = NSRect::new(NSPoint::new(500.0, 350.0), NSSize::new(360.0, 260.0));
+    for height in [340.0, 180.0] {
+        let next = crate::menu_bar::resized_frame(frame, height, None);
+        assert_eq!(next.origin.x, 500.0);
+        assert_eq!(next.origin.y + next.size.height, 610.0);
+        assert_eq!(next.size.width, 360.0);
+        assert_eq!(next.size.height, height);
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn menu_bar_resize_stays_inside_the_visible_screen_near_its_bottom() {
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    let frame = NSRect::new(NSPoint::new(500.0, 10.0), NSSize::new(360.0, 260.0));
+    let work = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1280.0, 800.0));
+    let next = crate::menu_bar::resized_frame(frame, 480.0, Some(work));
+    assert_eq!(next.origin.y, 8.0);
+    assert_eq!(next.size.height, 480.0);
+    let short_work = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1280.0, 400.0));
+    let next = crate::menu_bar::resized_frame(frame, 480.0, Some(short_work));
+    assert_eq!(next.origin.y, 8.0);
+    assert_eq!(next.size.height, 384.0);
 }

@@ -264,6 +264,7 @@ fn main() {
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 menu_bar::menu_bar_snapshot,
                 menu_bar::menu_bar_action,
+                menu_bar::menu_bar_resize,
                 window_chrome::set_sidebar_collapsed,
                 settings_lifecycle::guard_settings_close,
                 settings_lifecycle::finish_settings_close,

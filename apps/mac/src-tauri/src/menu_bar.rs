@@ -3,9 +3,76 @@ use serde_json::{json, Value};
 use tauri::Manager;
 
 pub const LABEL: &str = "menu-bar";
+const WIDTH: f64 = 360.0;
 
 pub fn allows_command(command: &str) -> bool {
-    ["menu_bar_snapshot", "menu_bar_action", "sync_now"].contains(&command)
+    [
+        "menu_bar_snapshot",
+        "menu_bar_action",
+        "menu_bar_resize",
+        "sync_now",
+    ]
+    .contains(&command)
+}
+
+pub(crate) fn resize_height(label: &str, height: f64) -> db::Result<f64> {
+    if label != LABEL {
+        return Err("Only the menu bar can resize its panel".into());
+    }
+    if !height.is_finite() {
+        return Err("Invalid menu bar height".into());
+    }
+    Ok(height.clamp(120.0, 480.0).ceil())
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn resized_frame(
+    mut frame: objc2_foundation::NSRect,
+    height: f64,
+    work: Option<objc2_foundation::NSRect>,
+) -> objc2_foundation::NSRect {
+    let top = frame.origin.y + frame.size.height;
+    frame.size.width = WIDTH;
+    frame.size.height = height;
+    if let Some(work) = work {
+        frame.size.height = height.min((work.size.height - 16.0).max(1.0));
+        frame.origin.x = frame.origin.x.clamp(
+            work.origin.x + 8.0,
+            (work.origin.x + work.size.width - WIDTH - 8.0).max(work.origin.x + 8.0),
+        );
+        frame.origin.y = (top - frame.size.height).clamp(
+            work.origin.y + 8.0,
+            (work.origin.y + work.size.height - frame.size.height - 8.0).max(work.origin.y + 8.0),
+        );
+    } else {
+        frame.origin.y = top - height;
+    }
+    frame
+}
+
+#[tauri::command]
+pub fn menu_bar_resize(window: tauri::WebviewWindow, height: f64) -> db::Result<()> {
+    let height = resize_height(window.label(), height)?;
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::NSWindow;
+        let target = window.clone();
+        window
+            .run_on_main_thread(move || {
+                let Ok(pointer) = target.ns_window() else {
+                    return;
+                };
+                // AppKit uses bottom-left coordinates; change frame once to keep the top anchored.
+                let native = unsafe { &*(pointer as *const NSWindow) };
+                let work = native.screen().map(|screen| screen.visibleFrame());
+                native.setFrame_display(resized_frame(native.frame(), height, work), true);
+            })
+            .map_err(|error| error.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    window
+        .set_size(tauri::LogicalSize::new(WIDTH, height))
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -103,7 +170,7 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
     let panel =
         WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html?menu-bar=1".into()))
             .title("Orka menu bar")
-            .inner_size(360.0, 352.0)
+            .inner_size(WIDTH, 260.0)
             .visible(false)
             .focused(false)
             .decorations(false)
@@ -201,8 +268,9 @@ fn toggle(app: &tauri::AppHandle, rect: tauri::Rect) -> tauri::Result<()> {
         let scale = monitor.scale_factor();
         let size = rect.size.to_physical::<f64>(scale);
         let work = monitor.work_area();
-        let width = 360.0 * scale;
-        let height = 352.0 * scale;
+        let panel_size = panel.outer_size()?.to_logical::<f64>(panel.scale_factor()?);
+        let width = panel_size.width * scale;
+        let height = panel_size.height * scale;
         let inset = 8.0 * scale;
         let x = (position.x + size.width / 2.0 - width / 2.0).clamp(
             work.position.x as f64 + inset,

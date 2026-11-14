@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { motion, useReducedMotion } from "motion/react";
 import { ArrowUpRightIcon, SyncIcon } from "@primer/octicons-react";
 import type { Snapshot, SyncProgress } from "../types.js";
 import { Button } from "./button.js";
 import { Icon } from "./icon.js";
+import { spring } from "../lib/springs.js";
 import "./menu-bar.css";
 
 export interface MenuBarSnapshot {
@@ -37,6 +39,36 @@ export function MenuBar() {
   const [requested, setRequested] = useState(false);
   const requestTime = useRef(0);
   const root = useRef<HTMLElement>(null);
+  const progressDetails = useRef<HTMLDivElement>(null);
+  const [progressHeight, setProgressHeight] = useState(0);
+  const reducedMotion = useReducedMotion();
+
+  useLayoutEffect(() => {
+    const panel = root.current!;
+    const details = progressDetails.current!;
+    let frame = 0;
+    let previousHeight = 0;
+    let stopped = false;
+    const observer = new ResizeObserver(() => {
+      setProgressHeight(details.getBoundingClientRect().height);
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const height = Math.ceil(panel.getBoundingClientRect().height);
+        if (height === previousHeight) return;
+        previousHeight = height;
+        void invoke("menu_bar_resize", { height }).catch((error) => {
+          if (!stopped) setActionError(String(error));
+        });
+      });
+    });
+    observer.observe(panel);
+    observer.observe(details);
+    return () => {
+      stopped = true;
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
 
   useEffect(() => {
     let stopped = false;
@@ -168,17 +200,26 @@ export function MenuBar() {
               </span>
             )}
           </div>
-          {progress?.detail && (
-            <p className="menu-bar-detail">{progress.detail}</p>
-          )}
-          {completed !== null && total && (
-            <progress
-              aria-label={progress?.label}
-              max={total}
-              value={completed}
-              aria-valuetext={`${completed} of ${total} complete`}
-            />
-          )}
+          <motion.div
+            className="menu-bar-progress-extra"
+            initial={false}
+            animate={{ height: progressHeight }}
+            transition={reducedMotion ? { duration: 0 } : spring.moderate}
+          >
+            <div ref={progressDetails}>
+              {progress?.detail && (
+                <p className="menu-bar-detail">{progress.detail}</p>
+              )}
+              {completed !== null && total && (
+                <progress
+                  aria-label={progress?.label}
+                  max={total}
+                  value={completed}
+                  aria-valuetext={`${completed} of ${total} complete`}
+                />
+              )}
+            </div>
+          </motion.div>
         </div>
       </section>
       {signedIn && (

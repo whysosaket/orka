@@ -14,7 +14,6 @@ html.menu-bar-window,
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  height: 100%;
   padding: 16px 16px 12px;
   overflow: hidden;
   border: 1px solid rgb(255 255 255 / 14%);
@@ -47,7 +46,12 @@ html.menu-bar-window,
 }
 .menu-bar-progress {
   margin-top: 12px;
-  min-height: 50px;
+}
+.menu-bar-progress-extra {
+  overflow: hidden;
+}
+.menu-bar-progress-extra > div {
+  display: flow-root;
 }
 .menu-bar-progress-label {
   display: flex;
@@ -92,7 +96,7 @@ html.menu-bar-window,
 .menu-bar-counts {
   flex-shrink: 0;
   margin: 0 -16px;
-  padding: 10px 16px;
+  padding: 8px 16px;
   border-top: 1px solid rgb(255 255 255 / 10%);
 }
 .menu-bar-counts div {
@@ -119,8 +123,7 @@ html.menu-bar-window,
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
-  margin-top: auto;
-  padding-top: 8px;
+  padding-top: 4px;
 }
 .menu-bar-footer .ui-button {
   padding-inline: 0;
