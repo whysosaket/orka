@@ -30,6 +30,50 @@ const finish = (page: Page, index: number) =>
     (window as unknown as CatalogWindow).catalogFixture.finish[index]();
   }, index);
 
+for (const kind of ["memory", "session", "plan"])
+  test(`${kind} restores its persistent index after restart and retries busy sync automatically`, async ({
+    page,
+  }) => {
+    await page.clock.install();
+    await fixture(page);
+    await select(page, kind);
+    await expect(rows(page)).toHaveText(`one ${kind} user 1`);
+    await page.evaluate(() => sessionStorage.setItem("busy-discovery", "true"));
+    await page.reload();
+    await select(page, kind);
+    await expect(rows(page)).toHaveText(`one ${kind} user 1`);
+    await expect(page.getByLabel("Errors", { exact: true })).toHaveText("");
+    await expect(page.getByLabel("Loading", { exact: true })).toHaveText(
+      "true",
+    );
+    await expect.poll(async () => (await calls(page)).length).toBe(1);
+    await page.evaluate(() => {
+      (window as unknown as CatalogWindow).catalogFixture.busy = false;
+    });
+    await page.clock.runFor(5100);
+    await expect(rows(page)).toHaveText(`one ${kind} user 2`);
+    await expect(page.getByLabel("Loading", { exact: true })).toHaveText(
+      "false",
+    );
+    expect(await calls(page)).toHaveLength(2);
+  });
+
+test("restart shows the saved index before slow discovery completes", async ({
+  page,
+}) => {
+  await fixture(page);
+  await select(page, "session");
+  await expect(rows(page)).toHaveText("one session user 1");
+  await page.evaluate(() => sessionStorage.setItem("defer-discovery", "true"));
+  await page.reload();
+  await select(page, "session");
+  await expect(rows(page)).toHaveText("one session user 1");
+  await expect(page.getByLabel("Loading", { exact: true })).toHaveText("true");
+  await expect.poll(async () => (await calls(page)).length).toBe(1);
+  await finish(page, 0);
+  await expect(page.getByLabel("Loading", { exact: true })).toHaveText("false");
+});
+
 test("project and collection navigation reuse fresh catalogs", async ({
   page,
 }) => {

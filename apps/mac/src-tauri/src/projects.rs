@@ -109,11 +109,18 @@ fn lock_file(name: &str) -> Result<File> {
 }
 
 pub fn lock() -> Result<File> {
+    try_lock()?.ok_or_else(|| {
+        "A sync or project operation is in progress. Wait for it to finish and try again.".into()
+    })
+}
+
+pub fn try_lock() -> Result<Option<File>> {
     let file = lock_file("workspace.lock")?;
-    file.try_lock_exclusive().map_err(|_| {
-        "A sync or project operation is in progress. Wait for it to finish and try again."
-    })?;
-    Ok(file)
+    match file.try_lock_exclusive() {
+        Ok(()) => Ok(Some(file)),
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+        Err(error) => Err(format!("Cannot access the project lock: {error}")),
+    }
 }
 
 pub fn launch_lock() -> Result<File> {

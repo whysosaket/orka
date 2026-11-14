@@ -24,6 +24,7 @@ export async function resourceLibraryFixture(
     restricted?: boolean;
     withoutRepositories?: boolean;
     teammateAvatar?: string;
+    cachedLocal?: boolean;
   } = {},
 ) {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -200,6 +201,13 @@ export async function resourceLibraryFixture(
           if (command === "sync_progress")
             return { user: library.user, progress: null };
           if (command === "local_resource_catalog") {
+            if (args.refresh === false)
+              return {
+                resources: options.cachedLocal
+                  ? local(args.kind as "memory" | "session" | "plan")
+                  : [],
+                errors: [],
+              };
             if (library.failCatalog)
               throw new Error("Local folder temporarily unavailable");
             const result = {

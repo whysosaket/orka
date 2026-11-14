@@ -390,6 +390,44 @@ test("a pending local scan does not report an empty collection", async ({
   ).toBeVisible();
 });
 
+for (const [kind, label] of [
+  ["memory", "Memories"],
+  ["session", "Sessions"],
+  ["plan", "Plans"],
+])
+  test(`${label} show saved local rows while startup discovery is pending`, async ({
+    page,
+  }) => {
+    await resourceLibraryFixture(page, {
+      emptyShared: true,
+      cachedLocal: true,
+      defer: true,
+    });
+    await page.getByRole("button", { name: new RegExp(`^${label}`) }).click();
+    await expect(
+      page.getByRole("button", {
+        name: `Private ${kind} notes`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Refresh local items",
+        exact: true,
+      }),
+    ).toBeDisabled();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.evaluate(() =>
+      (window as unknown as LibraryWindow).library.finishCatalog?.(),
+    );
+    await expect(
+      page.getByRole("button", {
+        name: "Refresh local items",
+        exact: true,
+      }),
+    ).toBeEnabled();
+  });
+
 test("refresh failures retain private entries and retry discovery without syncing", async ({
   page,
 }) => {
@@ -503,7 +541,9 @@ test("configured sync timing refreshes local-only rows without clearing collecti
   const catalogs = () =>
     page.evaluate(() =>
       (window as unknown as LibraryWindow).library.calls.filter(
-        (call) => call.command === "local_resource_catalog",
+        (call) =>
+          call.command === "local_resource_catalog" &&
+          call.args.refresh !== false,
       ),
     );
   await page.evaluate(() => {

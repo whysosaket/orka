@@ -3,7 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Project, ProjectPage, ProjectResource } from "../types.js";
 
 type LocalKind = "memory" | "session" | "plan";
-type Catalog = { resources: ProjectResource[]; errors: string[] };
+type Catalog = {
+  resources: ProjectResource[];
+  errors: string[];
+  refreshPending?: boolean;
+};
 type CatalogEntry = {
   catalog?: Catalog;
   updatedAt: number;
@@ -12,7 +16,7 @@ type CatalogEntry = {
 type Catalogs = Partial<Record<LocalKind, CatalogEntry>>;
 const kinds: LocalKind[] = ["memory", "session", "plan"];
 
-/** Private discovery runs separately from the workspace's inexpensive snapshots. */
+/** Restore the private index before refreshing it independently of workspace sync. */
 export function useLocalResources({
   scope,
   project,
@@ -63,14 +67,17 @@ export function useLocalResources({
     let timer: number | undefined;
     let running = false;
     const schedule = () => {
-      const age = Date.now() - (catalogs[kind]?.updatedAt ?? 0);
+      const entry = catalogs[kind];
+      const age = Date.now() - (entry?.updatedAt ?? 0);
       timer = window.setTimeout(
         () => {
           if (document.visibilityState === "visible") void load();
           else schedule();
         },
         document.visibilityState === "visible"
-          ? Math.max(refreshInterval - age, 1000)
+          ? entry?.catalog?.refreshPending
+            ? 5000
+            : Math.max(refreshInterval - age, 1000)
           : refreshInterval,
       );
     };
@@ -84,26 +91,44 @@ export function useLocalResources({
         (!entry.updatedAt || Date.now() - entry.updatedAt >= refreshInterval)
       ) {
         // A request belongs to its catalog, so navigation can reuse its result.
-        entry.pending = invoke<Catalog | null>("local_resource_catalog", {
+        const args = {
           projectId,
           kind,
           accountId: user,
           serviceOrigin,
-        })
+        };
+        entry.pending = (async () => {
+          if (!entry.catalog) {
+            const cached = await invoke<Catalog | null>(
+              "local_resource_catalog",
+              { ...args, refresh: false },
+            );
+            entry.catalog = cached ?? { resources: [], errors: [] };
+            setVersion((value) => value + 1);
+          }
+          return invoke<Catalog | null>("local_resource_catalog", {
+            ...args,
+            refresh: true,
+          });
+        })()
           .then((result) => {
             entry.catalog = {
               resources: result?.resources ?? [],
               errors: result?.errors ?? [],
+              refreshPending: result?.refreshPending,
             };
+            // A busy daemon has not checked freshness. Retry soon, keeping the
+            // persisted rows visible without turning contention into an error.
+            entry.updatedAt = result?.refreshPending ? 0 : Date.now();
           })
           .catch((error) => {
             entry.catalog = {
               resources: entry.catalog?.resources ?? [],
               errors: [String(error)],
             };
+            entry.updatedAt = Date.now();
           })
           .finally(() => {
-            entry.updatedAt = Date.now();
             entry.pending = undefined;
           });
       }
@@ -136,7 +161,9 @@ export function useLocalResources({
       projectId &&
       user &&
       serviceOrigin &&
-      (catalogs[kind]?.pending || !catalogs[kind]?.catalog),
+      (catalogs[kind]?.pending ||
+        catalogs[kind]?.catalog?.refreshPending ||
+        !catalogs[kind]?.catalog),
     ),
     refresh,
   };

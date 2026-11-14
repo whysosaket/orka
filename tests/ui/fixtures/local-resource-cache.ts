@@ -8,24 +8,39 @@ export interface CatalogCall {
   kind: string;
   accountId: string;
   serviceOrigin: string;
+  refresh?: boolean;
 }
 export type CatalogWindow = Window & {
   catalogFixture: {
     calls: CatalogCall[];
     deferred: boolean;
     finish: (() => void)[];
+    busy: boolean;
   };
 };
 const fixture = {
   calls: [] as CatalogCall[],
-  deferred: false,
+  deferred: sessionStorage.getItem("defer-discovery") === "true",
+  busy: sessionStorage.getItem("busy-discovery") === "true",
   finish: [] as (() => void)[],
 };
 Object.assign(window, {
   catalogFixture: fixture,
   __TAURI_INTERNALS__: {
     invoke: async (_command: string, args: CatalogCall) => {
+      const key = JSON.stringify([
+        args.projectId,
+        args.kind,
+        args.accountId,
+        args.serviceOrigin,
+      ]);
+      const cached = JSON.parse(sessionStorage.getItem(key) ?? "null") ?? {
+        resources: [],
+        errors: [],
+      };
+      if (args.refresh === false) return cached;
       fixture.calls.push(args);
+      if (fixture.busy) return { ...cached, refreshPending: true };
       const result = {
         resources: [
           {
@@ -37,11 +52,15 @@ Object.assign(window, {
         ],
         errors: [],
       };
+      const complete = () => {
+        sessionStorage.setItem(key, JSON.stringify(result));
+        return result;
+      };
       if (fixture.deferred)
         return new Promise((resolve) =>
-          fixture.finish.push(() => resolve(result)),
+          fixture.finish.push(() => resolve(complete())),
         );
-      return result;
+      return complete();
     },
   },
 });
@@ -114,6 +133,7 @@ function Fixture() {
       catalog.resources.map((r) => r.title).join(", "),
     ),
     h("output", { "aria-label": "Loading" }, String(catalog.loading)),
+    h("output", { "aria-label": "Errors" }, catalog.errors.join(", ")),
   );
 }
 ReactDOM.createRoot(document.getElementById("root")!).render(h(Fixture));

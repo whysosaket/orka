@@ -21,9 +21,13 @@ local and authorized shared identities and filters ownership independently of
 provider and repository.
 
 The native `local_resources` SQLite table persists the local index independently of
-the UI's in-memory catalogs. The catalog command performs discovery before reading
-those entries; the UI reuses completed and pending reads across navigation to avoid
-extra discovery. Catalog and skill-usage freshness and visible-view refreshes follow
+the UI's in-memory catalogs. Collections restore those entries in a read transaction
+before running discovery, so a restart does not wait for a filesystem scan or the
+background sync lock. Cached reads do not scan files or write provenance. Discovery
+still serializes with sync and project changes; a busy workspace returns the saved
+catalog and the visible collection retries automatically after five seconds, without
+reporting contention as a discovery failure. The UI reuses completed and pending
+reads across navigation to avoid extra discovery. Catalog and skill-usage freshness and visible-view refreshes follow
 the configured sync interval, including changes to that setting. Explicit refresh
 remains immediate, and revalidation preserves loaded rows and counts. This timing
 also applies when automatic sharing is off; browsing does not queue publication.
