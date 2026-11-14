@@ -1,0 +1,223 @@
+html.menu-bar-window,
+.menu-bar-window body,
+.menu-bar-window #root {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.menu-bar-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 20px 20px 0;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgb(38 38 38 / 64%), rgb(18 18 18 / 76%));
+  color: var(--text-primary);
+  -webkit-backdrop-filter: blur(32px) saturate(125%);
+  backdrop-filter: blur(32px) saturate(125%);
+  outline: none;
+}
+
+.menu-bar-heading,
+.menu-bar-background,
+.menu-bar-footer,
+.menu-bar-projects li {
+  display: flex;
+  align-items: center;
+}
+
+.menu-bar-heading {
+  flex-shrink: 0;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+}
+
+.menu-bar-caption,
+.menu-bar-project-state,
+.menu-bar-counts span,
+.menu-bar-projects h2,
+.menu-bar-projects > p,
+.menu-bar-background {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.menu-bar-status {
+  padding: 22px 0 18px;
+}
+
+.menu-bar-status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 12px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 5%);
+}
+
+.menu-bar-status h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.01em;
+}
+
+.menu-bar-status p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.menu-bar-status .menu-bar-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-bar-sync {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.menu-bar-status progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 12%);
+  accent-color: var(--text-primary);
+}
+
+.menu-bar-status progress::-webkit-progress-bar {
+  background: rgb(255 255 255 / 12%);
+}
+.menu-bar-status progress::-webkit-progress-value {
+  background: var(--text-primary);
+}
+
+.menu-bar-counts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 14px 0;
+  border-block: 1px solid rgb(255 255 255 / 9%);
+}
+
+.menu-bar-counts div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.menu-bar-counts strong {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.menu-bar-projects {
+  flex: 1;
+  min-height: 40px;
+  margin-top: 16px;
+  overflow-y: auto;
+}
+
+.menu-bar-projects h2 {
+  margin: 0 0 6px;
+  font-weight: 500;
+}
+.menu-bar-projects ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.menu-bar-projects li {
+  min-height: 32px;
+  gap: 8px;
+}
+.menu-bar-project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.menu-bar-project-state {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.menu-bar-background {
+  flex-shrink: 0;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 8px;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+}
+.menu-bar-background > span:last-child,
+.menu-bar-background button {
+  margin-left: auto;
+}
+.menu-bar-background .ui-button {
+  padding-inline: 4px;
+}
+
+.menu-bar-footer {
+  flex-shrink: 0;
+  justify-content: space-between;
+  margin: auto -20px 0;
+  padding: 9px 16px;
+  border-top: 1px solid rgb(255 255 255 / 9%);
+  background: rgb(0 0 0 / 10%);
+}
+.menu-bar-footer .ui-button {
+  padding-inline: 4px;
+}
+.menu-bar-error {
+  flex-shrink: 0;
+  max-height: 54px;
+  overflow-y: auto;
+  margin: 8px 0;
+  color: var(--text-danger);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.menu-bar-spinning {
+  animation: menu-bar-spin 1.5s linear infinite;
+}
+@keyframes menu-bar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-bar-spinning {
+    animation: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .menu-bar-panel {
+    background: var(--surface-secondary);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

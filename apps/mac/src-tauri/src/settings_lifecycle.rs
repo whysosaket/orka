@@ -66,8 +66,12 @@ pub fn finish_settings_close(
 }
 
 pub fn request(app: &tauri::AppHandle, action: &str) -> bool {
-    app.state::<SettingsCloseGuard>().0.load(Ordering::SeqCst)
+    let requested = app.state::<SettingsCloseGuard>().0.load(Ordering::SeqCst)
         && app
             .emit_to("main", "settings-close-requested", action)
-            .is_ok()
+            .is_ok();
+    if requested {
+        let _ = crate::menu_bar::open_main(app);
+    }
+    requested
 }

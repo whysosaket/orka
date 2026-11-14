@@ -1,0 +1,6 @@
+{
+  "identifier": "menu-bar",
+  "description": "Orka menu bar sync overview",
+  "windows": ["menu-bar"],
+  "permissions": ["core:event:default"]
+}

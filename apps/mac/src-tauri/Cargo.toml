@@ -10,7 +10,7 @@ default-run = "portable-workspace-mac"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-deep-link = "2"
 serde = { version = "1", features = ["derive"] }
