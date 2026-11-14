@@ -304,6 +304,16 @@
   .settings-update-actions {
     @apply flex flex-wrap items-center gap-3;
   }
+  .settings-update-check {
+    background: var(--surface-tertiary);
+    box-shadow: inset 0 0 0 1px var(--surface-stroke);
+  }
+  .settings-update-check:hover:not(:disabled) {
+    background: var(--interaction-hover);
+  }
+  .settings-update-check:active:not(:disabled) {
+    background: var(--interaction-selected);
+  }
   .settings-update-actions > [role="alert"],
   .settings-update-actions > .sidebar-update-progress {
     @apply w-full;

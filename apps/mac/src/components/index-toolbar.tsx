@@ -111,8 +111,12 @@ export function applyIndexFilters(
       );
     if (filters.sort === "author")
       return (
-        memberName(a.kind === "session" ? a.owner : a.updatedBy).localeCompare(
-          memberName(b.kind === "session" ? b.owner : b.updatedBy),
+        memberName(
+          a.kind === "session" || a.kind === "plan" ? a.owner : a.updatedBy,
+        ).localeCompare(
+          memberName(
+            b.kind === "session" || b.kind === "plan" ? b.owner : b.updatedBy,
+          ),
           undefined,
           {
             sensitivity: "base",

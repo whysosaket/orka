@@ -682,14 +682,12 @@ for (const [width, height, memberCatalog] of [
         const row = page.getByRole("row").filter({
           has: page.getByRole("button", { name: title, exact: true }),
         });
-        if (collection === "Sessions")
-          await expect(
-            row.getByRole("img", { name: `Claude · ${author}`, exact: true }),
-          ).toBeVisible();
-        else
-          await expect(row.locator(".resource-table-author")).toHaveText(
-            author,
-          );
+        await expect(
+          row.getByRole("img", {
+            name: `${collection === "Memories" ? "Claude · Updated by" : "Claude ·"} ${author}`,
+            exact: true,
+          }),
+        ).toBeVisible();
       }
       await page
         .getByRole("button", {
@@ -749,19 +747,32 @@ test("author sorting follows displayed member names", async ({ page }) => {
   await page
     .getByRole("menuitemradio", { name: "Author", exact: true })
     .click();
-  await expect(page.locator(".resource-table-author")).toHaveText([
-    "Mira Shah",
-    "Saket Rao (you)",
-  ]);
+  await expect
+    .poll(() =>
+      page
+        .locator(".resource-identity")
+        .evaluateAll((identities) =>
+          identities.map((identity) => identity.getAttribute("aria-label")),
+        ),
+    )
+    .toEqual([
+      "Claude · Updated by Mira Shah",
+      "Codex · Updated by Saket Rao (you)",
+    ]);
 });
 
 test("unavailable member names use readable fallbacks", async ({ page }) => {
   await detailFixture(page, { memberCatalog: "unavailable" });
   await page.getByRole("button", { name: /^Memories \d/ }).click();
-  await expect(page.locator(".resource-table-author")).toHaveText([
-    "You",
-    "Member 22222222",
-  ]);
+  await expect
+    .poll(() =>
+      page
+        .locator(".resource-identity")
+        .evaluateAll((identities) =>
+          identities.map((identity) => identity.getAttribute("aria-label")),
+        ),
+    )
+    .toEqual(["Codex · Updated by You", "Claude · Updated by Member 22222222"]);
   await expect(page.locator("body")).not.toContainText(
     "22222222-2222-4222-8222-222222222222",
   );

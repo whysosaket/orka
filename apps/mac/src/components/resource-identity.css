@@ -1,4 +1,4 @@
-.session-identity {
+.resource-identity {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -6,8 +6,8 @@
   border-radius: 999px;
 }
 
-.session-identity-tool,
-.session-identity-avatar {
+.resource-identity-tool,
+.resource-identity-avatar {
   position: relative;
   display: grid;
   place-items: center;
@@ -18,29 +18,29 @@
   color: var(--text-secondary);
 }
 
-.session-identity-tool {
+.resource-identity-tool {
   z-index: 1;
   width: 18px;
   height: 18px;
   background: var(--surface-secondary);
 }
 
-.session-identity-tool .source-label > span {
+.resource-identity-tool .source-label > span {
   display: none;
 }
 
-.session-identity-tool .source-label > img,
-.session-identity-tool .source-label > svg {
+.resource-identity-tool .source-label > img,
+.resource-identity-tool .source-label > svg {
   width: 18px;
   height: 18px;
 }
 
-.session-identity-avatar {
+.resource-identity-avatar {
   margin-left: -4px;
   overflow: hidden;
 }
 
-.session-identity-avatar > img {
+.resource-identity-avatar > img {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -48,7 +48,7 @@
   object-fit: cover;
 }
 
-.session-identity-tooltip {
+.resource-identity-tooltip {
   position: absolute;
   z-index: 10;
   bottom: calc(100% + 8px);
@@ -65,7 +65,7 @@
   transform: translateX(-50%);
 }
 
-.session-identity-tooltip::after {
+.resource-identity-tooltip::after {
   position: absolute;
   top: 100%;
   left: 0;

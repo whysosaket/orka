@@ -1107,8 +1107,7 @@
     table-layout: fixed;
   }
   .resource-table-col-repository,
-  .resource-table-col-source,
-  .resource-table-col-author,
+  .resource-table-col-identity,
   .resource-table-col-updated {
     width: var(--resource-meta-width);
   }
@@ -1199,12 +1198,6 @@
   }
   .resource-table-suffix {
     @apply mt-0.5 block w-full truncate text-body-2xs text-muted;
-  }
-  .resource-source-pill {
-    @apply inline-flex h-7 items-center rounded-full border border-line px-2;
-  }
-  .resource-table-author {
-    @apply truncate;
   }
   .resource-table-updated {
     @apply text-left text-muted;
@@ -1730,9 +1723,6 @@
   .resource-table {
     --resource-meta-width: 100px;
     --resource-cell-padding: 12px;
-  }
-  .resource-source-pill {
-    padding-inline: 6px;
   }
   /* Compact toolbar: a 200px search and no count; the sort keeps the right edge. */
   .index-toolbar .ui-field {

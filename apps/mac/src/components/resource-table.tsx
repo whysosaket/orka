@@ -8,12 +8,11 @@ import {
   RepoForkedIcon,
 } from "@primer/octicons-react";
 import type { ProjectResource as Resource } from "../types.js";
-import { SourceLabel } from "./source-label.js";
 import { useMemberLabel } from "./member-names.js";
 import { RepositoryLabel } from "./repository-label.js";
 import { sessionAncestors, sessionTree } from "./session-tree.js";
 import { Button } from "./button.js";
-import { SessionIdentity } from "./session-identity.js";
+import { ResourceIdentity } from "./resource-identity.js";
 
 /** "23h ago" style labels for recent activity, calendar dates beyond a week. */
 function relativeUpdated(value: string, now = Date.now()) {
@@ -120,8 +119,7 @@ export function ResourceTable({
       <colgroup>
         <col />
         {showRepository && <col className="resource-table-col-repository" />}
-        {!sessions && <col className="resource-table-col-source" />}
-        <col className="resource-table-col-author" />
+        <col className="resource-table-col-identity" />
         <col className="resource-table-col-updated" />
         <col className="resource-table-col-actions" />
       </colgroup>
@@ -129,8 +127,7 @@ export function ResourceTable({
         <tr>
           <th scope="col">{label}</th>
           {showRepository && <th scope="col">Repository</th>}
-          {!sessions && <th scope="col">Source</th>}
-          <th scope="col">{sessions ? "Tool and author" : "Updated by"}</th>
+          <th scope="col">Tool and author</th>
           <th scope="col">Updated</th>
           <th scope="col">
             <span className="sr-only">Actions</span>
@@ -145,7 +142,7 @@ export function ResourceTable({
                 key={`more:${row.parent.resourceId}`}
                 className="session-forks-more"
               >
-                <td colSpan={(showRepository ? 6 : 5) - (sessions ? 1 : 0)}>
+                <td colSpan={showRepository ? 5 : 4}>
                   <Button
                     variant="tertiary"
                     size="sm"
@@ -270,25 +267,9 @@ export function ResourceTable({
                       <RepositoryLabel name={resource.repositoryName} />
                     </td>
                   )}
-                  {sessions ? (
-                    <td>
-                      <SessionIdentity resource={resource} user={user} />
-                    </td>
-                  ) : (
-                    <>
-                      <td>
-                        <span className="resource-source-pill">
-                          <SourceLabel source={resource.source} />
-                        </span>
-                      </td>
-                      <td
-                        className="resource-table-author"
-                        title={memberName(resource.updatedBy)}
-                      >
-                        {memberName(resource.updatedBy)}
-                      </td>
-                    </>
-                  )}
+                  <td>
+                    <ResourceIdentity resource={resource} user={user} />
+                  </td>
                   <td className="resource-table-updated">
                     <time
                       dateTime={resource.updatedAt}
