@@ -290,8 +290,9 @@ test("memories list in a table and open the full-width reading view", async ({
   const table = page.getByRole("table");
   await expect(table.getByRole("row")).toHaveCount(3);
   await expect(table).toContainText("Design decisions");
-  await expect(table).toContainText("Codex");
-  await expect(table).toContainText("You");
+  await expect(
+    table.getByRole("img", { name: "Codex · Updated by You", exact: true }),
+  ).toBeVisible();
   await expect(page.locator(".inspector")).toHaveCount(0);
   await table
     .getByRole("button", { name: "Design decisions", exact: true })
