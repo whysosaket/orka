@@ -15,7 +15,6 @@ export function SkillGrid({
   summaries,
   usageCounts,
   displayTitle,
-  duplicateTitles,
   conflicted,
   onOpen,
 }: {
@@ -23,7 +22,6 @@ export function SkillGrid({
   summaries: SkillSummaries;
   usageCounts?: Record<string, number>;
   displayTitle: (skill: Resource) => string;
-  duplicateTitles: Set<string>;
   conflicted: Set<string>;
   onOpen: (id: string) => void;
 }) {
@@ -55,17 +53,11 @@ export function SkillGrid({
                     )}
                   </span>
                   <RepositoryLabel name={skill.repositoryName} />
-                  {duplicateTitles.has(title.toLocaleLowerCase()) && (
-                    <small title={skill.logicalPath}>
-                      {skill.logicalPath.split("/").slice(-2).join("/")}
-                    </small>
-                  )}
                   {summary === undefined ? (
                     <span
                       className="skill-card-description-skeleton loading-fade"
                       aria-hidden="true"
                     >
-                      <span />
                       <span />
                       <span />
                     </span>
@@ -86,11 +78,6 @@ export function SkillGrid({
                       <span>{skillSharing(skill).label}</span>
                     ) : (
                       <SourceLabel source={skill.source} />
-                    )}
-                    {skill.files.length > 1 && (
-                      <span className="skill-card-files">
-                        {skill.files.length} files
-                      </span>
                     )}
                     <time
                       dateTime={skill.updatedAt}

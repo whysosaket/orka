@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
+import { readFileSync } from "node:fs";
 import {
   resourceLibraryFixture,
   type LibraryWindow,
@@ -11,6 +12,229 @@ const kinds = [
   { kind: "plan", label: "Plans" },
 ] as const;
 
+for (const width of [1160, 900]) {
+  test(`collection sort stays at the right edge across ownership filters at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await resourceLibraryFixture(page);
+    for (const [label, noun, singular] of [
+      ["Sessions", "sessions", "session"],
+      ["Memories", "memories", "memory"],
+      ["Plans", "plans", "plan"],
+    ]) {
+      await page.getByRole("button", { name: new RegExp(`^${label}`) }).click();
+      const toolbar = page.getByRole("group", { name: `${noun} tools` });
+      const ownership = page.getByRole("group", {
+        name: "Filter by ownership",
+      });
+      for (const [tab, count] of [
+        [`All ${noun}`, null],
+        ["Mine", 3],
+        ["Shared with me", 1],
+      ] as const) {
+        const selectedTab = ownership.getByRole("button", {
+          name: tab,
+          exact: true,
+        });
+        await selectedTab.click();
+        await expect(selectedTab).toHaveAttribute("aria-pressed", "true");
+        await expect(selectedTab).toHaveCSS(
+          "background-color",
+          "rgba(0, 0, 0, 0)",
+        );
+        expect(
+          await selectedTab.evaluate(
+            (button) => getComputedStyle(button, "::after").height,
+          ),
+        ).toBe("2px");
+        const resultCount = toolbar.locator(".index-toolbar-count");
+        if (count === null) await expect(resultCount).toHaveCount(0);
+        else {
+          await expect(resultCount).toHaveText(
+            `${count} ${count === 1 ? singular : noun}`,
+          );
+          if (width === 900) await expect(resultCount).toBeHidden();
+          else await expect(resultCount).toBeVisible();
+        }
+        const right = await toolbar.evaluate((element) => ({
+          toolbar: element.getBoundingClientRect().right,
+          sort: element
+            .querySelector(".index-toolbar-sort")!
+            .getBoundingClientRect().right,
+        }));
+        expect(Math.abs(right.toolbar - right.sort)).toBeLessThanOrEqual(1);
+        const refreshRight = await page
+          .getByRole("button", { name: "Refresh local items", exact: true })
+          .evaluate((button) => button.getBoundingClientRect().right);
+        expect(Math.abs(right.toolbar - refreshRight)).toBeLessThanOrEqual(1);
+      }
+      await toolbar
+        .getByRole("button", { name: "Sort by Recently updated", exact: true })
+        .click();
+      await page
+        .getByRole("menuitemradio", { name: "Title", exact: true })
+        .click();
+      await expect(
+        toolbar.getByRole("button", { name: "Sort by Title", exact: true }),
+      ).toBeVisible();
+    }
+  });
+}
+
+for (const width of [1160, 900]) {
+  test(`session identities and quiet ownership tabs align at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await resourceLibraryFixture(page);
+    await page.getByRole("button", { name: /^Sessions/ }).click();
+    const table = page.getByRole("table");
+    await expect(table.locator("tbody tr")).toHaveCount(4);
+    const local = table.locator("tr").filter({
+      has: page.getByRole("button", {
+        name: "Private session notes",
+        exact: true,
+      }),
+    });
+    await expect(local).toContainText("Local Only");
+    await expect(table).not.toContainText("On this Mac");
+    await expect(
+      table.locator(".resource-source-pill, .resource-table-author"),
+    ).toHaveCount(0);
+    const identity = local.getByRole("img", {
+      name: "Codex · You",
+      exact: true,
+    });
+    await expect(
+      identity.locator(".session-identity-avatar img"),
+    ).toBeVisible();
+    const geometry = await local.evaluate((row) => {
+      const tool = row.querySelector(".session-identity-tool")!;
+      const avatar = row.querySelector(".session-identity-avatar")!;
+      const toolBox = tool.getBoundingClientRect();
+      const avatarBox = avatar.getBoundingClientRect();
+      return {
+        height: row.getBoundingClientRect().height,
+        overlap: toolBox.right - avatarBox.left,
+        toolLeft: toolBox.left < avatarBox.left,
+        front: Number(getComputedStyle(tool).zIndex),
+        cells: row.children.length,
+      };
+    });
+    expect(geometry).toEqual({
+      height: 56,
+      overlap: 9,
+      toolLeft: true,
+      front: 1,
+      cells: 5,
+    });
+    await identity.hover();
+    await expect(identity.locator('[role="tooltip"]')).toHaveText(
+      "Codex · You",
+    );
+    await expect(identity.locator('[role="tooltip"]')).toBeVisible();
+    const tooltipBox = (await identity
+      .locator('[role="tooltip"]')
+      .boundingBox())!;
+    await page.mouse.move(
+      tooltipBox.x + tooltipBox.width / 2,
+      tooltipBox.y + tooltipBox.height / 2,
+      { steps: 60 },
+    );
+    await expect(identity.locator('[role="tooltip"]')).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(identity.locator('[role="tooltip"]')).toHaveCount(0);
+    await page.mouse.move(0, 0);
+    await local.locator(".resource-table-open").focus();
+    await page.keyboard.press("Tab");
+    await expect(identity).toBeFocused();
+    await expect(identity.locator('[role="tooltip"]')).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(identity).toBeFocused();
+    await expect(identity.locator('[role="tooltip"]')).toHaveCount(0);
+    const teammate = table.getByRole("img", {
+      name: "Claude · Mira",
+      exact: true,
+    });
+    await expect(
+      teammate.locator(".session-identity-avatar svg"),
+    ).toBeVisible();
+    const tabs = page.getByRole("group", { name: "Filter by ownership" });
+    const all = tabs.getByRole("button", { name: "All sessions", exact: true });
+    await expect(all).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    expect(
+      await all.evaluate(
+        (button) => getComputedStyle(button, "::after").height,
+      ),
+    ).toBe("2px");
+    await tabs
+      .getByRole("button", { name: "Shared with me", exact: true })
+      .click();
+    await expect(table.locator("tbody tr")).toHaveCount(1);
+    await expect(teammate).toBeVisible();
+    const results = await new AxeBuilder({ page })
+      .include(".resource-index")
+      .analyze();
+    expect(results.violations).toEqual([]);
+    await page.getByRole("button", { name: /^Memories/ }).click();
+    await expect(
+      tabs.getByRole("button", { name: "All memories", exact: true }),
+    ).toBeVisible();
+  });
+}
+
+test("GitHub teammate photos obey the packaged image policy and failures keep a profile icon", async ({
+  page,
+  baseURL,
+}) => {
+  const config = JSON.parse(
+    readFileSync("apps/mac/src-tauri/tauri.conf.json", "utf8"),
+  );
+  const imagePolicy = config.app.security.csp
+    .split(";")
+    .find((directive: string) => directive.trim().startsWith("img-src"));
+  const avatar = "https://avatars.githubusercontent.com/u/12345";
+  let failAvatar = false;
+  await page.route(avatar, async (route) => {
+    if (failAvatar) await route.abort();
+    else
+      await route.fulfill({
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6rS8AAAAASUVORK5CYII=",
+          "base64",
+        ),
+      });
+  });
+  await page.route(`${baseURL}/`, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: {
+        ...response.headers(),
+        "Content-Security-Policy": imagePolicy,
+      },
+    });
+  });
+  await resourceLibraryFixture(page, { teammateAvatar: avatar });
+  await page.getByRole("button", { name: /^Sessions/ }).click();
+  const identity = page.getByRole("img", {
+    name: "Claude · Mira",
+    exact: true,
+  });
+  const photo = identity.locator(".session-identity-avatar img");
+  await expect
+    .poll(() => photo.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBe(1);
+  await expect(photo).toBeVisible();
+  failAvatar = true;
+  await page.reload();
+  await page.getByRole("button", { name: /^Sessions/ }).click();
+  await expect(photo).toBeHidden();
+  await expect(identity.locator(".session-identity-avatar svg")).toBeVisible();
+});
+
 for (const { kind, label } of kinds) {
   test(`${label} include private content with sharing off and filter by stable ownership`, async ({
     page,
@@ -20,7 +244,10 @@ for (const { kind, label } of kinds) {
     const ownership = page.getByRole("group", { name: "Filter by ownership" });
     const table = page.getByRole("table");
     await expect(
-      ownership.getByRole("button", { name: "All", exact: true }),
+      ownership.getByRole("button", {
+        name: `All ${label.toLowerCase()}`,
+        exact: true,
+      }),
     ).toHaveAttribute("aria-pressed", "true");
     await expect(
       table.getByRole("button", { name: `Private ${kind} notes`, exact: true }),
@@ -35,7 +262,11 @@ for (const { kind, label } of kinds) {
       .click();
     await expect(table.locator("tbody tr")).toHaveCount(1);
     await expect(table).toContainText(`Mira's ${kind}`);
-    await expect(table).toContainText("Owner: Mira");
+    if (kind === "session")
+      await expect(
+        table.getByRole("img", { name: "Claude · Mira", exact: true }),
+      ).toBeVisible();
+    else await expect(table).toContainText("Owner: Mira");
     await table
       .getByRole("button", { name: `Mira's ${kind}`, exact: true })
       .click();

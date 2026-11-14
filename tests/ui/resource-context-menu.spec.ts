@@ -1065,7 +1065,7 @@ test("removing shared history from Home refreshes a cached collection for newly 
   await collection(page, "Sessions");
   await expect.poll(scans).toBe(2);
   await expect(resourceRow(page, "New private session notes")).toContainText(
-    "On this Mac",
+    "Local Only",
   );
   await expect(resourceRow(page, "My shared session")).toHaveCount(0);
   expect(await resourceCalls(page, "delete")).toHaveLength(1);
