@@ -27,11 +27,9 @@ secrets.json
 .codex/hooks.json
 apps/mac/src-tauri/release.conf.json
 
-# Local Orka engineering skills
-/.agents/skills/orka/
-/.agents/skills/orka-*/
-/.claude/skills/orka/
-/.claude/skills/orka-*/
+# Local agent skills
+/.agents/skills/
+/.claude/skills/
 
 # Private runtime data, backups, and operating-system files
 *.sqlite*
