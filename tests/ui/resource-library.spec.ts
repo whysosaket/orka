@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
+import { readFileSync } from "node:fs";
 import {
   resourceLibraryFixture,
   type LibraryWindow,
@@ -63,11 +64,25 @@ for (const width of [1160, 900]) {
       "Codex · You",
     );
     await expect(identity.locator('[role="tooltip"]')).toBeVisible();
+    const tooltipBox = (await identity
+      .locator('[role="tooltip"]')
+      .boundingBox())!;
+    await page.mouse.move(
+      tooltipBox.x + tooltipBox.width / 2,
+      tooltipBox.y + tooltipBox.height / 2,
+      { steps: 60 },
+    );
+    await expect(identity.locator('[role="tooltip"]')).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(identity.locator('[role="tooltip"]')).toHaveCount(0);
     await page.mouse.move(0, 0);
     await local.locator(".resource-table-open").focus();
     await page.keyboard.press("Tab");
     await expect(identity).toBeFocused();
     await expect(identity.locator('[role="tooltip"]')).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(identity).toBeFocused();
+    await expect(identity.locator('[role="tooltip"]')).toHaveCount(0);
     const teammate = table.getByRole("img", {
       name: "Claude · Mira",
       exact: true,
@@ -98,6 +113,57 @@ for (const width of [1160, 900]) {
     ).toBeVisible();
   });
 }
+
+test("GitHub teammate photos obey the packaged image policy and failures keep a profile icon", async ({
+  page,
+  baseURL,
+}) => {
+  const config = JSON.parse(
+    readFileSync("apps/mac/src-tauri/tauri.conf.json", "utf8"),
+  );
+  const imagePolicy = config.app.security.csp
+    .split(";")
+    .find((directive: string) => directive.trim().startsWith("img-src"));
+  const avatar = "https://avatars.githubusercontent.com/u/12345";
+  let failAvatar = false;
+  await page.route(avatar, async (route) => {
+    if (failAvatar) await route.abort();
+    else
+      await route.fulfill({
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6rS8AAAAASUVORK5CYII=",
+          "base64",
+        ),
+      });
+  });
+  await page.route(`${baseURL}/`, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: {
+        ...response.headers(),
+        "Content-Security-Policy": imagePolicy,
+      },
+    });
+  });
+  await resourceLibraryFixture(page, { teammateAvatar: avatar });
+  await page.getByRole("button", { name: /^Sessions/ }).click();
+  const identity = page.getByRole("img", {
+    name: "Claude · Mira",
+    exact: true,
+  });
+  const photo = identity.locator(".session-identity-avatar img");
+  await expect
+    .poll(() => photo.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBe(1);
+  await expect(photo).toBeVisible();
+  failAvatar = true;
+  await page.reload();
+  await page.getByRole("button", { name: /^Sessions/ }).click();
+  await expect(photo).toBeHidden();
+  await expect(identity.locator(".session-identity-avatar svg")).toBeVisible();
+});
 
 for (const { kind, label } of kinds) {
   test(`${label} include private content with sharing off and filter by stable ownership`, async ({

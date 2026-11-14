@@ -682,7 +682,14 @@ for (const [width, height, memberCatalog] of [
         const row = page.getByRole("row").filter({
           has: page.getByRole("button", { name: title, exact: true }),
         });
-        await expect(row.locator(".resource-table-author")).toHaveText(author);
+        if (collection === "Sessions")
+          await expect(
+            row.getByRole("img", { name: `Claude · ${author}`, exact: true }),
+          ).toBeVisible();
+        else
+          await expect(row.locator(".resource-table-author")).toHaveText(
+            author,
+          );
       }
       await page
         .getByRole("button", {

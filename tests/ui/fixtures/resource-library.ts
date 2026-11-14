@@ -23,6 +23,7 @@ export async function resourceLibraryFixture(
     defer?: boolean;
     restricted?: boolean;
     withoutRepositories?: boolean;
+    teammateAvatar?: string;
   } = {},
 ) {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -174,7 +175,14 @@ export async function resourceLibraryFixture(
                           plan: { mode: "hidden" },
                         }
                       : {},
-                    members: [{ id: "mira", role: "member", name: "Mira" }],
+                    members: [
+                      {
+                        id: "mira",
+                        role: "member",
+                        name: "Mira",
+                        avatarUrl: options.teammateAvatar,
+                      },
+                    ],
                   },
                 },
               ],

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { PersonIcon } from "@primer/octicons-react";
 import type { ProjectResource } from "../types.js";
 import { useMemberLabel, useMemberPhoto } from "./member-names.js";
@@ -22,12 +22,30 @@ export function SessionIdentity({
         ? "Claude"
         : "Shared";
   const label = `${tool} · ${author}`;
+  const [showLabel, setShowLabel] = useState(false);
+  useEffect(() => {
+    if (!showLabel) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowLabel(false);
+    };
+    window.addEventListener("keydown", dismiss);
+    return () => window.removeEventListener("keydown", dismiss);
+  }, [showLabel]);
   return (
     <span
       className="session-identity"
       role="img"
       aria-label={label}
       tabIndex={0}
+      onMouseEnter={() => setShowLabel(true)}
+      onMouseLeave={(event) => {
+        if (!event.currentTarget.contains(document.activeElement))
+          setShowLabel(false);
+      }}
+      onFocus={() => setShowLabel(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.matches(":hover")) setShowLabel(false);
+      }}
     >
       <span className="session-identity-tool" aria-hidden="true">
         <SourceLabel source={resource.source} />
@@ -48,13 +66,15 @@ export function SessionIdentity({
           />
         )}
       </span>
-      <span
-        className="session-identity-tooltip"
-        role="tooltip"
-        aria-hidden="true"
-      >
-        {label}
-      </span>
+      {showLabel && (
+        <span
+          className="session-identity-tooltip"
+          role="tooltip"
+          aria-hidden="true"
+        >
+          {label}
+        </span>
+      )}
     </span>
   );
 }
