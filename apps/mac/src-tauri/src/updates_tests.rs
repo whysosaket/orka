@@ -42,3 +42,22 @@ fn native_runtime_locks_do_not_leak_to_helpers() {
         assert_ne!(flags & libc::FD_CLOEXEC, 0);
     }
 }
+
+#[test]
+fn native_launch_rejects_symlinked_installation_locks() {
+    use std::os::unix::fs::symlink;
+
+    for name in ["maintenance.lock", "running.lock"] {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("unrelated-file");
+        std::fs::write(&target, b"preserved").unwrap();
+        symlink(&target, directory.path().join(name)).unwrap();
+        assert_eq!(
+            updates::launch_locks(directory.path())
+                .unwrap_err()
+                .raw_os_error(),
+            Some(libc::ELOOP)
+        );
+        assert_eq!(std::fs::read(&target).unwrap(), b"preserved");
+    }
+}

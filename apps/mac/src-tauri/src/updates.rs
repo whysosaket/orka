@@ -58,6 +58,7 @@ pub(crate) fn launch_locks(directory: &Path) -> std::io::Result<Option<(File, Fi
             .create(true)
             .truncate(false)
             .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
             .open(directory.join(name))
     };
     let maintenance = lock("maintenance.lock")?;
