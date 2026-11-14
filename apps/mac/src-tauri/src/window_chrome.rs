@@ -3,7 +3,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 
 #[derive(Default)]
-pub struct WindowControls(AtomicBool);
+pub struct WindowControls {
+    collapsed: AtomicBool,
+    #[cfg(target_os = "macos")]
+    expanded_offsets: std::sync::OnceLock<[f64; 3]>,
+}
 
 #[tauri::command]
 pub fn set_sidebar_collapsed(
@@ -11,7 +15,7 @@ pub fn set_sidebar_collapsed(
     state: tauri::State<WindowControls>,
     collapsed: bool,
 ) -> Result<(), String> {
-    state.0.store(collapsed, Ordering::Relaxed);
+    state.collapsed.store(collapsed, Ordering::Relaxed);
     position(&window).map_err(|error| error.to_string())
 }
 
@@ -51,17 +55,28 @@ pub fn position(window: &tauri::Window) -> tauri::Result<()> {
             frame.origin.y = native.frame().size.height - height;
             titlebar.setFrame(frame);
 
+            let state = target.state::<WindowControls>();
+            let collapsed = state.collapsed.load(Ordering::Relaxed);
             let origin = close.frame().origin.x;
-            let width = zoom.frame().origin.x + zoom.frame().size.width - origin;
-            let left = if target.state::<WindowControls>().0.load(Ordering::Relaxed) {
+            let expanded_offsets = state.expanded_offsets.get_or_init(|| {
+                [&close, &minimize, &zoom].map(|button| button.frame().origin.x - origin)
+            });
+            let offsets = if collapsed {
+                let step = control.size.width + 4.0;
+                [0.0, step, step + minimize.frame().size.width + 4.0]
+            } else {
+                *expanded_offsets
+            };
+            let width = offsets[2] + zoom.frame().size.width;
+            let left = if collapsed {
                 (64.0 - width) / 2.0
             } else {
                 // Sidebar padding (12) plus navigation row padding (10).
                 22.0
             };
-            for button in [close, minimize, zoom] {
+            for (button, offset) in [close, minimize, zoom].into_iter().zip(offsets) {
                 let frame = button.frame();
-                button.setFrameOrigin(NSPoint::new(left + frame.origin.x - origin, frame.origin.y));
+                button.setFrameOrigin(NSPoint::new(left + offset, frame.origin.y));
             }
         })?;
     }
