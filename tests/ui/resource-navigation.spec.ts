@@ -328,7 +328,9 @@ test("sessions list in a table, open a reading view, and page turns on demand", 
   const table = page.getByRole("table");
   await expect(table.getByRole("row")).toHaveCount(2);
   await expect(table).toContainText("Polish navigation");
-  await expect(table).toContainText("You");
+  await expect(
+    table.getByRole("img", { name: "Codex · You", exact: true }),
+  ).toBeVisible();
   await expect(page.locator(".inspector")).toHaveCount(0);
   await table
     .getByRole("button", { name: "Polish navigation", exact: true })
