@@ -11,6 +11,94 @@ const kinds = [
   { kind: "plan", label: "Plans" },
 ] as const;
 
+for (const width of [1160, 900]) {
+  test(`session identities and quiet ownership tabs align at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await resourceLibraryFixture(page);
+    await page.getByRole("button", { name: /^Sessions/ }).click();
+    const table = page.getByRole("table");
+    await expect(table.locator("tbody tr")).toHaveCount(4);
+    const local = table.locator("tr").filter({
+      has: page.getByRole("button", {
+        name: "Private session notes",
+        exact: true,
+      }),
+    });
+    await expect(local).toContainText("Local Only");
+    await expect(table).not.toContainText("On this Mac");
+    await expect(
+      table.locator(".resource-source-pill, .resource-table-author"),
+    ).toHaveCount(0);
+    const identity = local.getByRole("img", {
+      name: "Codex · You",
+      exact: true,
+    });
+    await expect(
+      identity.locator(".session-identity-avatar img"),
+    ).toBeVisible();
+    const geometry = await local.evaluate((row) => {
+      const tool = row.querySelector(".session-identity-tool")!;
+      const avatar = row.querySelector(".session-identity-avatar")!;
+      const toolBox = tool.getBoundingClientRect();
+      const avatarBox = avatar.getBoundingClientRect();
+      return {
+        height: row.getBoundingClientRect().height,
+        overlap: toolBox.right - avatarBox.left,
+        toolLeft: toolBox.left < avatarBox.left,
+        front: Number(getComputedStyle(tool).zIndex),
+        cells: row.children.length,
+      };
+    });
+    expect(geometry).toEqual({
+      height: 56,
+      overlap: 9,
+      toolLeft: true,
+      front: 1,
+      cells: 5,
+    });
+    await identity.hover();
+    await expect(identity.locator('[role="tooltip"]')).toHaveText(
+      "Codex · You",
+    );
+    await expect(identity.locator('[role="tooltip"]')).toBeVisible();
+    await page.mouse.move(0, 0);
+    await local.locator(".resource-table-open").focus();
+    await page.keyboard.press("Tab");
+    await expect(identity).toBeFocused();
+    await expect(identity.locator('[role="tooltip"]')).toBeVisible();
+    const teammate = table.getByRole("img", {
+      name: "Claude · Mira",
+      exact: true,
+    });
+    await expect(
+      teammate.locator(".session-identity-avatar svg"),
+    ).toBeVisible();
+    const tabs = page.getByRole("group", { name: "Filter by ownership" });
+    const all = tabs.getByRole("button", { name: "All sessions", exact: true });
+    await expect(all).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    expect(
+      await all.evaluate(
+        (button) => getComputedStyle(button, "::after").height,
+      ),
+    ).toBe("2px");
+    await tabs
+      .getByRole("button", { name: "Shared with me", exact: true })
+      .click();
+    await expect(table.locator("tbody tr")).toHaveCount(1);
+    await expect(teammate).toBeVisible();
+    const results = await new AxeBuilder({ page })
+      .include(".resource-index")
+      .analyze();
+    expect(results.violations).toEqual([]);
+    await page.getByRole("button", { name: /^Memories/ }).click();
+    await expect(
+      tabs.getByRole("button", { name: "All memories", exact: true }),
+    ).toBeVisible();
+  });
+}
+
 for (const { kind, label } of kinds) {
   test(`${label} include private content with sharing off and filter by stable ownership`, async ({
     page,
@@ -20,7 +108,13 @@ for (const { kind, label } of kinds) {
     const ownership = page.getByRole("group", { name: "Filter by ownership" });
     const table = page.getByRole("table");
     await expect(
-      ownership.getByRole("button", { name: "All", exact: true }),
+      ownership.getByRole("button", {
+        name:
+          kind === "plan"
+            ? "All"
+            : `All ${kind === "memory" ? "memories" : "sessions"}`,
+        exact: true,
+      }),
     ).toHaveAttribute("aria-pressed", "true");
     await expect(
       table.getByRole("button", { name: `Private ${kind} notes`, exact: true }),
@@ -35,7 +129,11 @@ for (const { kind, label } of kinds) {
       .click();
     await expect(table.locator("tbody tr")).toHaveCount(1);
     await expect(table).toContainText(`Mira's ${kind}`);
-    await expect(table).toContainText("Owner: Mira");
+    if (kind === "session")
+      await expect(
+        table.getByRole("img", { name: "Claude · Mira", exact: true }),
+      ).toBeVisible();
+    else await expect(table).toContainText("Owner: Mira");
     await table
       .getByRole("button", { name: `Mira's ${kind}`, exact: true })
       .click();

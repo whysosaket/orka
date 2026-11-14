@@ -1,0 +1,72 @@
+.session-identity {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  border-radius: 999px;
+}
+
+.session-identity-tool,
+.session-identity-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface-tertiary);
+  color: var(--text-secondary);
+}
+
+.session-identity-tool {
+  z-index: 1;
+  box-shadow: 0 0 0 2px var(--surface-secondary);
+}
+
+.session-identity-tool .source-label > span {
+  display: none;
+}
+
+.session-identity-tool .source-label > img,
+.session-identity-tool .source-label > svg {
+  width: 18px;
+  height: 18px;
+}
+
+.session-identity-avatar {
+  margin-left: -9px;
+  overflow: hidden;
+}
+
+.session-identity-avatar > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.session-identity-tooltip {
+  position: absolute;
+  z-index: 10;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  display: none;
+  width: max-content;
+  max-width: 220px;
+  padding: 6px 10px;
+  border: 1px solid var(--surface-stroke);
+  border-radius: var(--radius-detail);
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.session-identity:hover .session-identity-tooltip,
+.session-identity:focus-visible .session-identity-tooltip {
+  display: block;
+}

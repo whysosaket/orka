@@ -14,6 +14,59 @@ import {
   toast,
 } from "./fixtures/skill-detail.js";
 
+for (const width of [1160, 900]) {
+  test(`skill cards keep two-line descriptions and align their footer at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await skillFixture(page, { open: false });
+    const card = page.locator(".skill-card");
+    await expect(card.locator(".skill-card-description")).toContainText(
+      "Act on an issue-investigate report",
+    );
+    await expect(card).toContainText("Shared");
+    await expect(card).not.toContainText("4 files");
+    await expect(card.locator("small")).toHaveCount(0);
+    const metrics = await card.evaluate((element) => {
+      const description = element.querySelector(".skill-card-description")!;
+      const date = element.querySelector("time")!;
+      const title = element.querySelector("strong")!;
+      const menu = element.parentElement!.querySelector(".resource-item-more")!;
+      const style = getComputedStyle(element);
+      return {
+        contentRight:
+          element.getBoundingClientRect().right -
+          parseFloat(style.paddingRight) -
+          parseFloat(style.borderRightWidth),
+        descriptionRight: description.getBoundingClientRect().right,
+        descriptionHeight: description.getBoundingClientRect().height,
+        descriptionLineHeight: parseFloat(
+          getComputedStyle(description).lineHeight,
+        ),
+        descriptionOverflows:
+          description.scrollHeight > description.clientHeight,
+        dateRight: date.getBoundingClientRect().right,
+        titleRight: title.getBoundingClientRect().right,
+        menuLeft: menu.getBoundingClientRect().left,
+      };
+    });
+    expect(metrics.descriptionHeight).toBeCloseTo(
+      metrics.descriptionLineHeight * 2,
+      0,
+    );
+    expect(metrics.descriptionOverflows).toBe(true);
+    expect(metrics.descriptionRight).toBeCloseTo(metrics.contentRight, 0);
+    expect(metrics.dateRight).toBeCloseTo(metrics.contentRight, 0);
+    expect(metrics.titleRight).toBeLessThanOrEqual(metrics.menuLeft);
+    const menu = page.getByRole("button", {
+      name: "Actions for issue-investigate-followup",
+      exact: true,
+    });
+    await menu.click();
+    await expect(page.getByRole("menu")).toBeVisible();
+  });
+}
+
 type NativeFixture = {
   invoke: (name: string, args?: Record<string, unknown>) => Promise<unknown>;
 };

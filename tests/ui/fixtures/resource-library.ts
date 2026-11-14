@@ -119,6 +119,11 @@ export async function resourceLibraryFixture(
           if (command === "snapshot")
             return {
               user: library.user,
+              accountProfile: {
+                displayName: "Alex",
+                avatarData:
+                  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Crect width='28' height='28' fill='%233c4862'/%3E%3Ccircle cx='14' cy='11' r='5' fill='%23c0cadc'/%3E%3Cellipse cx='14' cy='27' rx='10' ry='11' fill='%23c0cadc'/%3E%3C/svg%3E",
+              },
               config: {
                 apiUrl: library.apiUrl,
                 syncMinutes: library.syncMinutes,

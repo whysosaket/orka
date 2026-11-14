@@ -388,7 +388,7 @@ test("skills switch files from the rail or the compact selector", async ({
   await expect(grid.locator(".skill-card")).toHaveCount(2);
   await expect(grid).toContainText("How we write.");
   await expect(grid).not.toContainText("1 file");
-  await expect(grid).toContainText("2 files");
+  await expect(grid).not.toContainText("2 files");
   await expect.poll(columns).toBe(3);
   await expect(page.locator(".inspector")).toHaveCount(0);
   await page
