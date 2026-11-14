@@ -24,7 +24,7 @@ struct Launcher {
             switch arguments.first {
             case "--orka-update-status" where !helper:
                 Task {
-                    let status = await status(for: installation)
+                    let status = await status(for: installation, bypassCache: arguments.contains("--fresh"))
                     if let data = try? JSONEncoder().encode(status) { FileHandle.standardOutput.write(data) }
                     exit(0)
                 }
@@ -100,19 +100,24 @@ struct Launcher {
 struct UpdateStatus: Encodable {
     let installedVersion: String
     var update: Release?
+    var release: Release?
     var message: String?
+    var supported: Bool?
 }
 
-func status(for installation: Installation) async -> UpdateStatus {
+func status(for installation: Installation, bypassCache: Bool = false) async -> UpdateStatus {
     guard let current = try? InstalledBuild(at: installation.app) else {
         return UpdateStatus(installedVersion: "Unknown", message: "Orka Recovery couldn’t read the installed version.")
     }
     guard let feed = installation.feed else {
-        return UpdateStatus(installedVersion: current.version, message: "Updates are unavailable for this build.")
+        return UpdateStatus(installedVersion: current.version, message: "Updates are unavailable for this build.", supported: false)
     }
     do {
-        let policy = try await feed.refresh()
-        return UpdateStatus(installedVersion: current.version, update: feed.candidate(policy, current: current))
+        let policy = try await feed.refresh(bypassCache: bypassCache)
+        let release = policy.release.flatMap { release in
+            release.version == current.version && policy.allows(release.version) ? release : nil
+        }
+        return UpdateStatus(installedVersion: current.version, update: feed.candidate(policy, current: current), release: release)
     } catch {
         return UpdateStatus(installedVersion: current.version, message: "Couldn’t verify the update feed. Try again when you’re online.")
     }

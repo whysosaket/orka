@@ -10,6 +10,7 @@ struct RecoveryTests {
         try files.createDirectory(at: scratch, withIntermediateDirectories: false)
         defer { try? files.removeItem(at: scratch) }
         try policyTests(scratch)
+        try await statusTests(scratch)
         try lockTests(scratch)
         if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--plugin-app" {
             try await pluginMaintenanceTests(URL(fileURLWithPath: CommandLine.arguments[2]), scratch: scratch)
@@ -60,6 +61,57 @@ struct RecoveryTests {
             try rejects { _ = try FileLock(path, operation: LOCK_SH | LOCK_NB) }
         }
         print("runtime and installer mutual exclusion passed")
+    }
+
+    static func statusTests(_ scratch: URL) async throws {
+        let app = scratch.appendingPathComponent("status/Orka.app")
+        let contents = app.appendingPathComponent("Contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        let metadata: [String: Any] = ["CFBundleIdentifier": desktopID, "CFBundleShortVersionString": "0.3.0",
+                                       "OrkaUpdateDataEpoch": 1]
+        try (metadata as NSDictionary).write(to: contents.appendingPathComponent("Info.plist"))
+        let key = Curve25519.Signing.PrivateKey()
+        let info: [String: Any] = ["OrkaUpdateTeam": "ABCDEFGHIJ", "OrkaUpdateFeed": "https://example.invalid/macos.json?channel=desktop",
+                                  "OrkaUpdatePublicKey": key.publicKey.rawRepresentation.base64EncodedString()]
+        let installation = try Installation(app: app, info: info, supportDirectory: scratch) {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [PolicyProtocol.self]
+            return URLSession(configuration: configuration)
+        }
+        let release = Release(version: "0.3.0", notes: "Installed release notes", url: URL(string: "https://example.invalid/update.zip")!,
+                              sha256: String(repeating: "a", count: 64), size: 42, architectures: [hostArchitecture()],
+                              minimumMacOS: "12.0.0", dataEpoch: 1)
+        let expires = Int64(Date().timeIntervalSince1970) + 60
+        let policy = Policy(schema: 1, sequence: 1, expires: expires, release: release, withdrawn: [], minimumVersion: "0.0.0")
+        PolicyProtocol.response = try signed(policy, key)
+        defer { PolicyProtocol.requests = []; PolicyProtocol.response = Data() }
+        let automatic = await status(for: installation)
+        try require(automatic.update == nil && automatic.release == release && automatic.message == nil,
+                    "a current installation exposes verified release notes without offering an update")
+        let automaticQuery = URLComponents(url: PolicyProtocol.requests.last!.url!, resolvingAgainstBaseURL: false)!.queryItems!
+        try require(!automaticQuery.contains { $0.name == "orka-check" }, "automatic checks preserve the feed URL")
+        let manual = await status(for: installation, bypassCache: true)
+        try require(manual.release == release, "a manual check still verifies and exposes release notes")
+        let manualQuery = URLComponents(url: PolicyProtocol.requests.last!.url!, resolvingAgainstBaseURL: false)!.queryItems!
+        try require(manualQuery.contains { $0.name == "orka-check" && $0.value?.isEmpty == false },
+                    "a manual check bypasses cached CDN responses")
+        try require(manualQuery.contains { $0.name == "channel" && $0.value == "desktop" },
+                    "a manual check preserves configured feed query parameters")
+        let withdrawn = Policy(schema: 1, sequence: 2, expires: expires, release: release,
+                               withdrawn: [release.version], minimumVersion: "0.0.0")
+        PolicyProtocol.response = try signed(withdrawn, key)
+        let withdrawnStatus = await status(for: installation)
+        try require(withdrawnStatus.release == nil && withdrawnStatus.update == nil,
+                    "withdrawn releases are not displayed as current release notes")
+        PolicyProtocol.response = Data("invalid signature envelope".utf8)
+        let failed = await status(for: installation)
+        try require(failed.message != nil && failed.release == nil && failed.update == nil && failed.supported != false,
+                    "a failed feed check reports an error instead of a successful current-version result")
+        let unsupported = try Installation(app: app, info: [:], supportDirectory: scratch)
+        let unavailable = await status(for: unsupported)
+        try require(unavailable.supported == false && unavailable.installedVersion == "0.3.0",
+                    "unsupported builds remain distinguishable from a failed network check")
+        print("manual cache bypass, verified current release notes, withdrawal, and status errors passed")
     }
 
     static func pluginMaintenanceTests(_ source: URL, scratch: URL) async throws {
@@ -189,6 +241,22 @@ struct RecoveryTests {
         catch { return }
         throw TestFailure("operation unexpectedly succeeded")
     }
+}
+
+final class PolicyProtocol: URLProtocol {
+    static var response = Data()
+    static var requests: [URLRequest] = []
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.requests.append(request)
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Self.response)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }
 
 struct TestFailure: LocalizedError {

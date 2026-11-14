@@ -1,86 +1,15 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { invoke, isTauri } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { useState, type MouseEvent } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import * as Popover from "@radix-ui/react-popover";
 import { DownloadIcon, XIcon } from "@primer/octicons-react";
 import { Button } from "./button.js";
 import { IconButton } from "./icon-button.js";
 
-interface UpdateStatus {
-  update?: { version: string; sha256: string };
-}
+export { useDesktopUpdates } from "./use-desktop-updates.js";
+import type { DesktopUpdates } from "./use-desktop-updates.js";
 
-interface UpdateProgress {
-  phase: "downloading" | "verifying" | "restarting";
-  downloadedBytes?: number;
-  totalBytes?: number;
-}
-
-export function useDesktopUpdates() {
-  const [status, setStatus] = useState<UpdateStatus>();
-
-  useEffect(() => {
-    if (!isTauri()) return;
-    let active = true;
-    const check = async () => {
-      const next = await invoke<UpdateStatus>("update_status").catch(
-        () => undefined,
-      );
-      if (active) setStatus(next);
-    };
-    void invoke("update_ready").catch(() => {});
-    void check();
-    const timer = window.setInterval(() => void check(), 4 * 60 * 60 * 1000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  return status;
-}
-
-export function SidebarUpdate({
-  update,
-  collapsed,
-}: {
-  update: NonNullable<UpdateStatus["update"]>;
-  collapsed: boolean;
-}) {
-  const [dismissed, setDismissed] = useState(false);
-  const pending = useRef(false);
-  const [installing, setInstalling] = useState(false);
-  const [progress, setProgress] = useState<UpdateProgress>();
-  const [error, setError] = useState("");
-  const install = async () => {
-    if (pending.current) return;
-    pending.current = true;
-    setInstalling(true);
-    setProgress(undefined);
-    setError("");
-    let unlisten: (() => void) | undefined;
-    try {
-      unlisten = await listen<UpdateProgress>(
-        "desktop-update-progress",
-        ({ payload }) => setProgress(payload),
-      );
-      await invoke("update_install", {
-        version: update.version,
-        sha256: update.sha256,
-      });
-    } catch (reason) {
-      setError(
-        typeof reason === "string"
-          ? reason
-          : "Couldn’t install the update. Try again.",
-      );
-    } finally {
-      unlisten?.();
-      pending.current = false;
-      setInstalling(false);
-    }
-  };
-
+export function UpdateInstallation({ updates }: { updates: DesktopUpdates }) {
+  const { installing, progress, actionError } = updates;
   const percent =
     progress?.phase === "downloading" && progress.totalBytes
       ? Math.min(
@@ -90,7 +19,7 @@ export function SidebarUpdate({
           ),
         )
       : undefined;
-  const progressLabel =
+  const label =
     progress?.phase === "downloading"
       ? `Downloading… ${percent ?? 0}%`
       : progress?.phase === "verifying"
@@ -98,16 +27,63 @@ export function SidebarUpdate({
         : progress?.phase === "restarting"
           ? "Restarting Orka…"
           : "Preparing update…";
+  return (
+    <>
+      {actionError && <p role="alert">{actionError}</p>}
+      {installing && (
+        <div className="sidebar-update-progress">
+          <p role="status">{label}</p>
+          <progress aria-label="Update progress" max={100} value={percent} />
+        </div>
+      )}
+      <Button
+        variant="primary"
+        size="sm"
+        disabled={installing || updates.checking}
+        onClick={() => void updates.install()}
+      >
+        {installing ? "Updating…" : "Update and Restart"}
+      </Button>
+    </>
+  );
+}
 
-  const changelog = `https://github.com/whysosaket/orka/releases/tag/v${encodeURIComponent(update.version)}`;
-  const openChangelog = (event: MouseEvent<HTMLAnchorElement>) => {
+export function UpdateChangelog({
+  version,
+  updates,
+}: {
+  version: string;
+  updates: DesktopUpdates;
+}) {
+  const open = (event: MouseEvent<HTMLAnchorElement>) => {
     if (!isTauri()) return;
     event.preventDefault();
-    setError("");
-    void invoke("open_update_changelog", { version: update.version }).catch(
-      () => setError("Couldn’t open the changelog in your browser."),
-    );
+    void updates.openChangelog(version);
   };
+  return (
+    <a
+      className="sidebar-update-changelog"
+      href={`https://github.com/whysosaket/orka/releases/tag/v${encodeURIComponent(version)}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={open}
+    >
+      View changelog
+    </a>
+  );
+}
+
+export function SidebarUpdate({
+  updates,
+  collapsed,
+}: {
+  updates: DesktopUpdates;
+  collapsed: boolean;
+}) {
+  const [dismissed, setDismissed] = useState(false);
+  const update = updates.status?.update;
+  if (!update) return null;
+  const { installing } = updates;
   const close = (
     <IconButton
       icon={XIcon}
@@ -135,30 +111,8 @@ export function SidebarUpdate({
         {collapsed ? <Popover.Close asChild>{close}</Popover.Close> : close}
       </div>
       <p>Hurray! An update is available.</p>
-      {error && <p role="alert">{error}</p>}
-      {installing && (
-        <div className="sidebar-update-progress">
-          <p role="status">{progressLabel}</p>
-          <progress aria-label="Update progress" max={100} value={percent} />
-        </div>
-      )}
-      <Button
-        variant="primary"
-        size="sm"
-        disabled={installing}
-        onClick={() => void install()}
-      >
-        {installing ? "Updating…" : "Update and Restart"}
-      </Button>
-      <a
-        className="sidebar-update-changelog"
-        href={changelog}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={openChangelog}
-      >
-        View changelog
-      </a>
+      <UpdateInstallation updates={updates} />
+      <UpdateChangelog version={update.version} updates={updates} />
     </>
   );
 

@@ -78,18 +78,20 @@ pub fn update_ready() {
 }
 
 #[tauri::command]
-pub async fn update_status(app: tauri::AppHandle) -> Result<Value> {
+pub async fn update_status(app: tauri::AppHandle, manual: Option<bool>) -> Result<Value> {
     let installed = app.package_info().version.to_string();
     if bundled_app().is_none() {
         return Ok(
-            json!({ "installedVersion": installed, "message": "Updates are unavailable for this build." }),
+            json!({ "installedVersion": installed, "supported": false, "message": "Updates are unavailable for this build." }),
         );
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let output = Command::new(executable().map_err(|error| error.to_string())?)
-            .arg("--orka-update-status")
-            .output()
-            .map_err(|error| error.to_string())?;
+        let mut command = Command::new(executable().map_err(|error| error.to_string())?);
+        command.arg("--orka-update-status");
+        if manual.unwrap_or(false) {
+            command.arg("--fresh");
+        }
+        let output = command.output().map_err(|error| error.to_string())?;
         serde_json::from_slice(&output.stdout)
             .map_err(|_| "Couldn’t read Orka’s update status.".into())
     })

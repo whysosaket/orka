@@ -17,6 +17,18 @@ pub fn install_quit_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
     // The native Quit item calls AppKit's terminate: directly, bypassing
     // ExitRequested. Preserve the standard menu, but route Quit through Tauri.
     let menu = Menu::default(app)?;
+    if let Some(submenu) = menu.items()?.first().and_then(|item| item.as_submenu()) {
+        submenu.insert(
+            &MenuItem::with_id(
+                app,
+                "orka-check-for-updates",
+                "Check for Updates…",
+                true,
+                None::<&str>,
+            )?,
+            1,
+        )?;
+    }
     let quit_text = PredefinedMenuItem::quit(app, None)?.text()?;
     for item in menu.items()? {
         if let Some(submenu) = item.as_submenu() {
@@ -43,6 +55,13 @@ pub fn install_quit_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
     app.on_menu_event(|app, event| {
         if event.id() == "orka-quit" {
             app.exit(0);
+        } else if event.id() == "orka-check-for-updates" {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+                let _ = window.emit("check-for-updates", ());
+            }
         }
     });
     Ok(())
