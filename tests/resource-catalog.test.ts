@@ -112,7 +112,7 @@ void test("ownership composes with repository, provider, search, and sorting", (
   assert.equal(catalog.length, 6);
 });
 
-void test("author sorting follows the displayed session owner while other collections keep their updater", () => {
+void test("author sorting follows session and plan owners while memories and skills keep their updater", () => {
   for (const kind of ["session", "memory", "plan", "skill"] as const) {
     const catalog = [
       resource("alex-session", { kind, owner: "alex", updatedBy: "zoe" }),
@@ -128,7 +128,7 @@ void test("author sorting follows the displayed session owner while other collec
     ).map((item) => item.resourceId);
     assert.deepEqual(
       sorted,
-      kind === "session"
+      kind === "session" || kind === "plan"
         ? ["alex-session", "zoe-session"]
         : ["zoe-session", "alex-session"],
     );
