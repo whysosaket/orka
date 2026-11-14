@@ -1,8 +1,9 @@
 # Item actions
 
 Right-click a memory, skill, plan or session to see its available actions. The
-same actions are available from its **…** button in a collection or Recent
-Updates, and from the detail view. The menu uses the item you clicked, without
+same actions are available from its **…** button in a collection and from the
+detail view. Recent Updates on Home uses right-click or **Shift+F10** on an item
+without a separate **…** button. The menu uses the item you clicked, without
 opening it first. Text fields, selected text and links keep their normal editing
 and copy menus. Empty application chrome does not show the webview's Reload menu.
 
@@ -16,6 +17,12 @@ local-update and local-edit previews. A link does not grant its recipient access
 
 A local item or your local changes can offer **Share snapshot with project…**.
 Review the project, service, exact file list and snapshot before confirming.
+Preparation shows file-checking activity while the snapshot is read, with a
+progress bar and current stage. File totals appear only when known. Files are
+listed with their individual sizes and the snapshot total. The dialog and its
+controls stay in place while preparing, reviewing, sharing or retrying. Long
+titles and filenames truncate; the file list and full review details scroll
+inside the dialog.
 Sharing keeps the local original and does not change automatic category sharing.
 Later edits or future conversation turns are not included in that snapshot.
 

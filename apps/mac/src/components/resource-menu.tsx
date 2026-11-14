@@ -2,11 +2,18 @@ import React, {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import type { Project, ProjectResource, Snapshot } from "../types.js";
+import { Channel, invoke } from "@tauri-apps/api/core";
+import { FileIcon, SyncIcon } from "@primer/octicons-react";
+import type {
+  Project,
+  ProjectResource,
+  Snapshot,
+  SyncProgress,
+} from "../types.js";
 import {
   ItemContextMenu,
   ItemMenuButton,
@@ -14,6 +21,7 @@ import {
 } from "./item-menu.js";
 import { Overlay } from "./overlay.js";
 import { Button } from "./button.js";
+import { Icon } from "./icon.js";
 import { SessionLauncher } from "./session-launcher.js";
 import type { ResourceView } from "./use-resource-view.js";
 import { sourcePath } from "./project-sources.js";
@@ -464,6 +472,18 @@ interface CommandPreview {
   paths?: string[];
 }
 
+function fileSize(bytes: number) {
+  for (const [size, unit] of [
+    [1e9, "GB"],
+    [1e6, "MB"],
+    [1e3, "KB"],
+    [1, "B"],
+  ] as const) {
+    if (bytes >= size || size === 1)
+      return `${(bytes / size).toLocaleString(undefined, { maximumFractionDigits: size === 1 ? 0 : 1 })} ${unit}`;
+  }
+}
+
 function ResourceCommandDialog({
   kind,
   resource,
@@ -482,8 +502,10 @@ function ResourceCommandDialog({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(kind !== "launch");
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [attempt, setAttempt] = useState(0);
   const active = useRef(true);
+  const workspace = useRef<HTMLDivElement>(null);
   const actions = useResourceActions({
     act: context.act,
     resource,
@@ -492,6 +514,8 @@ function ResourceCommandDialog({
     scope: context.scope,
   });
   const stale = !context.isCurrent(resource) || !project;
+  const current = useRef(true);
+  current.current = !stale;
   const input = {
     accountId: context.state.user,
     serviceOrigin: context.state.config?.apiUrl,
@@ -502,6 +526,9 @@ function ResourceCommandDialog({
   const serviceOrigin = context.state.config?.apiUrl;
   const projectId = resource.projectId;
   const resourceId = resource.resourceId;
+  useLayoutEffect(() => {
+    if (workspace.current) workspace.current.scrollTop = 0;
+  }, [loading, busy, error, stale]);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -514,9 +541,19 @@ function ResourceCommandDialog({
     setLoading(true);
     setError("");
     setPreview(null);
+    setProgress({
+      label:
+        kind === "share"
+          ? "Preparing snapshot for review…"
+          : "Preparing deletion for review…",
+    });
+    const onProgress = new Channel<SyncProgress>((value) => {
+      if (!canceled && active.current && current.current) setProgress(value);
+    });
     void invoke<CommandPreview>("resource_command", {
       action: `preview-${kind}`,
       input: { accountId, serviceOrigin, projectId, resourceId },
+      onProgress,
     })
       .then((result) => {
         if (!canceled) setPreview(result);
@@ -525,7 +562,10 @@ function ResourceCommandDialog({
         if (!canceled) setError(String(failure));
       })
       .finally(() => {
-        if (!canceled) setLoading(false);
+        if (!canceled) {
+          canceled = true;
+          setLoading(false);
+        }
       });
     return () => {
       canceled = true;
@@ -535,10 +575,21 @@ function ResourceCommandDialog({
     if (busy || !preview || stale) return;
     setBusy(true);
     setError("");
+    setProgress({
+      label:
+        kind === "share"
+          ? "Sharing reviewed snapshot…"
+          : "Confirming shared deletion…",
+    });
+    let finished = false;
+    const onProgress = new Channel<SyncProgress>((value) => {
+      if (!finished && active.current && current.current) setProgress(value);
+    });
     try {
       const result = await invoke<{ status: string }>("resource_command", {
         action: kind,
         input: { ...input, previewToken: preview.previewToken },
+        onProgress,
       });
       if (!active.current) return;
       if (kind === "delete" && result.status !== "deleted") {
@@ -558,11 +609,14 @@ function ResourceCommandDialog({
                 ? "Snapshot needs conflict review"
                 : "Snapshot sharing queued",
       );
+      finished = true;
+      setProgress({ label: "Refreshing project…" });
       await context.onRefresh();
       if (active.current) onClose();
     } catch (failure) {
       if (active.current) setError(String(failure));
     } finally {
+      finished = true;
       if (active.current) setBusy(false);
     }
   };
@@ -574,6 +628,19 @@ function ResourceCommandDialog({
         : resource.kind === "session"
           ? "Remove from history"
           : `Delete shared ${resource.kind}`;
+  const total = progress?.total;
+  const completed =
+    total && total > 0 && progress?.completed !== undefined
+      ? Math.min(total, Math.max(0, progress.completed))
+      : null;
+  const percentage =
+    completed !== null && total ? (completed / total) * 100 : null;
+  const progressCount =
+    completed !== null && total
+      ? `${completed} of ${total}`
+      : progress?.completed
+        ? `${progress.completed} checked`
+        : undefined;
   return (
     <Overlay
       open
@@ -591,66 +658,185 @@ function ResourceCommandDialog({
           ?.focus();
       }}
     >
-      <h2>{title}</h2>
-      <p className="command-copy">{preview?.title ?? resource.title}</p>
-      {kind === "launch" && project ? (
-        <SessionLauncher
-          resource={resource}
-          project={project}
-          scope={context.scope}
-          busy={context.busy || stale}
-          actions={actions}
-          onError={context.onError}
-        />
-      ) : (
+      <h2 title={title}>{title}</h2>
+      <section className="resource-command-item" aria-label="Selected item">
+        <Icon icon={FileIcon} size="sm" variant="secondary" />
+        <div>
+          <span className="resource-command-kind">{resource.kind}</span>
+          <p title={preview?.title ?? resource.title}>
+            {preview?.title ?? resource.title}
+          </p>
+        </div>
+      </section>
+      {kind === "share" && (
         <>
-          {kind === "share" && (
-            <p className="command-copy">
-              Share this snapshot with <strong>{project?.name}</strong> on{" "}
-              {context.state.config?.mode === "self-hosted"
-                ? "your self-hosted service"
-                : "Orka Cloud"}
-              . The local original and automatic sharing settings stay
-              unchanged.
-            </p>
-          )}
-          {loading && (
-            <p role="status">
-              Preparing the exact {kind === "share" ? "snapshot" : "deletion"}{" "}
-              for review…
-            </p>
-          )}
-          {preview?.note && <p className="command-copy">{preview.note}</p>}
-          {preview?.files && (
-            <>
-              <p className="command-copy">
-                {preview.files.length}{" "}
-                {preview.files.length === 1 ? "file" : "files"} ·{" "}
-                {(preview.totalBytes ?? 0).toLocaleString()} bytes
-              </p>
-              <ul className="resource-command-files">
-                {preview.files.map((file) => (
-                  <li key={file.path}>{file.path}</li>
-                ))}
-              </ul>
-            </>
-          )}
-          {!!preview?.paths?.length && (
-            <ul className="resource-command-files">
-              {preview.paths.map((path) => (
-                <li key={path}>{path}</li>
-              ))}
-            </ul>
-          )}
+          <dl className="resource-command-destination">
+            <div>
+              <dt>Project</dt>
+              <dd title={project?.name}>{project?.name}</dd>
+            </div>
+            <div>
+              <dt>Service</dt>
+              <dd
+                title={
+                  context.state.config?.mode === "self-hosted"
+                    ? "Your self-hosted service"
+                    : "Orka Cloud"
+                }
+              >
+                {context.state.config?.mode === "self-hosted"
+                  ? "Your self-hosted service"
+                  : "Orka Cloud"}
+              </dd>
+            </div>
+          </dl>
+          <p className="command-copy">
+            The local original and automatic sharing settings stay unchanged.
+          </p>
         </>
       )}
-      {stale && (
-        <p role="alert">
-          This item or account changed. Close this review and open the item’s
-          actions again.
-        </p>
-      )}
-      {error && <p role="alert">{error}</p>}
+      <div
+        className="resource-command-workspace"
+        ref={workspace}
+        role="region"
+        aria-label="Review details"
+        tabIndex={0}
+      >
+        {stale && (
+          <p role="alert">
+            This item or account changed. Close this review and open the item’s
+            actions again.
+          </p>
+        )}
+        {error && <p role="alert">{error}</p>}
+        {kind === "launch" && project ? (
+          <SessionLauncher
+            resource={resource}
+            project={project}
+            scope={context.scope}
+            busy={context.busy || stale}
+            actions={actions}
+            onError={context.onError}
+          />
+        ) : (
+          <>
+            {(loading || busy) && !stale && progress ? (
+              <section
+                className="resource-command-progress"
+                aria-label="Item action progress"
+              >
+                <div
+                  className="resource-command-progress-status"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  <Icon
+                    icon={SyncIcon}
+                    size="sm"
+                    className="sync-activity-icon"
+                  />
+                  <div>
+                    <strong title={progress.label}>{progress.label}</strong>
+                    {progress.detail && (
+                      <p title={progress.detail}>{progress.detail}</p>
+                    )}
+                  </div>
+                  <span
+                    className="resource-command-progress-count"
+                    title={progressCount}
+                  >
+                    {progressCount}
+                  </span>
+                </div>
+                <div
+                  className="resource-command-progress-track"
+                  data-indeterminate={percentage === null || undefined}
+                  role="progressbar"
+                  aria-label={progress.label}
+                  aria-valuemin={0}
+                  aria-valuemax={
+                    completed === null ? undefined : (total ?? undefined)
+                  }
+                  aria-valuenow={completed ?? undefined}
+                  aria-valuetext={progressCount}
+                >
+                  <span
+                    style={
+                      percentage === null
+                        ? undefined
+                        : { width: `${percentage}%` }
+                    }
+                  />
+                </div>
+              </section>
+            ) : (
+              <>
+                {preview?.files && (
+                  <section
+                    className="resource-command-manifest"
+                    aria-label="Snapshot contents"
+                  >
+                    <div className="resource-command-manifest-heading">
+                      <h3>Snapshot files</h3>
+                      <span>
+                        {preview.files.length}{" "}
+                        {preview.files.length === 1 ? "file" : "files"} ·{" "}
+                        {fileSize(
+                          preview.totalBytes ??
+                            preview.files.reduce(
+                              (bytes, file) => bytes + file.size,
+                              0,
+                            ),
+                        )}
+                      </span>
+                    </div>
+                    <ul
+                      className="resource-command-files"
+                      aria-label="Snapshot files"
+                      tabIndex={0}
+                    >
+                      {preview.files.map((file) => (
+                        <li key={file.path}>
+                          <Icon icon={FileIcon} size="xs" variant="secondary" />
+                          <span
+                            className="resource-command-filename"
+                            title={file.path}
+                          >
+                            {file.path}
+                          </span>
+                          <span
+                            className="resource-command-filesize"
+                            title={`${file.size.toLocaleString()} bytes`}
+                          >
+                            {fileSize(file.size)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+                {kind === "delete" && !!preview?.paths?.length && (
+                  <section
+                    className="resource-command-paths"
+                    aria-label="Local copies affected"
+                  >
+                    <h3>Local copies affected</h3>
+                    <ul tabIndex={0}>
+                      {preview.paths.map((path) => (
+                        <li key={path}>{path}</li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+              </>
+            )}
+            {preview?.note && (
+              <p className="resource-command-note">{preview.note}</p>
+            )}
+          </>
+        )}
+      </div>
       <div className="actions">
         {error && !preview && (
           <Button
@@ -660,22 +846,29 @@ function ResourceCommandDialog({
             Try again
           </Button>
         )}
-        <Button variant="tertiary" disabled={busy} onClick={onClose}>
-          {kind === "launch" ? "Close" : "Cancel"}
-        </Button>
-        {kind !== "launch" && (
-          <Button
-            className={kind === "delete" ? "management-danger" : undefined}
-            disabled={busy || context.busy || loading || !preview || stale}
-            onClick={() => void submit()}
-          >
-            {busy
-              ? "Working…"
-              : kind === "share"
-                ? "Share this snapshot"
-                : "Confirm deletion"}
+        <div className="resource-command-main-actions">
+          <Button variant="tertiary" disabled={busy} onClick={onClose}>
+            {kind === "launch" ? "Close" : "Cancel"}
           </Button>
-        )}
+          {kind !== "launch" && (
+            <Button
+              className={`resource-command-confirm${kind === "delete" ? " management-danger" : ""}`}
+              disabled={busy || context.busy || loading || !preview || stale}
+              onClick={() => void submit()}
+            >
+              <span className="resource-command-button-size" aria-hidden="true">
+                {kind === "share" ? "Share this snapshot" : "Confirm deletion"}
+              </span>
+              <span>
+                {busy
+                  ? "Working…"
+                  : kind === "share"
+                    ? "Share this snapshot"
+                    : "Confirm deletion"}
+              </span>
+            </Button>
+          )}
+        </div>
       </div>
     </Overlay>
   );

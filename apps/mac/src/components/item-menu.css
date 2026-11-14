@@ -66,42 +66,352 @@
 }
 
 .resource-table-actions {
-  width: 44px;
   text-align: right;
 }
 
-.home-update-row {
+.modal.toast-host-modal.resource-command-dialog {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  height: min(560px, calc(100vh - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  padding: 24px;
 }
 
-.home-update-row > .home-update {
-  flex: 1;
-  min-width: 0;
+.modal.resource-command-dialog h2 {
+  flex-shrink: 0;
+  overflow: hidden;
+  margin: 0 0 20px;
+  font-size: var(--heading-xs-font-size);
+  font-weight: var(--heading-xs-font-weight);
+  line-height: var(--heading-xs-line-height);
+  letter-spacing: var(--heading-xs-letter-spacing);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.resource-command-dialog h2 {
-  margin-bottom: 12px;
-}
-
-.resource-command-dialog .command-copy {
-  margin: 12px 0;
-  color: var(--text-secondary);
-}
-
-.resource-command-files {
-  max-height: 220px;
-  overflow-y: auto;
-  margin: 16px 0;
-  padding-left: 20px;
-  color: var(--text-secondary);
+.modal.resource-command-dialog p {
+  margin: 0;
+  font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
   overflow-wrap: anywhere;
 }
 
-.resource-command-dialog .actions {
-  justify-content: flex-end;
-  margin-top: 24px;
+.resource-command-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 0 0 84px;
+  overflow: hidden;
+  padding: 12px;
+  border: 1px solid var(--surface-stroke);
+  border-radius: var(--radius-control);
+  background: var(--surface-secondary);
+}
+
+.resource-command-item > .ui-icon {
+  margin-top: 2px;
+}
+
+.resource-command-item > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.resource-command-kind {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-tertiary);
+  font-size: var(--body-2xs-font-size);
+  line-height: var(--body-2xs-line-height);
+  text-transform: capitalize;
+}
+
+.modal.resource-command-dialog .resource-command-item p {
+  display: -webkit-box;
+  height: calc(2 * var(--label-sm-line-height));
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-primary);
+  font-size: var(--label-sm-font-size);
+  font-weight: var(--label-sm-font-weight);
+  line-height: var(--label-sm-line-height);
+}
+
+.resource-command-destination {
+  display: grid;
+  gap: 6px;
+  flex-shrink: 0;
+  margin: 16px 0 10px;
+  font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
+}
+
+.resource-command-destination > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.resource-command-destination dt {
+  color: var(--text-tertiary);
+}
+
+.resource-command-destination dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal.resource-command-dialog .command-copy,
+.modal.resource-command-dialog .resource-command-note {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.resource-command-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 16px;
+}
+
+.resource-command-workspace > p {
+  flex-shrink: 0;
+}
+
+.resource-command-manifest {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 78px;
+  overflow: hidden;
+  border: 1px solid var(--surface-stroke);
+  border-radius: var(--radius-control);
+}
+
+.resource-command-manifest-heading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 10px 12px;
+  background: var(--surface-tertiary);
+  color: var(--text-secondary);
+  font-size: var(--body-2xs-font-size);
+  line-height: var(--body-xs-line-height);
+}
+
+.modal.resource-command-dialog h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--label-xs-font-size);
+  font-weight: var(--label-xs-font-weight);
+  line-height: var(--label-xs-line-height);
+}
+
+.resource-command-files {
+  flex: 1;
+  min-height: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.resource-command-files > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--surface-stroke);
+  font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
+}
+
+.resource-command-files:focus-visible,
+.resource-command-paths ul:focus-visible,
+.resource-command-workspace:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.resource-command-files .ui-icon {
+  margin-top: 3px;
+}
+
+.resource-command-filename {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-command-filesize {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-command-paths {
+  flex-shrink: 0;
+}
+
+.resource-command-paths ul {
+  max-height: 120px;
+  overflow-y: auto;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--surface-stroke);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.resource-command-paths li + li {
+  margin-top: 6px;
+}
+
+.resource-command-progress {
+  flex: 0 0 84px;
+  padding: 12px;
+  border: 1px solid var(--surface-stroke);
+  border-radius: var(--radius-control);
+  background: var(--surface-tertiary);
+}
+
+.resource-command-progress-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  height: 40px;
+  color: var(--text-secondary);
+  font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
+}
+
+.resource-command-progress-status > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.resource-command-progress-status strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: var(--label-xs-font-weight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal.resource-command-dialog .resource-command-progress-status p {
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-command-progress-count {
+  flex: 0 0 64px;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-command-progress-track {
+  height: 4px;
+  overflow: hidden;
+  margin-top: 12px;
+  border-radius: 999px;
+  background: var(--surface-stroke);
+}
+
+.resource-command-progress-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--text-primary);
+  transition: width 160ms var(--motion-control-ease);
+}
+
+.resource-command-progress-track[data-indeterminate] > span {
+  width: 35%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .resource-command-progress-track[data-indeterminate] > span {
+    animation: resource-command-reading 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes resource-command-reading {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resource-command-progress-track > span {
+    animation: none;
+    transition: none;
+  }
+  .resource-command-progress .sync-activity-icon svg {
+    animation: none;
+  }
+}
+
+.modal.resource-command-dialog p[role="alert"] {
+  color: var(--text-danger);
+}
+
+.modal.resource-command-dialog .actions {
+  flex-shrink: 0;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--surface-stroke);
+}
+
+.resource-command-main-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.modal.resource-command-dialog .resource-command-confirm {
+  display: grid;
+  grid-template-areas: "label";
+  place-items: center;
+}
+
+.modal.resource-command-dialog .resource-command-confirm > span {
+  grid-area: label;
+}
+
+.resource-command-button-size {
+  visibility: hidden;
 }
 
 .item-menu-content .resource-diagnostics {
@@ -111,8 +421,4 @@
   color: var(--text-tertiary);
   font-size: 11px;
   overflow-wrap: anywhere;
-}
-
-.resource-table-col-chevron {
-  width: 44px;
 }

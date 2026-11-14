@@ -591,7 +591,7 @@ async fn desktop_share_previews_use_promoted_memory_identity_without_enabling_sh
     )
     .unwrap();
     input["resourceId"] = shared["resourceId"].clone();
-    let preview = actions::resource_command("preview-share".into(), input.clone())
+    let preview = actions::run_command("preview-share".into(), input.clone(), None)
         .await
         .unwrap();
     assert_eq!(
@@ -607,7 +607,7 @@ async fn desktop_share_previews_use_promoted_memory_identity_without_enabling_sh
     );
     let mut wrong = input.clone();
     wrong["serviceOrigin"] = json!("https://wrong.example");
-    assert!(actions::resource_command("preview-share".into(), wrong)
+    assert!(actions::run_command("preview-share".into(), wrong, None)
         .await
         .is_err());
 }
@@ -648,12 +648,131 @@ async fn item_actions_resolve_project_local_skills_in_multi_repository_projects(
     assert_eq!(paths.len(), 2);
     assert!(paths.iter().all(|path| path.starts_with(&f.root)));
     assert!(!paths.contains(&global));
-    let preview = actions::resource_command("preview-share".into(), input)
+    let preview = actions::run_command("preview-share".into(), input, None)
         .await
         .unwrap();
     assert_eq!(preview["kind"], "skill");
     assert_eq!(preview["sourceId"], source_id);
     assert_eq!(preview["files"].as_array().unwrap().len(), 1);
+    assert!(f.outbox().is_empty());
+}
+
+#[tokio::test]
+async fn snapshot_progress_is_scoped_and_freezes_the_single_discovery() {
+    use std::sync::{Arc, Mutex};
+    let mut f = Fixture::new();
+    let mut input = prepare(&mut f);
+    sharing_tests::seed(&f);
+    let local = indexer::discover(&f.db, &f.project, "session")
+        .unwrap()
+        .remove(0);
+    input["resourceId"] = local["resource"]["resourceId"].clone();
+    let source = PathBuf::from(local["paths"][0].as_str().unwrap());
+    let original = fs::read(&source).unwrap();
+    let original_snapshot =
+        db::blob_read(local["resource"]["files"][0]["hash"].as_str().unwrap()).unwrap();
+    let mut later = original.clone();
+    later.extend_from_slice(b"{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"text\":\"Future private turn\"}]}}\n");
+    let existing_sync = json!({"label":"Background sync","completed":2,"total":5});
+    db::set(&f.db, "syncProgress", &existing_sync).unwrap();
+    let messages = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let observed = messages.clone();
+    let channel = tauri::ipc::Channel::new(move |body| {
+        let value = body.deserialize::<Value>().unwrap();
+        if value["label"] == "Preparing snapshot for review" {
+            fs::write(&source, &later).unwrap();
+        }
+        observed.lock().unwrap().push(value);
+        Ok(())
+    });
+    let preview = actions::run_command("preview-share".into(), input.clone(), Some(channel))
+        .await
+        .unwrap();
+    assert_eq!(preview["files"], local["resource"]["files"]);
+    assert_eq!(
+        preview["snapshotHash"],
+        indexer::manifest_hash(&local["resource"]["files"])
+    );
+    let events = messages.lock().unwrap().clone();
+    assert_eq!(
+        events.first().unwrap()["label"],
+        "Preparing snapshot review"
+    );
+    assert!(events
+        .iter()
+        .any(|event| event["label"] == "Reading local history"));
+    let files: Vec<_> = events
+        .iter()
+        .filter(|event| event["detail"].is_string())
+        .collect();
+    assert_eq!(
+        files.len(),
+        1,
+        "One catalog discovery pass reports this session once"
+    );
+    assert!(!files[0]["detail"].as_str().unwrap().contains('/'));
+    assert!(events[..events.len() - 1]
+        .iter()
+        .all(|event| event["total"].is_null() && event["completed"].is_null()));
+    assert_eq!(
+        events.last().unwrap(),
+        &json!({"label":"Snapshot ready for review","completed":1,"total":1})
+    );
+    assert_eq!(db::get(&f.db, "syncProgress").unwrap(), existing_sync);
+    assert!(f.outbox().is_empty());
+    let saved = db::get(
+        &f.db,
+        &format!(
+            "share-preview:{}",
+            preview["previewToken"].as_str().unwrap()
+        ),
+    )
+    .unwrap();
+    assert_eq!(saved["desktopResourceId"], input["resourceId"]);
+    assert_eq!(saved["change"]["resource"]["files"], preview["files"]);
+    assert_eq!(
+        db::blob_read(preview["files"][0]["hash"].as_str().unwrap()).unwrap(),
+        original_snapshot
+    );
+
+    let disconnected =
+        tauri::ipc::Channel::new(|_| Err(tauri::Error::AssetNotFound("Closed review".into())));
+    let next = actions::run_command("preview-share".into(), input, Some(disconnected))
+        .await
+        .unwrap();
+    assert_ne!(next["snapshotHash"], preview["snapshotHash"]);
+    assert_eq!(*messages.lock().unwrap(), events);
+    assert_eq!(db::get(&f.db, "syncProgress").unwrap(), existing_sync);
+    assert!(f.outbox().is_empty());
+}
+
+#[tokio::test]
+async fn snapshot_progress_starts_before_the_project_lock_is_checked() {
+    let mut f = Fixture::new();
+    let mut input = prepare(&mut f);
+    sharing_tests::seed(&f);
+    let local = indexer::discover(&f.db, &f.project, "session")
+        .unwrap()
+        .remove(0);
+    input["resourceId"] = local["resource"]["resourceId"].clone();
+    let lock = crate::projects::lock().unwrap();
+    let (send, mut receive) = tokio::sync::mpsc::unbounded_channel();
+    let channel = tauri::ipc::Channel::new(move |body| {
+        let _ = send.send(body.deserialize::<Value>().unwrap());
+        Ok(())
+    });
+    let command = tokio::spawn(actions::run_command(
+        "preview-share".into(),
+        input,
+        Some(channel),
+    ));
+    let first = tokio::time::timeout(std::time::Duration::from_secs(2), receive.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(first["label"], "Preparing snapshot review");
+    assert!(command.await.unwrap().unwrap_err().contains("in progress"));
+    drop(lock);
     assert!(f.outbox().is_empty());
 }
 

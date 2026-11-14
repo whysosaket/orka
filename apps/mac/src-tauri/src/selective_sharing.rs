@@ -61,6 +61,23 @@ pub fn preview(db: &Connection, project: &Value, input: &Value) -> Result<Value>
         .into_iter()
         .find(|item| item["resource"]["resourceId"] == input["resourceId"])
         .ok_or("Local resource unavailable; list this category again")?;
+    preview_from_local(db, project, input, &local)
+}
+
+pub(crate) fn preview_from_local(
+    db: &Connection,
+    project: &Value,
+    input: &Value,
+    local: &Value,
+) -> Result<Value> {
+    if local["resource"]["projectId"]
+        .as_str()
+        .is_some_and(|id| project["id"].as_str() != Some(id))
+        || local["resource"]["resourceId"] != input["resourceId"]
+        || local["resource"]["kind"] != input["kind"]
+    {
+        return Err("Local resource no longer matches the selected item".into());
+    }
     let mut resource = local["resource"].clone();
     let scoped = sources::for_resource(project, &resource)
         .ok_or("Connect this resource's repository on this Mac")?;

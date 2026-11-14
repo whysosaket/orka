@@ -1082,8 +1082,8 @@
   .resource-table-col-updated {
     width: var(--resource-meta-width);
   }
-  .resource-table-col-chevron {
-    width: 40px;
+  .resource-table-col-actions {
+    width: calc(var(--button-sm-height) + 2 * var(--resource-cell-padding));
   }
   .resource-table th,
   .resource-table td {
@@ -1181,14 +1181,6 @@
   }
   .resource-table-updated time {
     @apply block truncate;
-  }
-  .resource-table-chevron {
-    @apply text-muted;
-    padding-inline: 12px;
-  }
-  .resource-table-chevron svg {
-    display: block;
-    margin-inline: auto;
   }
   /* Session reader: a speaker column beside each turn. */
   .session-conversation {

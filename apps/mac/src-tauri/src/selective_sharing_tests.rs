@@ -187,6 +187,35 @@ fn selected_preview_is_bound_to_account_service_project_expiry_and_folder() {
 }
 
 #[test]
+fn selected_preview_from_discovery_rejects_mismatched_identity() {
+    let mut f = Fixture::new();
+    prepare(&mut f);
+    let local = indexer::discover(&f.db, &f.project, "session")
+        .unwrap()
+        .remove(0);
+    let mut request = input(&f);
+    request["kind"] = json!("session");
+    request["resourceId"] = local["resource"]["resourceId"].clone();
+    for key in ["kind", "resourceId"] {
+        let mut wrong = request.clone();
+        wrong[key] = json!("another");
+        assert!(selective_sharing::preview_from_local(&f.db, &f.project, &wrong, &local).is_err());
+    }
+    let mut wrong = local.clone();
+    wrong["resource"]["projectId"] = json!(uuid::Uuid::new_v4().to_string());
+    assert!(selective_sharing::preview_from_local(&f.db, &f.project, &request, &wrong).is_err());
+    assert!(db::rows(
+        &f.db,
+        "SELECT value FROM meta WHERE key LIKE 'share-preview:%'",
+        &[]
+    )
+    .unwrap()
+    .is_empty());
+    assert!(f.outbox().is_empty());
+    assert!(f.resources().is_empty());
+}
+
+#[test]
 fn selected_requests_survive_governance_localization_and_respect_account_changes() {
     let mut f = Fixture::new();
     prepare(&mut f);
