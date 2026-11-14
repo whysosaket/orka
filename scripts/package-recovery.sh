@@ -34,6 +34,8 @@ done
 lipo -create "${binaries[@]}" -output "$stage/launcher"
 mv "$launcher" "$payload"
 cp "$stage/launcher" "$launcher"
+# LaunchServices must start the native desktop without replacing its process image.
+plutil -replace CFBundleExecutable -string orka-desktop "$plist"
 
 updater="$app/Contents/Helpers/Orka Updater.app"
 mkdir -p "$updater/Contents/MacOS" "$updater/Contents/Resources"
@@ -65,6 +67,7 @@ if [[ -n ${ORKA_SIGNING_KEYCHAIN:-} ]]; then
   signing+=(--keychain "$ORKA_SIGNING_KEYCHAIN")
 fi
 codesign "${signing[@]}" --identifier com.relay.portable-workspace "$payload"
+codesign "${signing[@]}" --identifier com.relay.portable-workspace.launcher "$launcher"
 codesign "${signing[@]}" "$updater"
 codesign "${signing[@]}" "$app"
 codesign --verify --deep --strict "$app"

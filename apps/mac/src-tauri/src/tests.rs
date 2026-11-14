@@ -38,6 +38,8 @@ mod session_launcher_tests;
 mod sharing_tests;
 #[path = "source_tests.rs"]
 mod source_tests;
+#[path = "updates_tests.rs"]
+mod updates_tests;
 
 #[test]
 fn disabled_env_commands_stop_before_credentials_network_and_file_access() {
