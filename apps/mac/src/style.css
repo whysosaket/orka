@@ -367,7 +367,7 @@
     transition-delay: 80ms;
   }
   .sidebar.sidebar-collapsed {
-    @apply w-16 px-3;
+    @apply w-[88px] px-6;
     transition: none;
   }
   .sidebar-collapsed .project-section > span,

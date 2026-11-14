@@ -41,7 +41,6 @@ mod sync;
 #[cfg(test)]
 mod tests;
 mod updates;
-mod window_chrome;
 use serde_json::json;
 #[cfg(debug_assertions)]
 use serde_json::Value;
@@ -228,13 +227,9 @@ fn main() {
     }
     tauri::Builder::default()
         .manage(settings_lifecycle::SettingsCloseGuard::default())
-        .manage(window_chrome::WindowControls::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .setup(|_app| {
-            if let Some(webview) = _app.get_webview_window("main") {
-                window_chrome::position(&webview.as_ref().window())?;
-            }
             #[cfg(target_os = "macos")]
             settings_lifecycle::install_quit_menu(_app.handle())?;
             #[cfg(target_os = "macos")]
@@ -265,7 +260,6 @@ fn main() {
                 menu_bar::menu_bar_snapshot,
                 menu_bar::menu_bar_action,
                 menu_bar::menu_bar_resize,
-                window_chrome::set_sidebar_collapsed,
                 settings_lifecycle::guard_settings_close,
                 settings_lifecycle::finish_settings_close,
                 onboarding::onboarding_command,
@@ -332,14 +326,6 @@ fn main() {
                     let _ = window.hide();
                 }
                 return;
-            }
-            if matches!(
-                event,
-                tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(true)
-            ) {
-                if let Err(error) = window_chrome::position(window) {
-                    eprintln!("Unable to position window controls: {error}");
-                }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();

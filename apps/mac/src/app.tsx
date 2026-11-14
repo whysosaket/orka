@@ -195,18 +195,6 @@ function WorkspaceApp({
     (id) => setRepositorySetup(id),
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const compactWindowControls =
-    sidebarCollapsed &&
-    Boolean(state.user) &&
-    !(state.onboarding?.active && setup.dialog !== "join");
-  useEffect(() => {
-    if (!isTauri()) return;
-    void invoke("set_sidebar_collapsed", {
-      collapsed: compactWindowControls,
-    }).catch((error) =>
-      console.error("Unable to position window controls", error),
-    );
-  }, [compactWindowControls]);
   const reducedMotion = useReducedMotion();
   const [sidebarInstant, setSidebarInstant] = useState(false);
   const [tab, setTab] = useState<ProjectPage>("home");
@@ -618,7 +606,7 @@ function WorkspaceApp({
       >
         <motion.aside
           initial={false}
-          animate={{ width: sidebarCollapsed ? 64 : 240 }}
+          animate={{ width: sidebarCollapsed ? 88 : 240 }}
           transition={
             sidebarInstant || reducedMotion
               ? { duration: 0 }

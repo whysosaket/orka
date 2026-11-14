@@ -216,6 +216,10 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
   );
   const header = (await page.locator(".workspace-header").boundingBox())!;
   expect(header).toMatchObject({ x: 248, y: 8, height: 52 });
+  const expandedToggle = (await page.locator(".sidebar-toggle").boundingBox())!;
+  expect(expandedToggle).toMatchObject({ width: 32, height: 32 });
+  const title = (await page.locator(".workspace-heading h1").boundingBox())!;
+  expect(title.x - expandedToggle.x - expandedToggle.width).toBe(8);
   const nav = page.getByRole("navigation", { name: "Orka resources" });
   await expect(nav.getByRole("button")).toHaveText([
     "Home",
@@ -279,20 +283,24 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
   });
   await toggle.focus();
   await toggle.press("Enter");
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as any).invokeCalls
-            .filter((call: any) => call.name === "set_sidebar_collapsed")
-            .at(-1)?.args?.collapsed,
-      ),
-    )
-    .toBe(true);
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "88px");
   await expect(
     page.getByRole("button", { name: "Settings", exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".sidebar-toggle")).toBeFocused();
+  const collapsedToggle = (await page
+    .locator(".sidebar-toggle")
+    .boundingBox())!;
+  expect(collapsedToggle).toMatchObject({
+    x: expandedToggle.x - 152,
+    y: expandedToggle.y,
+    width: expandedToggle.width,
+    height: expandedToggle.height,
+  });
+  const collapsedTitle = (await page
+    .locator(".workspace-heading h1")
+    .boundingBox())!;
+  expect(collapsedTitle.x - collapsedToggle.x - collapsedToggle.width).toBe(8);
   const rail = (await page.locator(".sidebar").boundingBox())!;
   for (const icon of [
     nav.locator(".project-section-icon").first(),
@@ -326,16 +334,6 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
   await expand.focus();
   await expand.press("Enter");
   await expect(page.locator(".sidebar")).toHaveCSS("width", "240px");
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as any).invokeCalls
-            .filter((call: any) => call.name === "set_sidebar_collapsed")
-            .at(-1)?.args?.collapsed,
-      ),
-    )
-    .toBe(false);
 });
 
 test("project menu keeps project selection, keyboard navigation and focus intact", async ({
@@ -403,7 +401,7 @@ test("reduced motion keeps shell controls and project selection usable", async (
   await page
     .getByRole("button", { name: "Collapse sidebar", exact: true })
     .click();
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "88px");
   await page
     .getByRole("combobox", { name: "Select project: Orka", exact: true })
     .click();
