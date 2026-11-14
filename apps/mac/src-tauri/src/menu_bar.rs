@@ -116,7 +116,7 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
             .transparent(true)
             .effects(
                 EffectsBuilder::new()
-                    .effect(Effect::Popover)
+                    .effect(Effect::HudWindow)
                     .state(EffectState::Active)
                     .radius(18.0)
                     .build(),

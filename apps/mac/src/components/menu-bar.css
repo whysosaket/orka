@@ -10,6 +10,7 @@ html.menu-bar-window,
 }
 
 .menu-bar-panel {
+  --text-secondary: #e0e0e0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
