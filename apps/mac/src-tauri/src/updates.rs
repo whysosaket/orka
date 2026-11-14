@@ -1,8 +1,9 @@
 use crate::db::Result;
 use serde_json::{json, Value};
 use std::{
+    fs::{File, OpenOptions},
     io::{BufRead, BufReader},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 use tauri::Emitter;
@@ -37,15 +38,108 @@ fn state_dir() -> Option<PathBuf> {
     )
 }
 
-pub fn initialize() {
-    // The launcher passes its flock across exec. Keep it out of subprocesses.
-    if let Some(fd) = std::env::var("ORKA_UPDATE_LOCK")
-        .ok()
-        .and_then(|fd| fd.parse::<i32>().ok())
-        .filter(|fd| *fd >= 3)
-    {
-        unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+pub struct LaunchGuard {
+    _running: Option<File>,
+}
+
+pub(crate) fn launch_locks(directory: &Path) -> std::io::Result<Option<(File, File)>> {
+    use fs2::FileExt;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(directory)?;
+    std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700))?;
+    let lock = |name| {
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(directory.join(name))
+    };
+    let maintenance = lock("maintenance.lock")?;
+    match FileExt::try_lock_shared(&maintenance) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+        Err(error) => return Err(error),
     }
+    let running = lock("running.lock")?;
+    FileExt::try_lock_shared(&running)?;
+    Ok(Some((maintenance, running)))
+}
+
+pub fn initialize(args: &mut Vec<String>) -> Result<Option<LaunchGuard>> {
+    if bundled_app().is_none() {
+        return Ok(Some(LaunchGuard { _running: None }));
+    }
+    let launcher = executable().map_err(|error| error.to_string())?;
+    // Only the running UI may invoke the updater with the desktop as its parent.
+    if args
+        .get(1)
+        .is_some_and(|argument| argument == "--orka-install-update")
+    {
+        return Err("Approve this update from the Orka sidebar.".into());
+    }
+    if args.get(1).is_some_and(|argument| {
+        ["--orka-update-status", "--orka-builtin-recovery"].contains(&argument.as_str())
+    }) {
+        let status = Command::new(launcher)
+            .args(&args[1..])
+            .status()
+            .map_err(|error| error.to_string())?;
+        std::process::exit(status.code().unwrap_or(1));
+    }
+    let directory = state_dir().ok_or("Application data unavailable")?;
+    let Some((maintenance, running)) =
+        launch_locks(&directory).map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+    let headless = args.get(1).is_some_and(|argument| {
+        [
+            "--orka-agent",
+            "--orka-plugin",
+            "--orka-sync",
+            "--orka-hook",
+            "--orka-context",
+            "--orka-env-test",
+            "--orka-test",
+        ]
+        .contains(&argument.as_str())
+    });
+    let session = if headless {
+        "headless".into()
+    } else {
+        uuid::Uuid::new_v4().to_string()
+    };
+    let bypass = args.iter().any(|argument| argument == "--orka-try-launch");
+    let status = Command::new(launcher)
+        .args([
+            "--orka-launch-preflight",
+            &std::process::id().to_string(),
+            &session,
+            if bypass { "1" } else { "0" },
+        ])
+        .stdin(Stdio::null())
+        .status()
+        .map_err(|error| error.to_string())?;
+    match status.code() {
+        Some(0) => {}
+        Some(2) => return Ok(None),
+        _ => return Err("Couldn’t check whether Orka can start.".into()),
+    }
+    // The native executable retains its identity and runtime lock; no GUI exec handoff.
+    drop(maintenance);
+    args.retain(|argument| argument != "--orka-try-launch");
+    if !headless {
+        std::env::set_var("ORKA_UPDATE_SESSION", session);
+    }
+    Ok(Some(LaunchGuard {
+        _running: Some(running),
+    }))
 }
 
 pub fn installation_pending() -> bool {

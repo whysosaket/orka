@@ -22,6 +22,9 @@ struct Launcher {
             let installation = try Installation(app: app, info: bundle.infoDictionary ?? [:])
             if helper && canonicalPath(bundle.bundleURL) != canonicalPath(installation.updater) { exit(1) }
             switch arguments.first {
+            case "--orka-launch-preflight" where !helper:
+                let request = try LaunchPreflight(arguments: Array(arguments.dropFirst()), parentPID: getppid())
+                exit(try prepareLaunch(installation, request: request) ? 0 : 2)
             case "--orka-update-status" where !helper:
                 Task {
                     let status = await status(for: installation, bypassCache: arguments.contains("--fresh"))
@@ -57,44 +60,56 @@ struct Launcher {
     }
 
     private static func launch(_ installation: Installation, arguments: [String]) throws {
-        let maintenance: FileLock
-        do { maintenance = try FileLock(installation.maintenanceLock, operation: LOCK_SH | LOCK_NB) }
-        catch { exit(0) } // launchd retries once maintenance finishes.
-        let running = try FileLock(installation.runningLock, operation: LOCK_SH | LOCK_NB)
         let command = arguments.dropFirst(arguments.first == "--profile" ? 2 : 0).first
         let headless = ["--orka-agent", "--orka-plugin", "--orka-sync", "--orka-hook", "--orka-context", "--orka-env-test", "--orka-test"].contains(command ?? "")
-        let bypass = arguments.contains("--orka-try-launch")
-        let current = try InstalledBuild(at: installation.app)
-        let withdrawn = installation.feed?.cached()?.allows(current.version) == false
-        if !bypass && (withdrawn || CrashRecord.load(installation, version: current.version).repeated) {
-            if !headless { try openRecovery(installation) }
-            return
+        if headless {
+            try replaceProcess(with: installation.desktopExecutable, arguments: arguments)
         }
-        if !headless {
-            let session = UUID().uuidString
-            let watchArguments = [String(getpid()), current.version, session]
-            do {
-                try installation.updaterProcess("--orka-update-watch", arguments: watchArguments).run()
-            } catch {
-                // A failed helper setup must still allow the desktop to open.
-                let watcher = Process()
-                watcher.executableURL = Bundle.main.executableURL
-                watcher.arguments = ["--orka-update-watch"] + watchArguments
-                watcher.standardInput = FileHandle.nullDevice
-                watcher.standardOutput = FileHandle.nullDevice
-                watcher.standardError = FileHandle.nullDevice
-                try watcher.run()
-            }
-            setenv("ORKA_UPDATE_SESSION", session, 1)
+        // LaunchServices must start the desktop executable without a subsequent exec.
+        try installation.openDesktop(arguments: arguments)
+    }
+}
+
+struct LaunchPreflight {
+    let pid: pid_t
+    let session: String?
+    let bypass: Bool
+
+    init(arguments: [String], parentPID: pid_t) throws {
+        guard arguments.count == 3, let pid = pid_t(arguments[0]), pid > 1, pid == parentPID,
+              arguments[1] == "headless" || (arguments[1].count == 36 && UUID(uuidString: arguments[1]) != nil),
+              ["0", "1"].contains(arguments[2]) else {
+            throw UpdateError("Invalid Orka launch preflight.")
         }
-        // Keep the running lock through exec, preserving the LaunchServices PID for URLs and activation.
-        guard fcntl(running.descriptor, F_SETFD, 0) == 0 else { throw UpdateError("Couldn’t start Orka.") }
-        setenv("ORKA_UPDATE_LOCK", String(running.descriptor), 1)
-        let forwarded = arguments.filter { $0 != "--orka-try-launch" }
-        try withExtendedLifetime((maintenance, running)) {
-            try replaceProcess(with: installation.desktopExecutable, arguments: forwarded)
+        self.pid = pid
+        session = arguments[1] == "headless" ? nil : arguments[1]
+        bypass = arguments[2] == "1"
+    }
+}
+
+func prepareLaunch(_ installation: Installation, request: LaunchPreflight) throws -> Bool {
+    let current = try InstalledBuild(at: installation.app)
+    let withdrawn = installation.feed?.cached()?.allows(current.version) == false
+    if !request.bypass && (withdrawn || CrashRecord.load(installation, version: current.version).repeated) {
+        if request.session != nil { try openRecovery(installation) }
+        return false
+    }
+    if let session = request.session {
+        let arguments = [String(request.pid), current.version, session]
+        do {
+            try installation.updaterProcess("--orka-update-watch", arguments: arguments).run()
+        } catch {
+            // A failed helper setup must still allow the desktop to open.
+            let watcher = Process()
+            watcher.executableURL = installation.app.appendingPathComponent("Contents/MacOS/\(launcherName)")
+            watcher.arguments = ["--orka-update-watch"] + arguments
+            watcher.standardInput = FileHandle.nullDevice
+            watcher.standardOutput = FileHandle.nullDevice
+            watcher.standardError = FileHandle.nullDevice
+            try watcher.run()
         }
     }
+    return true
 }
 
 struct UpdateStatus: Encodable {

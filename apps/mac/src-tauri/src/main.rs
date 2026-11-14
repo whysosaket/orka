@@ -47,12 +47,19 @@ use serde_json::Value;
 use std::io::Read;
 use tauri::Manager;
 fn main() {
-    updates::initialize();
     let mut args = std::env::args().collect::<Vec<_>>();
     if let Err(error) = profiles::initialize(&mut args) {
         eprintln!("{error}");
         std::process::exit(1);
     }
+    let _launch = match updates::initialize(&mut args) {
+        Ok(Some(guard)) => guard,
+        Ok(None) => return,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    };
     #[cfg(debug_assertions)]
     if args.get(1).is_some_and(|a| a == "--orka-env-test") {
         env::test_support::run();

@@ -12,6 +12,7 @@ struct RecoveryTests {
         try policyTests(scratch)
         try await statusTests(scratch)
         try lockTests(scratch)
+        try launchTests(scratch)
         if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--plugin-app" {
             try await pluginMaintenanceTests(URL(fileURLWithPath: CommandLine.arguments[2]), scratch: scratch)
         } else if CommandLine.arguments.count == 2 {
@@ -61,6 +62,52 @@ struct RecoveryTests {
             try rejects { _ = try FileLock(path, operation: LOCK_SH | LOCK_NB) }
         }
         print("runtime and installer mutual exclusion passed")
+    }
+
+    static func launchTests(_ scratch: URL) throws {
+        let session = UUID().uuidString
+        let gui = try LaunchPreflight(arguments: ["123", session, "0"], parentPID: 123)
+        try require(gui.pid == 123 && gui.session == session && !gui.bypass,
+                    "GUI preflight identifies the actual desktop process and health session")
+        for arguments in [["123", session], ["123", session, "0", "extra"], ["122", session, "0"],
+                          ["1", session, "0"], ["invalid", session, "0"], ["123", "invalid", "0"],
+                          ["123", session, "true"]] {
+            try rejects { _ = try LaunchPreflight(arguments: arguments, parentPID: 123) }
+        }
+        let headless = try LaunchPreflight(arguments: ["123", "headless", "0"], parentPID: 123)
+        let bypass = try LaunchPreflight(arguments: ["123", "headless", "1"], parentPID: 123)
+        try require(headless.session == nil && bypass.bypass, "headless and explicit repair launches are recognized")
+
+        let app = scratch.appendingPathComponent("launch/Orka.app")
+        let contents = app.appendingPathComponent("Contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        let metadata: [String: Any] = ["CFBundleIdentifier": desktopID, "CFBundleShortVersionString": "0.3.0",
+                                       "OrkaUpdateDataEpoch": 1]
+        try (metadata as NSDictionary).write(to: contents.appendingPathComponent("Info.plist"))
+        let key = Curve25519.Signing.PrivateKey()
+        let info: [String: Any] = ["OrkaUpdateTeam": "ABCDEFGHIJ", "OrkaUpdateFeed": "https://example.invalid/macos.json",
+                                  "OrkaUpdatePublicKey": key.publicKey.rawRepresentation.base64EncodedString()]
+        let installation = try Installation(app: app, info: info, supportDirectory: scratch)
+        try require(prepareLaunch(installation, request: headless), "a new installation can start without cached policy")
+        _ = CrashRecord.record(installation, version: "0.3.0")
+        try require(prepareLaunch(installation, request: headless), "one abnormal exit does not suppress startup")
+        _ = CrashRecord.record(installation, version: "0.3.0")
+        try require(!prepareLaunch(installation, request: headless), "repeated crashes suppress headless startup")
+        try require(prepareLaunch(installation, request: bypass), "an explicit repair launch bypasses crash suppression")
+        try FileManager.default.removeItem(at: installation.state.appendingPathComponent("crashes-0.3.0.json"))
+
+        let expires = Int64(Date().timeIntervalSince1970) + 60
+        let minimum = Policy(schema: 1, sequence: 1, expires: expires, release: nil, withdrawn: [], minimumVersion: "0.3.1")
+        _ = try installation.feed!.accept(signed(minimum, key))
+        try require(!prepareLaunch(installation, request: headless), "a verified minimum version suppresses older startup")
+        let withdrawn = Policy(schema: 1, sequence: 2, expires: expires - 120, release: nil,
+                               withdrawn: ["0.3.0"], minimumVersion: "0.0.0")
+        try signed(withdrawn, key).write(to: installation.state.appendingPathComponent("policy.json"))
+        try require(!prepareLaunch(installation, request: headless), "cached withdrawal still protects offline startup")
+        try require(prepareLaunch(installation, request: bypass), "an explicit repair launch bypasses withdrawal suppression")
+        try require(!FileManager.default.fileExists(atPath: installation.state.appendingPathComponent("crashes-0.3.0.json").path),
+                    "preflight does not record a crash for a blocked headless launch")
+        print("desktop preflight validation, crash suppression, offline policy, and explicit repair launch passed")
     }
 
     static func statusTests(_ scratch: URL) async throws {
@@ -119,6 +166,19 @@ struct RecoveryTests {
         try run("/usr/bin/ditto", [source.path, app.path])
         let installation = try Installation(app: app, info: Bundle(url: app)!.infoDictionary!)
         defer { try? FileManager.default.removeItem(at: installation.state) }
+        let unapproved = Process()
+        unapproved.executableURL = installation.desktopExecutable
+        unapproved.arguments = ["--orka-install-update", "0.0.0", String(repeating: "0", count: 64), "default"]
+        let approvalError = Pipe()
+        unapproved.standardInput = FileHandle.nullDevice
+        unapproved.standardOutput = FileHandle.nullDevice
+        unapproved.standardError = approvalError
+        try unapproved.run()
+        let message = String(decoding: approvalError.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        unapproved.waitUntilExit()
+        try require(unapproved.terminationStatus == 1 && message == "Approve this update from the Orka sidebar.",
+                    "an external native invocation cannot become a trusted updater parent")
         let plugin = Process()
         plugin.executableURL = app.appendingPathComponent("Contents/MacOS/\(launcherName)")
         plugin.arguments = ["--orka-plugin"]
