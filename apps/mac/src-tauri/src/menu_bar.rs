@@ -5,13 +5,7 @@ use tauri::Manager;
 pub const LABEL: &str = "menu-bar";
 
 pub fn allows_command(command: &str) -> bool {
-    [
-        "menu_bar_snapshot",
-        "menu_bar_action",
-        "sync_now",
-        "background_agent",
-    ]
-    .contains(&command)
+    ["menu_bar_snapshot", "menu_bar_action", "sync_now"].contains(&command)
 }
 
 #[tauri::command]
@@ -23,16 +17,12 @@ pub fn menu_bar_snapshot() -> db::Result<Value> {
 
 pub(crate) fn snapshot(db: &rusqlite::Connection, running: bool) -> db::Result<Value> {
     let onboarding = crate::onboarding::snapshot(db)?["active"] == true;
-    let background = db::get(db, "background")?
-        .as_bool()
-        .unwrap_or(!onboarding && crate::profiles::background_default());
     let projects = db::rows(
         db,
         &format!(
-            "SELECT json_object('id',p.id,'name',CASE WHEN json_extract(p.value,'$.role')='owner' THEN json_extract(p.value,'$.name') ELSE coalesce(json_extract(p.value,'$.localName'),json_extract(p.value,'$.name')) END,\
-             'pending',(SELECT count(*) FROM outbox WHERE project=p.id),\
+            "SELECT json_object('pending',(SELECT count(*) FROM outbox WHERE project=p.id),\
              'issues',(SELECT count(*) FROM outbox WHERE project=p.id AND error IS NOT NULL)+(SELECT count(*) FROM conflicts WHERE project=p.id)+(SELECT count(*) FROM errors WHERE source=p.id OR substr(source,1,length(p.id)+1)=p.id||':' OR source IN (SELECT id FROM resources WHERE project=p.id)))\
-             FROM projects p WHERE {} AND json_extract(p.value,'$.removedAt') IS NULL AND CASE WHEN json_type(p.value,'$.sources')='array' THEN EXISTS(SELECT 1 FROM json_each(p.value,'$.sources') WHERE json_extract(json_each.value,'$.removedAt') IS NULL AND coalesce(json_extract(json_each.value,'$.path'),'')<>'') ELSE coalesce(json_extract(p.value,'$.path'),'')<>'' END ORDER BY json_extract(p.value,'$.name')",
+             FROM projects p WHERE {} AND json_extract(p.value,'$.removedAt') IS NULL AND CASE WHEN json_type(p.value,'$.sources')='array' THEN EXISTS(SELECT 1 FROM json_each(p.value,'$.sources') WHERE json_extract(json_each.value,'$.removedAt') IS NULL AND coalesce(json_extract(json_each.value,'$.path'),'')<>'') ELSE coalesce(json_extract(p.value,'$.path'),'')<>'' END",
             projects::ACTIVE
         ),
         &[],
@@ -60,9 +50,9 @@ pub(crate) fn snapshot(db: &rusqlite::Connection, running: bool) -> db::Result<V
     ));
     Ok(json!({
         "user":db::get(db,"user")?, "onboarding":onboarding,
-        "background":background, "running":running,
+        "running":running,
         "sync":status, "progress":sync::current_progress(db,running)?,
-        "projects":projects, "pending":pending, "issues":issues
+        "projectCount":projects.len(), "pending":pending, "issues":issues
     }))
 }
 
@@ -101,6 +91,9 @@ pub fn menu_bar_action(app: tauri::AppHandle, action: String) -> db::Result<()> 
 
 #[cfg(target_os = "macos")]
 pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
+    use objc2_app_kit::{
+        NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSWindow,
+    };
     use tauri::{
         tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
         window::{Effect, EffectState, EffectsBuilder},
@@ -110,7 +103,7 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
     let panel =
         WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html?menu-bar=1".into()))
             .title("Orka menu bar")
-            .inner_size(380.0, 560.0)
+            .inner_size(360.0, 352.0)
             .visible(false)
             .focused(false)
             .decorations(false)
@@ -130,6 +123,11 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
             )
             .incognito(crate::profiles::current() != "default")
             .build()?;
+    let appearance = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua });
+    let pointer = panel.ns_window()?;
+    // Setup runs on AppKit's main thread; the retained panel owns this window.
+    let native = unsafe { &*(pointer as *const NSWindow) };
+    native.setAppearance(appearance.as_deref());
     let dismissed = std::sync::Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
     let last_dismissed = dismissed.clone();
     let target = panel.clone();
@@ -203,8 +201,8 @@ fn toggle(app: &tauri::AppHandle, rect: tauri::Rect) -> tauri::Result<()> {
         let scale = monitor.scale_factor();
         let size = rect.size.to_physical::<f64>(scale);
         let work = monitor.work_area();
-        let width = 380.0 * scale;
-        let height = 560.0 * scale;
+        let width = 360.0 * scale;
+        let height = 352.0 * scale;
         let inset = 8.0 * scale;
         let x = (position.x + size.width / 2.0 - width / 2.0).clamp(
             work.position.x as f64 + inset,

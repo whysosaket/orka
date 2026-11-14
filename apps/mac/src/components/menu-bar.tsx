@@ -1,14 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  AlertIcon,
-  ArrowUpRightIcon,
-  CheckIcon,
-  ClockIcon,
-  CloudOfflineIcon,
-  FileDirectoryIcon,
-  SyncIcon,
-} from "@primer/octicons-react";
+import { ArrowUpRightIcon, SyncIcon } from "@primer/octicons-react";
 import type { Snapshot, SyncProgress } from "../types.js";
 import { Button } from "./button.js";
 import { Icon } from "./icon.js";
@@ -17,11 +9,10 @@ import "./menu-bar.css";
 export interface MenuBarSnapshot {
   user: string | null;
   onboarding: boolean;
-  background: boolean;
   running: boolean;
   sync: Snapshot["sync"];
   progress: SyncProgress | null;
-  projects: { id: string; name: string; pending: number; issues: number }[];
+  projectCount: number;
   pending: number;
   issues: number;
 }
@@ -104,49 +95,23 @@ export function MenuBar() {
   const open = () => void act("menu_bar_action", { action: "open" });
   const signedIn = Boolean(state?.user) && !state?.onboarding;
   const progress = signedIn && state?.running ? state.progress : null;
-  const syncing = Boolean(progress) || requested;
-  const offline = state?.sync?.online === false;
-  const hasIssues = Boolean(state?.issues || state?.sync?.error);
-  const title = !state
+  const syncing = Boolean(progress) || (signedIn && requested);
+  const detail = !state
     ? "Checking sync status…"
     : !signedIn
       ? state.onboarding
-        ? "Finish setting up Orka"
-        : "Welcome to Orka"
-      : syncing
-        ? "Keeping you in sync"
-        : !state.running
-          ? "Sync is stopped"
-          : offline
-            ? "You’re offline"
-            : hasIssues
-              ? "A little attention needed"
-              : state.pending
-                ? "Changes ready to sync"
-                : state.sync?.lastSync
-                  ? "Everything is up to date"
-                  : "Ready when you are";
-  const detail = !state
-    ? "Getting the latest from your Mac"
-    : !signedIn
-      ? "Open Orka to connect your projects."
+        ? "Open Orka to finish setup."
+        : "Open Orka to sign in."
       : (progress?.label ??
         (requested
           ? "Waiting for sync to start…"
           : !state.running
-            ? "Open Orka to check your sync service."
-            : offline
-              ? "Your changes are safe on this Mac."
-              : hasIssues
+            ? "Sync stopped. Open Orka to check."
+            : state.sync?.online === false
+              ? "Offline. Changes stay on this Mac."
+              : state.issues || state.sync?.error
                 ? "Open Orka to review sync issues."
                 : lastSynced(state.sync?.lastSync)));
-  const glyph = syncing
-    ? SyncIcon
-    : offline
-      ? CloudOfflineIcon
-      : hasIssues || (signedIn && !state?.running)
-        ? AlertIcon
-        : CheckIcon;
   const total = progress?.total;
   const completed =
     total && total > 0 && progress?.completed !== undefined
@@ -167,32 +132,16 @@ export function MenuBar() {
       }}
     >
       <header className="menu-bar-heading">
-        <img
-          src="/onboarding/orka-lockup.svg"
-          width={86}
-          height={21}
-          alt="Orka"
-        />
-        <span className="menu-bar-caption">Your workspace, in sync</span>
-      </header>
-
-      <section className="menu-bar-status" aria-label="Sync overview">
-        <span className="menu-bar-status-icon" aria-hidden="true">
-          <Icon icon={glyph} className={syncing ? "menu-bar-spinning" : ""} />
-        </span>
-        <h1>{title}</h1>
-        <p role="status">{detail}</p>
-        {progress?.detail && (
-          <p className="menu-bar-detail">{progress.detail}</p>
-        )}
-        {completed !== null && total && (
-          <progress
-            aria-label={progress?.label}
-            max={total}
-            value={completed}
-            aria-valuetext={`${completed} of ${total} complete`}
+        <h1>
+          <img
+            src="/onboarding/orka-lockup.svg"
+            width={72}
+            height={17}
+            alt="Orka"
           />
-        )}
+        </h1>
+      </header>
+      <section className="menu-bar-status" aria-label="Sync overview">
         <Button
           variant="primary"
           className="menu-bar-sync"
@@ -204,95 +153,54 @@ export function MenuBar() {
           }
           onClick={signedIn ? () => void act("sync_now") : open}
         >
-          <Icon icon={signedIn ? SyncIcon : ArrowUpRightIcon} />
+          <Icon
+            icon={signedIn ? SyncIcon : ArrowUpRightIcon}
+            className={syncing ? "menu-bar-spinning" : ""}
+          />
           {signedIn ? (syncing ? "Syncing…" : "Sync now") : "Open Orka"}
         </Button>
-      </section>
-
-      {signedIn && (
-        <>
-          <div className="menu-bar-counts">
-            <div>
-              <strong>{state?.projects.length ?? 0}</strong>
-              <span>Projects</span>
-            </div>
-            <div>
-              <strong>{state?.pending ?? 0}</strong>
-              <span>Queued changes</span>
-            </div>
-            <div>
-              <strong>{state?.issues ?? 0}</strong>
-              <span>Sync issues</span>
-            </div>
-          </div>
-          <section
-            className="menu-bar-projects"
-            tabIndex={0}
-            aria-label="Connected projects"
-          >
-            <h2>Connected projects</h2>
-            {state?.projects.length ? (
-              <ul>
-                {state.projects.map((project) => (
-                  <li key={project.id}>
-                    <Icon
-                      icon={FileDirectoryIcon}
-                      variant="secondary"
-                      size="sm"
-                    />
-                    <span className="menu-bar-project-name">
-                      {project.name}
-                    </span>
-                    <span className="menu-bar-project-state">
-                      {project.issues
-                        ? `${project.issues} issues`
-                        : project.pending
-                          ? `${project.pending} queued`
-                          : syncing
-                            ? "Syncing…"
-                            : offline || !state.running
-                              ? "Waiting"
-                              : state.sync?.lastSync
-                                ? "Up to date"
-                                : "Ready"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>Connect a project in Orka to get started.</p>
+        <div className="menu-bar-progress">
+          <div className="menu-bar-progress-label">
+            <p role="status">{detail}</p>
+            {completed !== null && total && (
+              <span>
+                {completed} of {total}
+              </span>
             )}
-          </section>
-        </>
-      )}
-
-      {(actionError || readError) && (
-        <p className="menu-bar-error" role="alert">
-          {actionError || readError}
-        </p>
-      )}
-
-      {signedIn && state && (
-        <div className="menu-bar-background">
-          <Icon icon={ClockIcon} variant="secondary" size="sm" />
-          <span>
-            {state.background
-              ? "Available after you quit Orka"
-              : "Keep syncing after you quit"}
-          </span>
-          {state.background ? (
-            <span className="menu-bar-caption">Enabled</span>
-          ) : (
-            <Button
-              variant="tertiary"
-              size="sm"
-              disabled={busy}
-              onClick={() => void act("background_agent", { enabled: true })}
-            >
-              Enable
-            </Button>
+          </div>
+          {progress?.detail && (
+            <p className="menu-bar-detail">{progress.detail}</p>
+          )}
+          {completed !== null && total && (
+            <progress
+              aria-label={progress?.label}
+              max={total}
+              value={completed}
+              aria-valuetext={`${completed} of ${total} complete`}
+            />
           )}
         </div>
+      </section>
+      {signedIn && (
+        <dl className="menu-bar-counts" aria-label="Workspace overview">
+          <div>
+            <dt>Projects</dt>
+            <dd>{state?.projectCount ?? 0}</dd>
+          </div>
+          <div>
+            <dt>Queued changes</dt>
+            <dd>{state?.pending ?? 0}</dd>
+          </div>
+          <div>
+            <dt>Sync issues</dt>
+            <dd>{state?.issues ?? 0}</dd>
+          </div>
+        </dl>
+      )}
+      {(actionError || readError) && (
+        <p className="menu-bar-error" role="alert" tabIndex={0}>
+          {actionError || readError}
+        </p>
       )}
       <footer className="menu-bar-footer">
         <Button variant="tertiary" size="sm" onClick={open} disabled={busy}>

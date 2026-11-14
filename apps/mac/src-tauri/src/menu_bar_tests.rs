@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn menu_bar_only_lists_connected_active_projects_without_resource_contents() {
+fn menu_bar_only_counts_connected_active_projects_without_names_or_contents() {
     let f = Fixture::new();
     let mut project = f.project.clone();
     project["role"] = json!("member");
@@ -40,17 +40,10 @@ fn menu_bar_only_lists_connected_active_projects_without_resource_contents() {
     }
     db::upsert(&f.db, "projects", "connected", "", &json!({"id":"connected","name":"Shared name","localName":"Ignored owner name","role":"owner","sources":[{"id":"s","path":"/synthetic"}]})).unwrap();
     let result = crate::menu_bar::snapshot(&f.db, false).unwrap();
-    assert_eq!(result["projects"].as_array().unwrap().len(), 2);
-    assert!(result["projects"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|project| project["name"] == "My project"));
-    assert!(result["projects"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|project| project["name"] == "Shared name"));
+    assert_eq!(result["projectCount"], 2);
+    assert!(result.get("projects").is_none());
+    assert!(!result.to_string().contains("My project"));
+    assert!(!result.to_string().contains("Shared name"));
     assert!(!result.to_string().contains("/private"));
     assert!(!result.to_string().contains("Do not include"));
     assert!(!result.to_string().contains("/synthetic"));
@@ -80,12 +73,13 @@ fn menu_bar_reports_pending_changes_failures_and_account_status() {
         &json!({"online":false,"lastSync":"2026-11-14T10:00:00Z","error":"Offline"}),
     )
     .unwrap();
-    db::set(&f.db, "background", &json!(false)).unwrap();
     let result = crate::menu_bar::snapshot(&f.db, false).unwrap();
     assert_eq!(result["pending"], 2);
     assert_eq!(result["issues"], 3);
     assert_eq!(result["sync"]["lastSync"], "2026-11-14T10:00:00Z");
-    assert_eq!(result["background"], false);
+    assert!(result.get("background").is_none());
+    assert!(result.get("projects").is_none());
+    assert_eq!(result["projectCount"], 1);
     assert_eq!(result["running"], false);
     assert!(result["progress"].is_null());
     assert!(!result.to_string().contains("private-path"));
@@ -100,15 +94,11 @@ fn menu_bar_reports_pending_changes_failures_and_account_status() {
 
 #[test]
 fn menu_bar_cannot_invoke_workspace_or_credential_commands() {
-    for command in [
-        "menu_bar_snapshot",
-        "menu_bar_action",
-        "sync_now",
-        "background_agent",
-    ] {
+    for command in ["menu_bar_snapshot", "menu_bar_action", "sync_now"] {
         assert!(crate::menu_bar::allows_command(command));
     }
     for command in [
+        "background_agent",
         "snapshot",
         "sign_in",
         "switch_service",
@@ -133,7 +123,7 @@ fn menu_bar_keeps_account_history_issues_visible_after_successful_sync() {
     .unwrap();
     let result = crate::menu_bar::snapshot(&f.db, false).unwrap();
     assert_eq!(result["issues"], 1);
-    assert_eq!(result["projects"][0]["issues"], 0);
+    assert_eq!(result["projectCount"], 1);
     assert!(result["sync"]["error"].is_null());
     db::set(
         &f.db,

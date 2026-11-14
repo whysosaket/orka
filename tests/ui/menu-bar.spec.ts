@@ -13,20 +13,16 @@ declare global {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.setViewportSize({ width: 380, height: 560 });
+  await page.setViewportSize({ width: 360, height: 352 });
   await page.addInitScript(() => {
     const fixture: Window["menuBarFixture"] = {
       state: {
         user: "synthetic-user",
         onboarding: false,
         running: true,
-        background: true,
         sync: { online: true, lastSync: new Date().toISOString() },
         progress: null,
-        projects: [
-          { id: "one", name: "Orka", pending: 0, issues: 0 },
-          { id: "two", name: "Design system", pending: 0, issues: 0 },
-        ],
+        projectCount: 2,
         pending: 0,
         issues: 0,
       },
@@ -45,8 +41,6 @@ test.beforeEach(async ({ page }) => {
           if (fixture.failure) throw fixture.failure;
           if (name === "sync_now")
             fixture.state.progress = { label: "Checking local files" };
-          if (name === "background_agent")
-            fixture.state.background = args?.enabled === true;
           return null;
         },
       },
@@ -54,16 +48,19 @@ test.beforeEach(async ({ page }) => {
   });
   await page.goto("/?menu-bar=1");
   await expect(
-    page.getByRole("heading", { name: "Everything is up to date" }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "Sync now", exact: true }),
+  ).toBeEnabled();
 });
 
-test("compact overview uses the native worker and keeps live phase counts", async ({
+test("sync button owns the only moving icon and shows live phase counts below", async ({
   page,
 }) => {
   await page.getByRole("button", { name: "Sync now", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Syncing…" })).toBeDisabled();
+  const sync = page.getByRole("button", { name: "Syncing…" });
+  await expect(sync).toBeDisabled();
+  await expect(sync.locator(".menu-bar-spinning")).toHaveCount(1);
   await expect(page.getByRole("status")).toHaveText("Checking local files");
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
   await page.evaluate(() => {
     window.menuBarFixture.state.progress = {
       label: "Uploading changes",
@@ -74,6 +71,7 @@ test("compact overview uses the native worker and keeps live phase counts", asyn
   });
   await expect(page.getByRole("progressbar")).toHaveAttribute("value", "2");
   await expect(page.getByRole("progressbar")).toHaveAttribute("max", "8");
+  await expect(page.getByText("2 of 8")).toBeVisible();
   await expect(page.getByText("Orka · AGENTS.md")).toBeVisible();
   await page.evaluate(() => {
     window.menuBarFixture.state.progress = null;
@@ -107,35 +105,26 @@ test("opening, quitting and Escape use native lifecycle actions", async ({
     .toEqual(["open", "quit", "close"]);
   expect(
     await page.evaluate(() =>
-      window.menuBarFixture.calls.some((call) => call.name === "snapshot"),
+      window.menuBarFixture.calls.some((call) =>
+        ["snapshot", "background_agent"].includes(call.name),
+      ),
     ),
   ).toBe(false);
 });
 
-test("background login remains opt in and errors stay actionable", async ({
-  page,
-}) => {
+test("failed sync requests show an error and allow retry", async ({ page }) => {
   await page.evaluate(() => {
-    window.menuBarFixture.state.background = false;
-    window.menuBarFixture.failure =
-      "Enable Orka in macOS Login Items to start the sync service";
+    window.menuBarFixture.failure = "Unable to request sync. Try again.";
   });
-  const enable = page.getByRole("button", { name: "Enable", exact: true });
-  await enable.click();
-  await expect(page.getByRole("alert")).toContainText("macOS Login Items");
-  await expect(enable).toBeEnabled();
+  const sync = page.getByRole("button", { name: "Sync now", exact: true });
+  await sync.click();
+  await expect(page.getByRole("alert")).toContainText("Unable to request sync");
+  await expect(sync).toBeEnabled();
   await page.evaluate(() => {
     window.menuBarFixture.failure = "";
   });
-  await enable.click();
-  await expect(page.getByText("Enabled", { exact: true })).toBeVisible();
-  expect(
-    await page.evaluate(() =>
-      window.menuBarFixture.calls
-        .filter((call) => call.name === "background_agent")
-        .map((call) => call.args),
-    ),
-  ).toEqual([{ enabled: true }, { enabled: true }]);
+  await sync.click();
+  await expect(page.getByRole("button", { name: "Syncing…" })).toBeDisabled();
 });
 
 test("offline, stopped, signed out and setup states report actual availability", async ({
@@ -147,79 +136,73 @@ test("offline, stopped, signed out and setup states report actual availability",
       error: "Network unavailable",
     };
   });
-  await expect(
-    page.getByRole("heading", { name: "You’re offline" }),
-  ).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Offline");
   await expect(
     page.getByRole("button", { name: "Sync now", exact: true }),
   ).toBeEnabled();
   await page.evaluate(() => {
     window.menuBarFixture.state.running = false;
   });
-  await expect(
-    page.getByRole("heading", { name: "Sync is stopped" }),
-  ).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Sync stopped");
   await expect(
     page.getByRole("button", { name: "Sync now", exact: true }),
   ).toBeDisabled();
   await page.evaluate(() => {
     window.menuBarFixture.state.user = null;
   });
-  await expect(
-    page.getByRole("heading", { name: "Welcome to Orka" }),
-  ).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("sign in");
   await expect(
     page.getByRole("button", { name: "Sync now", exact: true }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("region", { name: "Connected projects" }),
-  ).toHaveCount(0);
+  await expect(page.locator(".menu-bar-counts")).toHaveCount(0);
   await page.evaluate(() => {
     window.menuBarFixture.state.onboarding = true;
   });
-  await expect(
-    page.getByRole("heading", { name: "Finish setting up Orka" }),
-  ).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("finish setup");
 });
 
-test("panel stays within its window with long project names and keyboard access", async ({
+test("compact list stays within its window and supports keyboard and reduced motion", async ({
   page,
 }) => {
-  await page.evaluate(() => {
-    const state = window.menuBarFixture.state;
-    state.projects = Array.from({ length: 20 }, (_, i) => ({
-      id: `${i}`,
-      name: `A very long synthetic project name ${i}`,
-      pending: i,
-      issues: 0,
-    }));
-    state.background = false;
-  });
-  await expect(page.getByRole("listitem")).toHaveCount(20);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Sync now", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Syncing…" })).toBeDisabled();
   const bounds = await page.evaluate(() => ({
     width: document.documentElement.scrollWidth,
     height: document.documentElement.scrollHeight,
     footer: document.querySelector(".menu-bar-footer")!.getBoundingClientRect()
       .bottom,
+    animation: getComputedStyle(document.querySelector(".menu-bar-spinning")!)
+      .animationName,
   }));
-  expect(bounds).toEqual({ width: 380, height: 560, footer: 559 });
-  await page.keyboard.press("Tab");
+  expect(bounds.width).toBe(360);
+  expect(bounds.height).toBe(352);
+  expect(bounds.footer).toBeLessThanOrEqual(352);
+  expect(bounds.animation).toBe("none");
+  await expect(page.getByRole("term")).toHaveText([
+    "Projects",
+    "Queued changes",
+    "Sync issues",
+  ]);
+  await expect(page.getByRole("definition")).toHaveText(["2", "0", "0"]);
   await expect(
-    page.getByRole("button", { name: "Sync now", exact: true }),
-  ).toBeFocused();
+    page.getByText("Connected projects", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Keep syncing after you quit")).toHaveCount(0);
+  await expect(page.getByText("Your workspace, in sync")).toHaveCount(0);
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations).toEqual([]);
 });
 
 test("menu bar overview visual evidence", async ({ page }) => {
   await page.evaluate(() => {
-    const state = window.menuBarFixture.state;
-    state.pending = 3;
-    state.projects[1].pending = 3;
+    window.menuBarFixture.state.pending = 3;
   });
-  await expect(
-    page.getByRole("heading", { name: "Changes ready to sync" }),
-  ).toBeVisible();
+  await expect(page.getByRole("definition")).toHaveText(["2", "3", "0"]);
   await page.screenshot({ path: "artifacts/menu-bar-overview.png" });
   await page.evaluate(() => {
     window.menuBarFixture.state.progress = {

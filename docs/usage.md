@@ -7,23 +7,18 @@ publication. See [sharing and private memory](governed-sharing.md) for setup,
 agent operations and migration. There is no background conversation extraction or
 private memory sync.
 
-## Menu bar and background sync
+## Menu bar and background operation
 
 Closing Orka's main window keeps the app running. Click the white Orka icon in
-macOS's menu bar to see connected projects, queued changes, sync health, and
+macOS's menu bar to see project and queued-change counts, sync health, and
 current sync progress. Choose **Sync now** to request a sync through the same
 native service used by the main window. **Open Orka** and the Dock icon restore
 the workspace; Escape or clicking elsewhere dismisses the panel. You can also
 choose **Window → Sync overview** or press **⌘⇧S** to reach the same panel
 from the keyboard.
 
-Choose **Enable** under **Keep syncing after you quit** in the menu bar panel,
-or enable **Background sync** in Settings, to keep syncing when the app is quit
-and after signing in to macOS. macOS may ask you to allow
-Orka under Login Items. Turning it off still permits syncing while Orka is
-running, including with the main window closed. **Quit Orka** explicitly exits
-the interface, preserving any enabled background service. Unsaved Settings are
-confirmed before closing or quitting.
+Choose **Quit Orka** to exit the app. Unsaved Settings are confirmed before
+closing or quitting.
 
 ## Develop
 
