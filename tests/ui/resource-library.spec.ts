@@ -13,6 +13,57 @@ const kinds = [
 ] as const;
 
 for (const width of [1160, 900]) {
+  test(`collection sort stays at the right edge across ownership filters at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await resourceLibraryFixture(page);
+    for (const [label, noun, singular] of [
+      ["Sessions", "sessions", "session"],
+      ["Memories", "memories", "memory"],
+    ]) {
+      await page.getByRole("button", { name: new RegExp(`^${label}`) }).click();
+      const toolbar = page.getByRole("group", { name: `${noun} tools` });
+      const ownership = page.getByRole("group", {
+        name: "Filter by ownership",
+      });
+      for (const [tab, count] of [
+        [`All ${noun}`, null],
+        ["Mine", 3],
+        ["Shared with me", 1],
+      ] as const) {
+        await ownership.getByRole("button", { name: tab, exact: true }).click();
+        const resultCount = toolbar.locator(".index-toolbar-count");
+        if (count === null) await expect(resultCount).toHaveCount(0);
+        else {
+          await expect(resultCount).toHaveText(
+            `${count} ${count === 1 ? singular : noun}`,
+          );
+          if (width === 900) await expect(resultCount).toBeHidden();
+          else await expect(resultCount).toBeVisible();
+        }
+        const right = await toolbar.evaluate((element) => ({
+          toolbar: element.getBoundingClientRect().right,
+          sort: element
+            .querySelector(".index-toolbar-sort")!
+            .getBoundingClientRect().right,
+        }));
+        expect(Math.abs(right.toolbar - right.sort)).toBeLessThanOrEqual(1);
+      }
+      await toolbar
+        .getByRole("button", { name: "Sort by Recently updated", exact: true })
+        .click();
+      await page
+        .getByRole("menuitemradio", { name: "Title", exact: true })
+        .click();
+      await expect(
+        toolbar.getByRole("button", { name: "Sort by Title", exact: true }),
+      ).toBeVisible();
+    }
+  });
+}
+
+for (const width of [1160, 900]) {
   test(`session identities and quiet ownership tabs align at ${width}px`, async ({
     page,
   }) => {

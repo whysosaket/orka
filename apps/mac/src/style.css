@@ -1080,6 +1080,10 @@
   .index-toolbar .index-toolbar-sort {
     --control-gap: 4px;
     --control-padding-x: 10px;
+    margin-left: auto;
+  }
+  .index-toolbar-count + .index-toolbar-sort {
+    margin-left: 0;
   }
   .index-toolbar .index-toolbar-sort[data-state="open"] {
     background: var(--interaction-selected);
