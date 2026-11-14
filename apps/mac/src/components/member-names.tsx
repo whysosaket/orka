@@ -13,7 +13,11 @@ import {
   type GovernanceCatalog,
 } from "./project-permissions.js";
 
-const MemberNames = createContext<ProjectMember[]>([]);
+const MemberNames = createContext<{
+  members: ProjectMember[];
+  user?: Snapshot["user"];
+  profile?: Snapshot["accountProfile"];
+}>({ members: [] });
 const noMembers: ProjectMember[] = [];
 
 export function MemberNamesProvider({
@@ -56,15 +60,31 @@ export function MemberNamesProvider({
   const members =
     cached ?? (loaded?.scope === scope ? loaded.members : noMembers);
   return (
-    <MemberNames.Provider value={members}>{children}</MemberNames.Provider>
+    <MemberNames.Provider
+      value={{ members, user: state.user, profile: state.accountProfile }}
+    >
+      {children}
+    </MemberNames.Provider>
   );
 }
 
 export function useMemberLabel(user: string | null) {
-  const members = useContext(MemberNames);
+  const { members } = useContext(MemberNames);
   return useCallback(
     (id: string | null | undefined) =>
       id ? memberLabel(id, user, members) : "Unknown",
     [user, members],
+  );
+}
+
+export function useMemberPhoto(id: string) {
+  const { members, user, profile } = useContext(MemberNames);
+  const member = members.find((member) => member.id === id);
+  return (
+    (id === user
+      ? (profile?.avatarData ?? profile?.avatarPreview ?? profile?.avatarUrl)
+      : null) ??
+    member?.avatarData ??
+    member?.avatarUrl
   );
 }

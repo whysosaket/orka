@@ -129,10 +129,14 @@ export function ResourceIndex({
         {kind !== "skill" && (
           <div className="resource-ownership-toolbar">
             <SegmentedControl
+              className="resource-ownership-tabs"
               label="Filter by ownership"
               value={ownership}
               options={[
-                { value: "all", label: "All" },
+                {
+                  value: "all",
+                  label: `All ${collectionNoun(kind)}`,
+                },
                 { value: "mine", label: "Mine" },
                 { value: "shared", label: "Shared with me" },
               ]}
@@ -237,7 +241,6 @@ export function ResourceIndex({
             summaries={skillSummaries}
             usageCounts={skillUsage?.usage?.counts}
             displayTitle={displayTitle}
-            duplicateTitles={duplicateTitles}
             conflicted={conflicted}
             onOpen={onOpen}
           />

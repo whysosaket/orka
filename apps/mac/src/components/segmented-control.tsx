@@ -14,15 +14,21 @@ export function SegmentedControl<T extends string>({
   options,
   onChange,
   disabled = false,
+  className = "",
 }: {
   label: string;
   value: T;
   options: SegmentedOption<T>[];
   onChange: (value: T) => void;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
-    <div className="segmented-control" role="group" aria-label={label}>
+    <div
+      className={`segmented-control ${className}`}
+      role="group"
+      aria-label={label}
+    >
       {options.map((option) => (
         <Button
           key={option.value}

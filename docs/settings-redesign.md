@@ -1,6 +1,8 @@
 # Workspace Settings
 
-Settings stays in the workspace and has six destinations: Profile, Devices, Sync & startup, General, Members, and Permissions. Account and Mac settings work without a selected project. Settings navigation and project/resource entry points share the Save, Discard, and Stay guard.
+Settings stays in the workspace and has seven destinations: Profile, Devices, Sync & startup, Updates, General, Members, and Permissions. Account and Mac settings work without a selected project. Settings navigation and project/resource entry points share the Save, Discard, and Stay guard.
+
+Updates belongs to This Mac. It shows the installed application version, check status and last successful check time, a manual Check for Updates action, and collapsed, expandable release notes. The app-menu Check for Updates action opens this destination through the same unsaved-changes guard. Checks and installation progress are shared with the sidebar; navigation does not start another download or reset progress. Automatic checks remain on launch and every four hours, independently of the project sync interval. See [desktop updates](desktop-updates.md).
 
 Members provides View logs for the existing project activity history, including pagination and a return to Members. Header request and session actions use the same unsaved-changes guard before leaving Settings.
 

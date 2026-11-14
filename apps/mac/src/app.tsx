@@ -21,6 +21,9 @@ import {
 } from "./components/item-menu.js";
 import { ENV_ENABLED } from "./lib/features.js";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { Overlay } from "./components/overlay.js";
+import { SettingsUpdates } from "./components/settings/settings-updates.js";
 import type { Resource } from "@portable/protocol";
 import type { ProjectPage, ProjectResource } from "./types.js";
 import {
@@ -245,6 +248,26 @@ function WorkspaceApp({
       settingsNavigation.current.requestSection(section);
     else setSettings(section);
   };
+  const manualUpdateCheck = useRef(() => {});
+  manualUpdateCheck.current = () => {
+    openSettings("updates");
+    void updates.check(true);
+  };
+  useEffect(() => {
+    if (!isTauri()) return;
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    void listen("check-for-updates", () => manualUpdateCheck.current())
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else stop = unlisten;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      stop?.();
+    };
+  }, []);
   const [syncOpen, setSyncOpen] = useState(false);
   const [managementSection, setManagementSection] =
     useState<Exclude<ManagementSection, "members">>("requests");
@@ -479,28 +502,48 @@ function WorkspaceApp({
     () => projectAttention(state, project),
     [state, project],
   );
+  const updatesDialog =
+    settings === "updates" && (!state.user || state.onboarding?.active) ? (
+      <Overlay
+        open
+        onClose={() => setSettings(null)}
+        title="Updates"
+        className="settings-updates-dialog"
+      >
+        <div className="settings-panel" data-section="updates">
+          <SettingsUpdates updates={updates} />
+          <Button onClick={() => setSettings(null)}>Done</Button>
+        </div>
+      </Overlay>
+    ) : null;
   if (!state.user)
     return (
-      <SignInForm
-        account={account}
-        busy={busy}
-        error={error || refreshError}
-        act={act}
-        invite={
-          setup.dialog === "join"
-            ? { serviceUrl: setup.inviteService, onCancel: setup.close }
-            : undefined
-        }
-      />
+      <>
+        <SignInForm
+          account={account}
+          busy={busy}
+          error={error || refreshError}
+          act={act}
+          invite={
+            setup.dialog === "join"
+              ? { serviceUrl: setup.inviteService, onCancel: setup.close }
+              : undefined
+          }
+        />
+        {updatesDialog}
+      </>
     );
   if (state.onboarding?.active && setup.dialog !== "join")
     return (
-      <Onboarding
-        key={`${state.profile}:${state.user}:${state.config?.apiUrl}`}
-        state={state}
-        refresh={refresh}
-        onComplete={setProject}
-      />
+      <>
+        <Onboarding
+          key={`${state.profile}:${state.user}:${state.config?.apiUrl}`}
+          state={state}
+          refresh={refresh}
+          onComplete={setProject}
+        />
+        {updatesDialog}
+      </>
     );
   const openResource = (id: string) => {
     if (
@@ -607,10 +650,10 @@ function WorkspaceApp({
             }
           />
           <div className="sidebar-footer">
-            {updates?.update && (
+            {updates.status?.update && (
               <SidebarUpdate
-                key={updates.update.sha256}
-                update={updates.update}
+                key={updates.status.update.sha256}
+                updates={updates}
                 collapsed={sidebarCollapsed}
               />
             )}
@@ -797,6 +840,7 @@ function WorkspaceApp({
               ref={settingsNavigation}
               key={workspaceScope}
               state={state}
+              updates={updates}
               initialProjectId={settingsProject ?? project}
               initialSection={settings}
               onSectionChange={setSettings}

@@ -1,4 +1,13 @@
 import { expect, type Page } from "@playwright/test";
+
+interface UpdateStatus {
+  installedVersion: string;
+  update?: { version: string; notes: string; sha256: string };
+  release?: { version: string; notes: string; sha256: string };
+  message?: string;
+  supported?: boolean;
+}
+
 export async function settingsFixture(
   page: Page,
   options: {
@@ -6,10 +15,9 @@ export async function settingsFixture(
     emailInvites?: boolean;
     pendingInvites?: { email: string; expiresAt: string }[];
     failEmailInvite?: boolean;
-    update?: {
-      installedVersion: string;
-      update?: { version: string; notes: string; sha256: string };
-    };
+    update?: UpdateStatus;
+    updateError?: string;
+    updateDelay?: number;
     updateInstallError?: string;
     updateInstallDelay?: number;
     role?: "owner" | "admin" | "member";
@@ -244,6 +252,9 @@ export async function settingsFixture(
       failSwitch: false,
       policyFailure: options.policyFailure ?? "",
       delay: options.delay ?? 0,
+      update: options.update ?? { installedVersion: "0.3.0" },
+      updateError: options.updateError ?? "",
+      updateDelay: options.updateDelay ?? 0,
     };
     const wait = (ms: number) =>
       new Promise((resolve) => setTimeout(resolve, ms));
@@ -273,7 +284,13 @@ export async function settingsFixture(
           if (command === "sync_progress")
             return { user: state.user, progress: null };
           calls.push({ command, args: structuredClone(args) });
-          if (command === "update_status") return options.update;
+          if (command === "update_status") {
+            const update = structuredClone(controls.update);
+            const error = controls.updateError;
+            await wait(controls.updateDelay);
+            if (error) throw error;
+            return update;
+          }
           if (command === "update_install") {
             await wait(options.updateInstallDelay ?? 0);
             if (options.updateInstallError) throw options.updateInstallError;

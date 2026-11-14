@@ -28,6 +28,9 @@ import { SettingsMembers } from "./settings-members.js";
 import { SettingsPermissions } from "./settings-permissions.js";
 import { SettingsHeading, type SettingsEditor } from "./settings-shared.js";
 
+import { SettingsUpdates } from "./settings-updates.js";
+import type { DesktopUpdates } from "../use-desktop-updates.js";
+
 export interface SettingsNavigationHandle {
   requestExit: (action: () => void) => void;
   requestSection: (section: SettingsSection) => void;
@@ -46,6 +49,7 @@ export const SettingsModal = forwardRef<
   SettingsNavigationHandle,
   {
     state: Snapshot;
+    updates: DesktopUpdates;
     initialProjectId: string;
     initialSection?: SettingsSection;
     onSectionChange?: (section: SettingsSection) => void;
@@ -59,6 +63,7 @@ export const SettingsModal = forwardRef<
 >(function SettingsModal(
   {
     state,
+    updates,
     initialProjectId,
     initialSection = "general",
     onSectionChange,
@@ -822,6 +827,7 @@ export const SettingsModal = forwardRef<
                     )}
                   </>
                 )}
+                {section === "updates" && <SettingsUpdates updates={updates} />}
                 {section === "devices" && (
                   <SettingsDeviceScreen state={state} />
                 )}
