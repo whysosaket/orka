@@ -131,6 +131,7 @@ export function useLocalResources({
       (entry) => entry.catalog?.resources ?? [],
     ),
     errors: kind ? (catalogs[kind]?.catalog?.errors ?? []) : [],
+    result: kind ? catalogs[kind]?.catalog : undefined,
     loading: Boolean(
       kind &&
       projectId &&

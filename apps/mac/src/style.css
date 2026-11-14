@@ -1051,10 +1051,18 @@
     content: "";
   }
   .resource-discovery-status {
-    @apply mb-4 text-body-xs text-muted;
+    @apply mb-4 flex flex-col items-start gap-3 border border-line bg-panel p-4 text-body-xs text-secondary;
+    border-radius: var(--radius-surface);
+    overflow-wrap: anywhere;
   }
-  .resource-discovery-status p {
-    @apply mb-1;
+  .resource-discovery-title {
+    @apply m-0 flex items-start gap-2 text-label-sm text-foreground;
+  }
+  .resource-discovery-title > .ui-icon {
+    @apply mt-0.5 shrink-0;
+  }
+  .resource-discovery-message {
+    @apply m-0 mt-1;
   }
   /* Shared index toolbar: search, source filter, count, sort. */
   .index-toolbar {
