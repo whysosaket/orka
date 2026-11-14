@@ -182,6 +182,14 @@ for (const size of [
     await page
       .getByRole("combobox", { name: "Select project", exact: true })
       .click();
+    const selector = (await page.locator(".project-selector").boundingBox())!;
+    const menu = (await page.locator(".project-menu").boundingBox())!;
+    expect(selector.y + selector.height).toBe(size.height - 20);
+    expect(menu.y + menu.height).toBeLessThan(selector.y);
+    await expect(page.locator(".project-menu")).toHaveAttribute(
+      "data-side",
+      "top",
+    );
     await expect(
       page.getByRole("button", { name: "Invite member", exact: true }),
     ).toHaveCount(0);
@@ -197,7 +205,15 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
     exact: true,
   });
   const selector = (await project.boundingBox())!;
-  expect(selector).toMatchObject({ x: 12, y: 16, width: 216, height: 38 });
+  expect(selector).toMatchObject({ x: 12, y: 842, width: 216, height: 38 });
+  const controls = (await page
+    .locator(".sidebar-window-controls")
+    .boundingBox())!;
+  expect(controls).toMatchObject({ x: 12, y: 16, width: 216, height: 38 });
+  await expect(page.locator(".sidebar-window-controls")).toHaveAttribute(
+    "data-tauri-drag-region",
+    "true",
+  );
   const header = (await page.locator(".workspace-header").boundingBox())!;
   expect(header).toMatchObject({ x: 248, y: 8, height: 52 });
   const nav = page.getByRole("navigation", { name: "Orka resources" });
@@ -264,9 +280,30 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
   await toggle.focus();
   await toggle.press("Enter");
   await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).invokeCalls
+            .filter((call: any) => call.name === "set_sidebar_collapsed")
+            .at(-1)?.args?.collapsed,
+      ),
+    )
+    .toBe(true);
   await expect(
     page.getByRole("button", { name: "Settings", exact: true }),
   ).toBeVisible();
+  const rail = (await page.locator(".sidebar").boundingBox())!;
+  for (const icon of [
+    nav.locator(".project-section-icon").first(),
+    page.locator(".sidebar-bottom .navigation-action-icon").first(),
+    page.locator(".project-selector-symbol"),
+  ]) {
+    const bounds = (await icon.boundingBox())!;
+    expect(
+      Math.abs(bounds.x + bounds.width / 2 - (rail.x + rail.width / 2)),
+    ).toBeLessThanOrEqual(2);
+  }
   await page.screenshot({ path: "artifacts/sidebar-collapsed.png" });
   await page
     .getByRole("combobox", { name: "Select project: Orka", exact: true })
@@ -274,6 +311,13 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
   await expect(
     page.getByRole("option", { name: "Studio", exact: true }),
   ).toBeVisible();
+  const collapsedSelector = (await page
+    .locator(".project-selector")
+    .boundingBox())!;
+  const collapsedMenu = (await page.locator(".project-menu").boundingBox())!;
+  expect(collapsedMenu.y + collapsedMenu.height).toBeLessThan(
+    collapsedSelector.y,
+  );
   await page.keyboard.press("Escape");
   const expand = page.getByRole("button", {
     name: "Expand sidebar",
@@ -282,6 +326,16 @@ test("Figma shell geometry, fluid gap selection, collapse reversal and keyboard 
   await expand.focus();
   await expand.press("Enter");
   await expect(page.locator(".sidebar")).toHaveCSS("width", "240px");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).invokeCalls
+            .filter((call: any) => call.name === "set_sidebar_collapsed")
+            .at(-1)?.args?.collapsed,
+      ),
+    )
+    .toBe(false);
 });
 
 test("project menu keeps project selection, keyboard navigation and focus intact", async ({
@@ -404,7 +458,10 @@ test("a long project menu scrolls and keeps keyboard focus within the viewport",
   await expect(page.getByRole("option")).toHaveCount(32);
   const menu = page.locator(".project-menu");
   const bounds = (await menu.boundingBox())!;
-  expect(bounds.y + bounds.height).toBeLessThanOrEqual(640 - 12);
+  expect(bounds.y).toBeGreaterThanOrEqual(12);
+  expect(bounds.y + bounds.height).toBeLessThan(
+    (await project.boundingBox())!.y,
+  );
   const list = page.getByRole("listbox", { name: "Projects", exact: true });
   expect(
     await list.evaluate(

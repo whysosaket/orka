@@ -347,7 +347,7 @@ export function Onboarding({
       <div className="onboarding-flow__backdrop" aria-hidden="true">
         <img src={onboardingAsset("background.svg")} alt="" />
       </div>
-      <aside className="onboarding-flow__sidebar">
+      <aside className="onboarding-flow__sidebar" data-tauri-drag-region>
         <ol aria-label="Onboarding steps">
           {["Add your projects", "Sync projects", "Invite Teammates"].map(
             (label, index) => (
@@ -367,6 +367,7 @@ export function Onboarding({
       </aside>
       <section
         className={`onboarding-flow__canvas${stage === 1 ? " onboarding-flow__canvas--discovery" : ""}`}
+        data-tauri-drag-region
       >
         {githubSetup && repositoryEnabled ? (
           <>

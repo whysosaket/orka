@@ -20,7 +20,7 @@ import {
   type ItemMenuAction,
 } from "./components/item-menu.js";
 import { ENV_ENABLED } from "./lib/features.js";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { Resource } from "@portable/protocol";
 import type { ProjectPage, ProjectResource } from "./types.js";
 import {
@@ -36,6 +36,7 @@ import { Button } from "./components/button.js";
 import { ProjectHome } from "./components/project-home.js";
 import {
   ProjectNavigation,
+  ProjectPicker,
   projectLabel,
 } from "./components/project-navigation.js";
 import {
@@ -191,6 +192,18 @@ function WorkspaceApp({
     (id) => setRepositorySetup(id),
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const compactWindowControls =
+    sidebarCollapsed &&
+    Boolean(state.user) &&
+    !(state.onboarding?.active && setup.dialog !== "join");
+  useEffect(() => {
+    if (!isTauri()) return;
+    void invoke("set_sidebar_collapsed", {
+      collapsed: compactWindowControls,
+    }).catch((error) =>
+      console.error("Unable to position window controls", error),
+    );
+  }, [compactWindowControls]);
   const reducedMotion = useReducedMotion();
   const [sidebarInstant, setSidebarInstant] = useState(false);
   const [tab, setTab] = useState<ProjectPage>("home");
@@ -573,77 +586,17 @@ function WorkspaceApp({
           className={`sidebar${sidebarCollapsed ? " sidebar-collapsed" : ""}`}
           data-motion={sidebarInstant ? "instant" : undefined}
         >
+          <div
+            className="sidebar-window-controls"
+            data-tauri-drag-region
+            aria-hidden="true"
+          />
           <ProjectNavigation
             collapsed={sidebarCollapsed}
             projects={state.projects}
             projectId={project}
             activeKind={settings ? null : tab}
             resources={catalogResources}
-            projectActions={(target) => {
-              const settingsAction = (
-                id: string,
-                label: string,
-                section: SettingsSection,
-              ): ItemMenuAction => ({
-                id,
-                label,
-                onSelect: () => openProjectSettings(target.id, section),
-              });
-              const actions: ItemMenuAction[] = [
-                {
-                  id: "open",
-                  label: "Open project",
-                  onSelect: () =>
-                    leaveSettings(() => {
-                      setProject(target.id);
-                      setResource("");
-                      setEnvSet("");
-                      setTab("home");
-                    }),
-                },
-                {
-                  id: "link",
-                  label: "Copy project link",
-                  onSelect: () =>
-                    void act(
-                      () =>
-                        navigator.clipboard.writeText(
-                          `orka://project/${target.id}`,
-                        ),
-                      {
-                        successTitle: "Project link copied",
-                        errorTitle: "Couldn’t copy project link",
-                      },
-                    ),
-                },
-                settingsAction("settings", "Project settings…", "general"),
-                settingsAction(
-                  "rename",
-                  target.role === "owner"
-                    ? "Rename project…"
-                    : "Rename on this Mac…",
-                  "general",
-                ),
-                settingsAction("members", "Members…", "members"),
-                settingsAction("folders", "Source folders…", "folder"),
-              ];
-              if (target.role === "owner" || target.role === "admin")
-                actions.push(
-                  settingsAction("permissions", "Permissions…", "permissions"),
-                );
-              return actions;
-            }}
-            onProjectChange={(id) => {
-              const change = () => {
-                setEnvSet("");
-                setProject(id);
-                setResource("");
-                setGovernance(null);
-              };
-              if (settings && settingsNavigation.current)
-                settingsNavigation.current.requestProject(id, change);
-              else change();
-            }}
             onNavigate={(kind) =>
               leaveSettings(() => {
                 setEnvSet("");
@@ -667,6 +620,80 @@ function WorkspaceApp({
               onSettings={() => openSettings("general")}
               onCreate={() => leaveSettings(() => setup.show("create"))}
               onJoin={() => leaveSettings(() => setup.show("join"))}
+            />
+            <ProjectPicker
+              projects={state.projects}
+              projectId={project}
+              collapsed={sidebarCollapsed}
+              projectActions={(target) => {
+                const settingsAction = (
+                  id: string,
+                  label: string,
+                  section: SettingsSection,
+                ): ItemMenuAction => ({
+                  id,
+                  label,
+                  onSelect: () => openProjectSettings(target.id, section),
+                });
+                const actions: ItemMenuAction[] = [
+                  {
+                    id: "open",
+                    label: "Open project",
+                    onSelect: () =>
+                      leaveSettings(() => {
+                        setProject(target.id);
+                        setResource("");
+                        setEnvSet("");
+                        setTab("home");
+                      }),
+                  },
+                  {
+                    id: "link",
+                    label: "Copy project link",
+                    onSelect: () =>
+                      void act(
+                        () =>
+                          navigator.clipboard.writeText(
+                            `orka://project/${target.id}`,
+                          ),
+                        {
+                          successTitle: "Project link copied",
+                          errorTitle: "Couldn’t copy project link",
+                        },
+                      ),
+                  },
+                  settingsAction("settings", "Project settings…", "general"),
+                  settingsAction(
+                    "rename",
+                    target.role === "owner"
+                      ? "Rename project…"
+                      : "Rename on this Mac…",
+                    "general",
+                  ),
+                  settingsAction("members", "Members…", "members"),
+                  settingsAction("folders", "Source folders…", "folder"),
+                ];
+                if (target.role === "owner" || target.role === "admin")
+                  actions.push(
+                    settingsAction(
+                      "permissions",
+                      "Permissions…",
+                      "permissions",
+                    ),
+                  );
+                return actions;
+              }}
+              onProjectChange={(id) => {
+                const change = () => {
+                  setEnvSet("");
+                  setProject(id);
+                  setResource("");
+                  setGovernance(null);
+                };
+                if (settings && settingsNavigation.current)
+                  settingsNavigation.current.requestProject(id, change);
+                else change();
+              }}
             />
           </div>
         </motion.aside>
