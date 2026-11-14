@@ -170,6 +170,24 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
 }
 
 #[cfg(target_os = "macos")]
+pub fn open_overview(app: &tauri::AppHandle) -> tauri::Result<()> {
+    if let Some(rect) = app
+        .tray_by_id("orka-menu-bar")
+        .map(|tray| tray.rect())
+        .transpose()?
+        .flatten()
+    {
+        return toggle(app, rect);
+    }
+    if let Some(panel) = app.get_webview_window(LABEL) {
+        panel.center()?;
+        panel.show()?;
+        panel.set_focus()?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 fn toggle(app: &tauri::AppHandle, rect: tauri::Rect) -> tauri::Result<()> {
     let Some(panel) = app.get_webview_window(LABEL) else {
         return Ok(());

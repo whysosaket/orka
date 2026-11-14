@@ -13,7 +13,9 @@ Closing Orka's main window keeps the app running. Click the white Orka icon in
 macOS's menu bar to see connected projects, queued changes, sync health, and
 current sync progress. Choose **Sync now** to request a sync through the same
 native service used by the main window. **Open Orka** and the Dock icon restore
-the workspace; Escape or clicking elsewhere dismisses the panel.
+the workspace; Escape or clicking elsewhere dismisses the panel. You can also
+choose **Window → Sync overview** or press **⌘⇧S** to reach the same panel
+from the keyboard.
 
 Choose **Enable** under **Keep syncing after you quit** in the menu bar panel,
 or enable **Background sync** in Settings, to keep syncing when the app is quit
