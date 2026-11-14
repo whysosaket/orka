@@ -24,3 +24,11 @@ The October 4, 2026 padding fix affects only macOS icon layers. The source PNGs 
 Packaging uses Swift/CoreGraphics in `scripts/render-app-icon.swift` and Python 3's standard library. Each ICNS layer stores the rendered PNG data directly, avoiding a legacy ARGB conversion. Validate the stored PNG payloads for alpha bounds; `iconutil -c iconset` also accepts the container, although its small-icon extraction can alter translucent RGB values.
 
 The Tauri bundle configuration already references this icon set. Tauri also embeds the ICNS in development executables and sets it as the running app's Dock icon. After packaging an icon change, rebuild the native executable with `cargo build --manifest-path apps/mac/src-tauri/Cargo.toml`, quit Orka Development, and run `Open Orka.command` to copy the rebuilt executable and reopen it. Updating only the bundle's resource file does not replace the embedded icon. `build.rs` watches the icon directory so Cargo picks up regenerated assets. Installed release apps receive the icon through a rebuilt application bundle.
+
+## Menu bar icon
+
+`menu-bar.svg` contains the bracket mark from the approved Orka lockup, without
+the wordmark or app-icon background. `menu-bar.png` is its transparent 44px
+render for a sharp 18pt status item on Retina displays. The native tray embeds
+it at compile time and deliberately keeps the white artwork rather than
+applying macOS template tinting.
