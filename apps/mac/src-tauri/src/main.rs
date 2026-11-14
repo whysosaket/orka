@@ -16,6 +16,7 @@ mod history;
 mod indexer;
 mod local_resources;
 mod memory_context;
+mod menu_bar;
 mod native;
 mod onboarding;
 mod packages;
@@ -156,6 +157,7 @@ fn main() {
             "sign-in"=>tokio::runtime::Runtime::new().expect("Test runtime").block_on(commands::sign_in(input["email"].as_str().unwrap_or("").into(),input["password"].as_str().unwrap_or("").into())),
             "sign-out"=>auth::sign_out().map(|_|json!({"ok":true})),
             "snapshot"=>commands::snapshot(),
+            "menu-bar-snapshot"=>menu_bar::menu_bar_snapshot(),
             "session-launch-options"=>session_launcher::options(input["id"].as_str().unwrap_or("")).and_then(|options|serde_json::to_value(options).map_err(|e|e.to_string())),
             "session-handoff-prompt"=>session_launcher::handoff_prompt(input["id"].as_str().unwrap_or("")),
             "resume-session"=>session_launcher::Tool::parse(input["tool"].as_str().unwrap_or("")).and_then(|tool| {
@@ -235,6 +237,8 @@ fn main() {
             }
             #[cfg(target_os = "macos")]
             settings_lifecycle::install_quit_menu(_app.handle())?;
+            #[cfg(target_os = "macos")]
+            menu_bar::install(_app.handle())?;
             db::open().map_err(std::io::Error::other)?;
             if let Err(e) = commands::ensure_agent() {
                 db::set(
@@ -248,66 +252,87 @@ fn main() {
             sync::start_foreground();
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            window_chrome::set_sidebar_collapsed,
-            settings_lifecycle::guard_settings_close,
-            settings_lifecycle::finish_settings_close,
-            onboarding::onboarding_command,
-            commands::open_legal_link,
-            commands::open_web_link,
-            env::env_command,
-            governance::governance_command,
-            profiles::profile_list,
-            profiles::open_profile,
-            profiles::route_auth_callback,
-            profiles::profile_events,
-            commands::snapshot,
-            local_resources::local_resource_catalog,
-            resource_commands::resource_command,
-            projects::project_command,
-            settings::settings_command,
-            commands::configure,
-            commands::sign_in,
-            commands::switch_service,
-            commands::auth_capabilities,
-            commands::begin_sign_in,
-            commands::pending_email_sign_in,
-            commands::complete_sign_in,
-            commands::cancel_sign_in,
-            commands::retry_sign_in_storage,
-            commands::sign_out,
-            commands::sync_now,
-            commands::sync_progress,
-            commands::cloud_action,
-            commands::connect_project,
-            sources::connect_project_sources,
-            repositories::repository_command,
-            sources::disconnect_project_source,
-            sources::scan_project_folders,
-            commands::disconnect_project,
-            commands::inspect_resource,
-            commands::session_messages,
-            commands::session_display_title,
-            commands::open_editor,
-            commands::session_action,
-            commands::resume_session,
-            commands::session_launch_options,
-            commands::session_handoff_prompt,
-            commands::export_bundle,
-            commands::import_bundle,
-            global_skills::scan_global_skills,
-            global_skills::add_global_skill,
-            global_skills::add_global_skills,
-            skill_usage::global_skill_usage,
-            skill_usage::project_skill_usage,
-            commands::retry_uploads,
-            commands::background_agent,
-            updates::update_ready,
-            updates::update_status,
-            updates::update_install,
-            updates::open_update_changelog
-        ])
+        .invoke_handler(|invoke| {
+            if invoke.message.webview_ref().label() == menu_bar::LABEL
+                && !menu_bar::allows_command(invoke.message.command())
+            {
+                invoke
+                    .resolver
+                    .reject("This command is unavailable in the menu bar");
+                return true;
+            }
+            let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                menu_bar::menu_bar_snapshot,
+                menu_bar::menu_bar_action,
+                menu_bar::menu_bar_resize,
+                window_chrome::set_sidebar_collapsed,
+                settings_lifecycle::guard_settings_close,
+                settings_lifecycle::finish_settings_close,
+                onboarding::onboarding_command,
+                commands::open_legal_link,
+                commands::open_web_link,
+                env::env_command,
+                governance::governance_command,
+                profiles::profile_list,
+                profiles::open_profile,
+                profiles::route_auth_callback,
+                profiles::profile_events,
+                commands::snapshot,
+                local_resources::local_resource_catalog,
+                resource_commands::resource_command,
+                projects::project_command,
+                settings::settings_command,
+                commands::configure,
+                commands::sign_in,
+                commands::switch_service,
+                commands::auth_capabilities,
+                commands::begin_sign_in,
+                commands::pending_email_sign_in,
+                commands::complete_sign_in,
+                commands::cancel_sign_in,
+                commands::retry_sign_in_storage,
+                commands::sign_out,
+                commands::sync_now,
+                commands::sync_progress,
+                commands::cloud_action,
+                commands::connect_project,
+                sources::connect_project_sources,
+                repositories::repository_command,
+                sources::disconnect_project_source,
+                sources::scan_project_folders,
+                commands::disconnect_project,
+                commands::inspect_resource,
+                commands::session_messages,
+                commands::session_display_title,
+                commands::open_editor,
+                commands::session_action,
+                commands::resume_session,
+                commands::session_launch_options,
+                commands::session_handoff_prompt,
+                commands::export_bundle,
+                commands::import_bundle,
+                global_skills::scan_global_skills,
+                global_skills::add_global_skill,
+                global_skills::add_global_skills,
+                skill_usage::global_skill_usage,
+                skill_usage::project_skill_usage,
+                commands::retry_uploads,
+                commands::background_agent,
+                updates::update_ready,
+                updates::update_status,
+                updates::update_install,
+                updates::open_update_changelog
+            ];
+            handler(invoke)
+        })
         .on_window_event(|window, event| {
+            if window.label() != "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+                return;
+            }
             if matches!(
                 event,
                 tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(true)
@@ -317,14 +342,19 @@ fn main() {
                 }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if settings_lifecycle::request(window.app_handle(), "close") {
-                    api.prevent_close();
+                api.prevent_close();
+                if !settings_lifecycle::request(window.app_handle(), "close") {
+                    let _ = window.hide();
                 }
             }
         })
         .build(context)
         .expect("Unable to start Orka")
         .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if matches!(event, tauri::RunEvent::Reopen { .. }) {
+                let _ = menu_bar::open_main(app);
+            }
             if let tauri::RunEvent::ExitRequested { api, .. } = &event {
                 if settings_lifecycle::request(app, "quit") {
                     api.prevent_exit();

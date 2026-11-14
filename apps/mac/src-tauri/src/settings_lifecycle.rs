@@ -12,7 +12,7 @@ pub fn guard_settings_close(state: tauri::State<SettingsCloseGuard>, enabled: bo
 
 #[cfg(target_os = "macos")]
 pub fn install_quit_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, WINDOW_SUBMENU_ID};
 
     // The native Quit item calls AppKit's terminate: directly, bypassing
     // ExitRequested. Preserve the standard menu, but route Quit through Tauri.
@@ -51,10 +51,27 @@ pub fn install_quit_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
         }
     }
+    if let Some(window_menu) = menu
+        .get(WINDOW_SUBMENU_ID)
+        .and_then(|item| item.as_submenu().cloned())
+    {
+        window_menu.append(&PredefinedMenuItem::separator(app)?)?;
+        window_menu.append(&MenuItem::with_id(
+            app,
+            "orka-sync-overview",
+            "Sync overview",
+            true,
+            Some("CmdOrCtrl+Shift+S"),
+        )?)?;
+    }
     app.set_menu(menu)?;
     app.on_menu_event(|app, event| {
         if event.id() == "orka-quit" {
             app.exit(0);
+        } else if event.id() == "orka-sync-overview" {
+            if let Err(error) = crate::menu_bar::open_overview(app) {
+                eprintln!("Unable to open Orka sync overview: {error}");
+            }
         } else if event.id() == "orka-check-for-updates" {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -73,20 +90,25 @@ pub fn finish_settings_close(
     window: tauri::WebviewWindow,
     quit: bool,
 ) -> Result<(), String> {
-    app.state::<SettingsCloseGuard>()
-        .0
-        .store(false, Ordering::SeqCst);
     if quit {
+        app.state::<SettingsCloseGuard>()
+            .0
+            .store(false, Ordering::SeqCst);
         app.exit(0);
         Ok(())
     } else {
-        window.close().map_err(|error| error.to_string())
+        // Settings remain mounted while the workspace is hidden.
+        window.hide().map_err(|error| error.to_string())
     }
 }
 
 pub fn request(app: &tauri::AppHandle, action: &str) -> bool {
-    app.state::<SettingsCloseGuard>().0.load(Ordering::SeqCst)
+    let requested = app.state::<SettingsCloseGuard>().0.load(Ordering::SeqCst)
         && app
             .emit_to("main", "settings-close-requested", action)
-            .is_ok()
+            .is_ok();
+    if requested {
+        let _ = crate::menu_bar::open_main(app);
+    }
+    requested
 }

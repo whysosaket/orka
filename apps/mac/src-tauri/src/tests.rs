@@ -18,6 +18,8 @@ mod governance_tests;
 mod local_resource_tests;
 #[path = "memory_context_tests.rs"]
 mod memory_context_tests;
+#[path = "menu_bar_tests.rs"]
+mod menu_bar_tests;
 #[path = "plan_tests.rs"]
 mod plan_tests;
 #[path = "plugin_operations_tests.rs"]
