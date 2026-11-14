@@ -32,7 +32,9 @@ Orka is an open-source macOS app that keeps project memories, skills, plans, and
 - **Continue the work.** Browse shared sessions, open them in their native app, or prepare a [handoff](plugins/orka/README.md#handoffs) between tools.
 - **Stay in sync.** Run background sync, retry offline changes, and resolve conflicts.
 
-See the [animated product tour](docs/assets/product-tour@2x.webp) for memories, skills, and session handoffs.
+<p align="center">
+  <img src="docs/assets/product-tour@2x.webp" width="860" alt="Animated tour of shared memories, reusable team skills, and session handoffs in Orka">
+</p>
 
 ## Get started
 
