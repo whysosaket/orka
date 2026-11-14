@@ -1,46 +1,52 @@
-# Orka
+<p align="center">
+  <img src="apps/mac/src-tauri/icons/128x128@2x.png" width="88" height="88" alt="Orka app icon">
+</p>
 
-Keep project memories, skills, plans, and coding sessions available across your Macs.
+<h1 align="center">Orka</h1>
 
-Orka is an open-source macOS desktop app for sharing project context from Codex and Claude Code through Orka Cloud or your own Docker Compose server. Repository code stays in Git. You choose what to share for each project and each Mac.
+<p align="center"><strong>Shared context for Codex and Claude Code.</strong></p>
 
-[![Animated demo of Claude Code creating a skill, Orka syncing it, and Codex using it](docs/assets/orka-overview@2x.webp)](https://tryorka.ai/)
+<p align="center">
+  <a href="https://github.com/whysosaket/orka/releases"><img src="https://img.shields.io/github/v/release/whysosaket/orka?include_prereleases&amp;filter=v*&amp;sort=semver&amp;label=desktop&amp;color=5266b8" alt="Latest desktop release, including alphas"></a>
+  <a href="https://github.com/whysosaket/orka/actions/workflows/ci.yml"><img src="https://github.com/whysosaket/orka/actions/workflows/ci.yml/badge.svg?branch=main" alt="Checks on main"></a>
+  <a href="https://github.com/whysosaket/orka/releases"><img src="https://img.shields.io/badge/macOS-12%2B-555555" alt="macOS 12 or later"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-555555" alt="MIT license"></a>
+</p>
 
-**Status: alpha.** The desktop app requires macOS 12 or later. The self-hosted server runs through Docker. See [verification and limitations](docs/verification.md) before relying on native session synchronization.
+<p align="center">
+  <a href="https://github.com/whysosaket/orka/releases"><strong>Download for macOS</strong></a> ·
+  <a href="https://tryorka.ai/">Website</a> ·
+  <a href="https://tryorka.ai/docs">Documentation</a>
+</p>
 
-Download the universal DMG from [Orka releases](https://github.com/whysosaket/orka/releases),
-open it and drag Orka into Applications. One installer supports Apple Silicon and Intel Macs.
+Orka is an open-source macOS app that keeps project memories, skills, plans, and coding sessions in sync across your Macs and your team. Use Orka Cloud or your own Docker Compose server. Repository code stays in Git.
 
-## Shared context for your team
+<p align="center">
+  <a href="https://tryorka.ai/"><img src="docs/assets/orka-overview@2x.webp" width="860" alt="Animated demo of Claude Code creating a skill, Orka syncing it, and Codex using it"></a>
+</p>
 
-Share project memories, skills, and plans with teammates and their AI tools, and read session history to understand what changed and why.
+## What you can do
 
-![Animated tour of shared memories, reusable team skills, and session handoffs in Orka](docs/assets/product-tour@2x.webp)
+- **Share project knowledge.** Sync instructions, memories, complete skill folders, and plans with permissions and review.
+- **Keep repositories together.** Group repositories into projects and [connect GitHub](docs/github-repositories.md) to clone them onto another Mac.
+- **Continue the work.** Browse shared sessions, open them in their native app, or prepare a [handoff](plugins/orka/README.md#handoffs) between tools.
+- **Stay in sync.** Run background sync, retry offline changes, and resolve conflicts.
 
-## Features
+See the [animated product tour](docs/assets/product-tour@2x.webp) for memories, skills, and session handoffs.
 
-- Group repositories into projects and filter context by repository.
-- [Connect GitHub repositories](docs/github-repositories.md), clone onto this Mac, and request missing access when enabled by your service.
-- Share project instructions, attributable memories, complete skill folders, plans, and native session snapshots.
-- Review proposed knowledge and permissions while keeping personal learning local.
-- Resolve sync conflicts and retry changes after working offline.
-- Run background sync with an adjustable interval.
-- Open sessions in their native app or download a session archive.
+## Get started
 
-New projects default to automatic context sharing, with sessions shared only on explicit request. Existing sharing choices are preserved. The plugins can share one selected snapshot without enabling its category; see [selected sharing](docs/selective-sharing.md). Review the [data and security model](docs/security-model.md) before sharing real projects. ENV sharing is currently disabled in the desktop UI.
+1. Download the universal DMG from [Releases](https://github.com/whysosaket/orka/releases), open it, and drag Orka into **Applications**. Supports Apple Silicon and Intel Macs.
+2. Open Orka and choose **Orka Cloud** or **Connect to your server**.
+3. Create or join a project, connect a local folder, and choose what to share.
 
-## Self-host with Docker Compose
+New projects share memories, plans, and skills automatically; sessions are shared only when asked. Choices are saved per project and Mac. See [sharing controls](docs/selective-sharing.md) and the [data and security model](docs/security-model.md). ENV sharing is currently disabled in the desktop UI.
 
-For image-based installation without Git or a source build, see the
-[operator release instructions](server/README.md#operator-releases). Source
-checkout setup remains available below.
+Orka is **alpha software**. Read [verification and limitations](docs/verification.md), especially for native session synchronization.
 
-Install and start [Docker Desktop](https://docs.docker.com/desktop/) or
-[Docker Engine with Compose](https://docs.docker.com/engine/install/), plus Git and
-OpenSSL (plus Bash/Python 3 for backups). The server runs on Linux, macOS, or Windows with WSL2. You do not need
-Node.js, Rust, a Supabase account, or email/OAuth keys to run it.
+## Self-host
 
-### Try it on your computer
+Run the server with Docker Compose, Git, and OpenSSL. No Orka Cloud account is required. To try it on this computer:
 
 ```sh
 git clone https://github.com/whysosaket/orka.git
@@ -49,54 +55,13 @@ sh ./orka-server setup --local --email you@example.com
 sh ./orka-server credentials
 ```
 
-Use your real email as the login name; no email is sent. Setup builds and starts
-the server, creates your account, and checks health. The first build can take a
-few minutes. `credentials` displays the saved login in your local terminal.
+Use your email as the login name; no email is sent. In Orka, choose **Connect to your server**, enter `http://127.0.0.1:8080`, and sign in with the displayed credentials. Local mode is accessible only on this computer.
 
-Open Orka on your Mac, choose **Connect to your server**, enter
-`http://127.0.0.1:8080`, and sign in with the displayed email/password. Create or
-connect a project and choose what to share. Local mode is only accessible on this
-computer. If port 8080 is busy, repeat setup with `--port 8181`.
+Follow the [server guide](server/README.md) for prerequisites, [team hosting over HTTPS](server/README.md#run-a-server-for-your-team), [image-based installation](server/README.md#operator-releases), backups, and upgrades.
 
-### Use it across your team's Macs
+## Develop
 
-On your Docker server, point a real domain at the host and allow TCP 80/443.
-From a fresh checkout on that host:
-
-```sh
-git clone https://github.com/whysosaket/orka.git
-cd orka/server
-sh ./orka-server setup --domain sync.example.com --email you@example.com
-sh ./orka-server credentials
-```
-
-Replace the domain and email with yours. Setup checks HTTPS; connect every Mac
-to `https://sync.example.com`. PostgreSQL, GoTrue, the API and Caddy run through
-Compose with persistent storage. No Orka Cloud account or private registry is
-required. Repeating setup preserves passwords and data.
-
-### Manage the server
-
-```sh
-sh ./orka-server status
-sh ./orka-server doctor
-sh ./orka-server user teammate@example.com
-sh ./orka-server backup
-sh ./orka-server stop
-sh ./orka-server start
-```
-
-The teammate command prints the private file containing their login; then invite
-that account to a project from Orka. `stop` keeps all data. `backup` verifies a
-restore and includes private server configuration; keep encrypted off-host copies.
-After selecting a new source revision, `sh ./orka-server upgrade` verifies a backup
-before rebuilding. Ordinary `start` reuses installed images without rebuilding. Keep the same directory and `.env` for this installation.
-See the [server README](server/README.md) for recovery, optional providers,
-troubleshooting and direct Compose commands.
-
-## Develop the desktop
-
-Install Node.js 24+, Rust, and Apple's Command Line Tools on macOS:
+On macOS, install Node.js 24+, Rust, and Apple's Command Line Tools:
 
 ```sh
 git clone https://github.com/whysosaket/orka.git
@@ -105,37 +70,10 @@ npm ci
 npm run dev:profile
 ```
 
-`npm run dev` starts a browser preview. The Tauri app is required for native filesystem, Keychain, and sync commands. Choose Orka Cloud or enter an existing compatible service at sign-in. See [local development](docs/development.md), [contributing](CONTRIBUTING.md), and the [design system](docs/design-system/components.md).
+`npm run dev` opens a browser preview; native features require Tauri. Build the app and DMG with `npm run mac`.
 
-## Build
+[Development guide](docs/development.md) · [Contributing and checks](CONTRIBUTING.md) · [Architecture](docs/architecture.md) · [Manual builds](docs/manual-builds.md) · [Plugins](plugins/orka/README.md)
 
-```sh
-npm run mac
-```
+---
 
-The app and DMG are written under `apps/mac/src-tauri/target/release/bundle/`.
-
-[Checks](https://github.com/whysosaket/orka/actions/workflows/ci.yml) run on pull requests and pushes to `main`. [On-demand macOS build](https://github.com/whysosaket/orka/actions/workflows/release.yml) builds Apple Silicon, Intel, or universal downloads from `main`. Development builds need no Apple credentials; notarized builds require the protected signing environment. See [manual builds](docs/manual-builds.md).
-
-## Repository scope
-
-This repository contains the React interface, Tauri/Rust desktop application, client tests, documentation, integration plugin, and the MIT-licensed self-hosted server source in [`server/`](server/README.md). The checksummed package in `vendor/` contains the shared protocol schemas and fixtures needed to build and test the client.
-
-The server includes the shared API implementation, authentication adapters, database migrations, Dockerfile, Compose configuration, backup/restore tools and backend tests. It builds from this checkout without private repository or registry access. Its dependencies are separate from the desktop, which still builds and tests without a running backend.
-
-This repository starts with a reviewed source snapshot and fresh Git history. Contributor attribution is preserved in [AUTHORS.md](AUTHORS.md). The existing `@portable/*` package names, native application identifiers, and Keychain identities remain stable for compatibility.
-
-## Checks
-
-```sh
-npm run check:repository
-npm run lint
-npm run format:check
-npm run typecheck
-npm test
-npm run build
-npm run test:ui
-npm run native:test
-```
-
-Report vulnerabilities privately using [SECURITY.md](SECURITY.md). Source is licensed under [MIT](LICENSE); dependencies and third-party assets retain their own terms in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[MIT license](LICENSE) · [Contributors](AUTHORS.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Report a vulnerability](SECURITY.md)
