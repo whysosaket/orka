@@ -279,6 +279,77 @@
     @apply m-0 list-none border border-line p-0;
     border-radius: var(--radius-list);
   }
+  .settings-update-card {
+    @apply flex min-w-0 flex-col gap-6 p-5;
+  }
+  .settings-update-identity {
+    @apply flex items-center gap-3;
+  }
+  .settings-update-icon {
+    @apply flex size-12 shrink-0 items-center justify-center rounded-xl bg-raised text-muted;
+  }
+  .settings-update-identity h3 {
+    @apply mb-0 text-label-item;
+  }
+  .settings-update-status {
+    @apply flex flex-col gap-2;
+  }
+  .settings-update-status strong {
+    @apply text-label-sm font-medium;
+  }
+  .settings-update-status .settings-update-checked,
+  .settings-update-release-version {
+    @apply text-label-caption text-muted;
+  }
+  .settings-update-actions {
+    @apply flex flex-wrap items-center gap-3;
+  }
+  .settings-update-actions > [role="alert"],
+  .settings-update-actions > .sidebar-update-progress {
+    @apply w-full;
+  }
+  .settings-update-release {
+    @apply flex min-w-0 flex-col gap-3;
+  }
+  .settings-update-notes summary {
+    @apply flex cursor-pointer flex-wrap items-center gap-3 p-5 text-label-sm;
+    list-style: none;
+  }
+  .settings-update-notes summary::-webkit-details-marker {
+    display: none;
+  }
+  .settings-update-notes summary::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    margin-right: 2px;
+  }
+  .settings-update-notes[open] summary::before {
+    transform: rotate(45deg);
+  }
+  .settings-update-release-version {
+    @apply ml-auto;
+  }
+  .settings-update-notes-content {
+    @apply flex flex-col items-start gap-4 border-t border-line p-5;
+  }
+  .settings-update-notes-content p {
+    white-space: pre-wrap;
+  }
+  .settings-updates-dialog {
+    width: min(600px, calc(100vw - 32px));
+    max-height: calc(100vh - 48px);
+  }
+  .settings-updates-dialog .settings-panel {
+    @apply p-6;
+    max-height: calc(100vh - 48px);
+  }
+  .settings-updates-dialog .settings-panel > .ui-button {
+    @apply self-end;
+  }
   .settings-project-name {
     @apply flex min-w-0 items-start gap-2.5;
   }
