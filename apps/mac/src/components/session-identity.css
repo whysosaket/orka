@@ -41,9 +41,10 @@
 
 .session-identity-avatar > img {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
   object-fit: cover;
 }
 
