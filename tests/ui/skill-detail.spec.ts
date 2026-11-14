@@ -58,6 +58,29 @@ for (const width of [1160, 900]) {
     expect(metrics.descriptionRight).toBeCloseTo(metrics.contentRight, 0);
     expect(metrics.dateRight).toBeCloseTo(metrics.contentRight, 0);
     expect(metrics.titleRight).toBeLessThanOrEqual(metrics.menuLeft);
+    const toolbar = page.getByRole("group", { name: "skills tools" });
+    for (const query of ["", "issue"]) {
+      await toolbar
+        .getByRole("searchbox", { name: "Search skills" })
+        .fill(query);
+      const alignment = await toolbar.evaluate((element) => {
+        const sort = element
+          .querySelector(".index-toolbar-sort")!
+          .getBoundingClientRect();
+        const refresh = element
+          .querySelector('[aria-label="Refresh skill usage"]')!
+          .getBoundingClientRect();
+        return {
+          right: element.getBoundingClientRect().right,
+          refreshRight: refresh.right,
+          gap: refresh.left - sort.right,
+        };
+      });
+      expect(
+        Math.abs(alignment.right - alignment.refreshRight),
+      ).toBeLessThanOrEqual(1);
+      expect(alignment.gap).toBeCloseTo(12, 0);
+    }
     const menu = page.getByRole("button", {
       name: "Actions for issue-investigate-followup",
       exact: true,

@@ -21,6 +21,7 @@ for (const width of [1160, 900]) {
     for (const [label, noun, singular] of [
       ["Sessions", "sessions", "session"],
       ["Memories", "memories", "memory"],
+      ["Plans", "plans", "plan"],
     ]) {
       await page.getByRole("button", { name: new RegExp(`^${label}`) }).click();
       const toolbar = page.getByRole("group", { name: `${noun} tools` });
@@ -32,7 +33,21 @@ for (const width of [1160, 900]) {
         ["Mine", 3],
         ["Shared with me", 1],
       ] as const) {
-        await ownership.getByRole("button", { name: tab, exact: true }).click();
+        const selectedTab = ownership.getByRole("button", {
+          name: tab,
+          exact: true,
+        });
+        await selectedTab.click();
+        await expect(selectedTab).toHaveAttribute("aria-pressed", "true");
+        await expect(selectedTab).toHaveCSS(
+          "background-color",
+          "rgba(0, 0, 0, 0)",
+        );
+        expect(
+          await selectedTab.evaluate(
+            (button) => getComputedStyle(button, "::after").height,
+          ),
+        ).toBe("2px");
         const resultCount = toolbar.locator(".index-toolbar-count");
         if (count === null) await expect(resultCount).toHaveCount(0);
         else {
@@ -49,6 +64,10 @@ for (const width of [1160, 900]) {
             .getBoundingClientRect().right,
         }));
         expect(Math.abs(right.toolbar - right.sort)).toBeLessThanOrEqual(1);
+        const refreshRight = await page
+          .getByRole("button", { name: "Refresh local items", exact: true })
+          .evaluate((button) => button.getBoundingClientRect().right);
+        expect(Math.abs(right.toolbar - refreshRight)).toBeLessThanOrEqual(1);
       }
       await toolbar
         .getByRole("button", { name: "Sort by Recently updated", exact: true })
@@ -226,10 +245,7 @@ for (const { kind, label } of kinds) {
     const table = page.getByRole("table");
     await expect(
       ownership.getByRole("button", {
-        name:
-          kind === "plan"
-            ? "All"
-            : `All ${kind === "memory" ? "memories" : "sessions"}`,
+        name: `All ${label.toLowerCase()}`,
         exact: true,
       }),
     ).toHaveAttribute("aria-pressed", "true");

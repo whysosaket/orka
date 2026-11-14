@@ -129,16 +129,13 @@ export function ResourceIndex({
         {kind !== "skill" && (
           <div className="resource-ownership-toolbar">
             <SegmentedControl
-              className={
-                kind === "plan" ? undefined : "resource-ownership-tabs"
-              }
+              className="resource-ownership-tabs"
               label="Filter by ownership"
               value={ownership}
               options={[
                 {
                   value: "all",
-                  label:
-                    kind === "plan" ? "All" : `All ${collectionNoun(kind)}`,
+                  label: `All ${collectionNoun(kind)}`,
                 },
                 { value: "mine", label: "Mine" },
                 { value: "shared", label: "Shared with me" },
