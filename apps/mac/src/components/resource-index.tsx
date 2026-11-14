@@ -102,6 +102,7 @@ export function ResourceIndex({
     if (
       !refreshRequest ||
       !discoveryResult ||
+      discovering ||
       discoveryResult === refreshRequest.result
     )
       return;
@@ -112,7 +113,7 @@ export function ResourceIndex({
         kind: "success",
         title: `Local ${collectionNoun(kind)} refreshed`,
       });
-  }, [discoveryResult, refreshRequest, kind, notify]);
+  }, [discovering, discoveryResult, refreshRequest, kind, notify]);
   const ownership = kind === "skill" ? "all" : (filters.ownership ?? "all");
   const root = useRef<HTMLElement>(null);
   const visible = useMemo(

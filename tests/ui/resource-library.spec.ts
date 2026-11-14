@@ -235,6 +235,94 @@ test("GitHub teammate photos obey the packaged image policy and failures keep a 
   await expect(identity.locator(".resource-identity-avatar svg")).toBeVisible();
 });
 
+for (const { kind, label } of kinds)
+  for (const outcome of ["success", "failure"])
+    test(`${label} retry feedback waits until busy discovery completes with ${outcome}`, async ({
+      page,
+    }) => {
+      await page.clock.install();
+      await resourceLibraryFixture(page);
+      await page.getByRole("button", { name: new RegExp(`^${label}`) }).click();
+      const item = page.getByRole("button", {
+        name: `Private ${kind} notes`,
+        exact: true,
+      });
+      await expect(item).toBeVisible();
+      await page.evaluate(() => {
+        (window as unknown as LibraryWindow).library.busyCatalog = true;
+      });
+      const refresh = page.getByRole("button", {
+        name: "Refresh local items",
+        exact: true,
+      });
+      await refresh.click();
+      await page.clock.runFor(100);
+      await expect(refresh).toBeDisabled();
+      const success = page.getByText(`Local ${label.toLowerCase()} refreshed`, {
+        exact: true,
+      });
+      await expect(success).toHaveCount(0);
+      await expect(item).toBeVisible();
+      await page.evaluate((outcome) => {
+        const library = (window as unknown as LibraryWindow).library;
+        library.busyCatalog = false;
+        library.failCatalog = outcome === "failure";
+      }, outcome);
+      await page.clock.runFor(5100);
+      if (outcome === "success") await expect(success).toBeVisible();
+      else {
+        await expect(success).toHaveCount(0);
+        await expect(page.getByRole("alert")).toContainText(
+          `Couldn’t refresh local ${label.toLowerCase()}`,
+        );
+      }
+      await expect(refresh).toBeEnabled();
+      await expect(item).toBeVisible();
+    });
+
+test("cached revalidation during a manual refresh waits for discovery feedback", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await resourceLibraryFixture(page, { cachedLocal: true });
+  await page.getByRole("button", { name: /^Sessions/ }).click();
+  const refresh = page.getByRole("button", {
+    name: "Refresh local items",
+    exact: true,
+  });
+  await expect(refresh).toBeEnabled();
+  await page.evaluate(() => {
+    (window as unknown as LibraryWindow).library.busyCatalog = true;
+  });
+  await refresh.click();
+  await page.clock.runFor(100);
+  await expect(refresh).toBeDisabled();
+  await page.evaluate(() => {
+    const library = (window as unknown as LibraryWindow).library;
+    library.busyCatalog = false;
+    library.deferCatalog = true;
+    library.folderState = "reconnect";
+  });
+  await page.clock.runFor(3100);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => typeof (window as unknown as LibraryWindow).library.finishCatalog,
+      ),
+    )
+    .toBe("function");
+  const success = page.getByText("Local sessions refreshed", { exact: true });
+  await expect(success).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Private session notes", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() =>
+    (window as unknown as LibraryWindow).library.finishCatalog?.(),
+  );
+  await expect(success).toBeVisible();
+  await expect(refresh).toBeEnabled();
+});
+
 for (const { kind, label } of kinds) {
   test(`${label} include private content with sharing off and filter by stable ownership`, async ({
     page,
@@ -390,6 +478,44 @@ test("a pending local scan does not report an empty collection", async ({
   ).toBeVisible();
 });
 
+for (const [kind, label] of [
+  ["memory", "Memories"],
+  ["session", "Sessions"],
+  ["plan", "Plans"],
+])
+  test(`${label} show saved local rows while startup discovery is pending`, async ({
+    page,
+  }) => {
+    await resourceLibraryFixture(page, {
+      emptyShared: true,
+      cachedLocal: true,
+      defer: true,
+    });
+    await page.getByRole("button", { name: new RegExp(`^${label}`) }).click();
+    await expect(
+      page.getByRole("button", {
+        name: `Private ${kind} notes`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Refresh local items",
+        exact: true,
+      }),
+    ).toBeDisabled();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.evaluate(() =>
+      (window as unknown as LibraryWindow).library.finishCatalog?.(),
+    );
+    await expect(
+      page.getByRole("button", {
+        name: "Refresh local items",
+        exact: true,
+      }),
+    ).toBeEnabled();
+  });
+
 test("refresh failures retain private entries and retry discovery without syncing", async ({
   page,
 }) => {
@@ -516,7 +642,11 @@ for (const { kind, label } of kinds) {
         () => (window as unknown as LibraryWindow).library.calls,
       );
       expect(
-        calls.filter((call) => call.command === "local_resource_catalog"),
+        calls.filter(
+          (call) =>
+            call.command === "local_resource_catalog" &&
+            call.args.refresh !== false,
+        ),
       ).toHaveLength(4);
       expect(
         calls.some((call) =>
@@ -645,7 +775,9 @@ test("configured sync timing refreshes local-only rows without clearing collecti
   const catalogs = () =>
     page.evaluate(() =>
       (window as unknown as LibraryWindow).library.calls.filter(
-        (call) => call.command === "local_resource_catalog",
+        (call) =>
+          call.command === "local_resource_catalog" &&
+          call.args.refresh !== false,
       ),
     );
   await page.evaluate(() => {
