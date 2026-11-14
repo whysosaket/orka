@@ -297,9 +297,7 @@ for (const viewport of [
           .locator("td")
           .nth(1)
           .evaluate((cell) => {
-            const pill = cell.querySelector(
-              ".session-identity, .resource-source-pill",
-            )!;
+            const pill = cell.querySelector(".resource-identity")!;
             return (
               pill.getBoundingClientRect().right <=
               cell.getBoundingClientRect().right -

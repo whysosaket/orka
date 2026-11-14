@@ -107,11 +107,11 @@ for (const width of [1160, 900]) {
       exact: true,
     });
     await expect(
-      identity.locator(".session-identity-avatar img"),
+      identity.locator(".resource-identity-avatar img"),
     ).toBeVisible();
     const geometry = await local.evaluate((row) => {
-      const tool = row.querySelector(".session-identity-tool")!;
-      const avatar = row.querySelector(".session-identity-avatar")!;
+      const tool = row.querySelector(".resource-identity-tool")!;
+      const avatar = row.querySelector(".resource-identity-avatar")!;
       const toolBox = tool.getBoundingClientRect();
       const avatarBox = avatar.getBoundingClientRect();
       return {
@@ -158,7 +158,7 @@ for (const width of [1160, 900]) {
       exact: true,
     });
     await expect(
-      teammate.locator(".session-identity-avatar svg"),
+      teammate.locator(".resource-identity-avatar svg"),
     ).toBeVisible();
     const tabs = page.getByRole("group", { name: "Filter by ownership" });
     const all = tabs.getByRole("button", { name: "All", exact: true });
@@ -223,7 +223,7 @@ test("GitHub teammate photos obey the packaged image policy and failures keep a 
     name: "Claude · Mira",
     exact: true,
   });
-  const photo = identity.locator(".session-identity-avatar img");
+  const photo = identity.locator(".resource-identity-avatar img");
   await expect
     .poll(() => photo.evaluate((img: HTMLImageElement) => img.naturalWidth))
     .toBe(1);
@@ -232,7 +232,7 @@ test("GitHub teammate photos obey the packaged image policy and failures keep a 
   await page.reload();
   await page.getByRole("button", { name: /^Sessions/ }).click();
   await expect(photo).toBeHidden();
-  await expect(identity.locator(".session-identity-avatar svg")).toBeVisible();
+  await expect(identity.locator(".resource-identity-avatar svg")).toBeVisible();
 });
 
 for (const { kind, label } of kinds) {

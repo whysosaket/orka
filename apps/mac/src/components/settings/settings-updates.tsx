@@ -81,6 +81,7 @@ export function SettingsUpdates({ updates }: { updates: DesktopUpdates }) {
         <div className="settings-update-actions">
           {status?.update && <UpdateInstallation updates={updates} />}
           <Button
+            className="settings-update-check"
             disabled={checking || installing || unsupported}
             onClick={() => void updates.check(true)}
           >
