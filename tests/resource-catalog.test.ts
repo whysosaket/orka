@@ -112,6 +112,29 @@ void test("ownership composes with repository, provider, search, and sorting", (
   assert.equal(catalog.length, 6);
 });
 
+void test("author sorting follows the displayed session owner while other collections keep their updater", () => {
+  for (const kind of ["session", "memory", "plan", "skill"] as const) {
+    const catalog = [
+      resource("alex-session", { kind, owner: "alex", updatedBy: "zoe" }),
+      resource("zoe-session", { kind, owner: "zoe", updatedBy: "alex" }),
+    ];
+    const sorted = applyIndexFilters(
+      catalog,
+      { ...defaultIndexFilters, sort: "author" },
+      {
+        ...context,
+        memberName: (id) => id,
+      },
+    ).map((item) => item.resourceId);
+    assert.deepEqual(
+      sorted,
+      kind === "session"
+        ? ["alex-session", "zoe-session"]
+        : ["zoe-session", "alex-session"],
+    );
+  }
+});
+
 void test("a private continuation occupies one row while preserving its published ownership and revision", () => {
   const published = resource("continued");
   const continuation = {

@@ -270,7 +270,9 @@ for (const viewport of [
           .locator("tbody tr")
           .first()
           .evaluate((row) => {
-            const metadata = Array.from(row.querySelectorAll("td")).slice(0, 4);
+            const metadata = Array.from(
+              row.querySelectorAll("td:not(.resource-table-actions)"),
+            );
             return metadata.map((cell) => ({
               width: cell.getBoundingClientRect().width,
               paddingLeft: getComputedStyle(cell).paddingLeft,
@@ -295,7 +297,9 @@ for (const viewport of [
           .locator("td")
           .nth(1)
           .evaluate((cell) => {
-            const pill = cell.querySelector(".resource-source-pill")!;
+            const pill = cell.querySelector(
+              ".session-identity, .resource-source-pill",
+            )!;
             return (
               pill.getBoundingClientRect().right <=
               cell.getBoundingClientRect().right -

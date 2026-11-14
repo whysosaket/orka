@@ -895,16 +895,13 @@
     overflow-wrap: anywhere;
   }
   .skill-card-title {
-    @apply flex w-full min-w-0 items-start gap-2;
+    @apply flex w-full min-w-0 items-start gap-2 pr-[30px];
   }
   .skill-origin-badge {
     @apply inline-flex shrink-0 items-center rounded border border-line bg-surface-tertiary px-1.5 py-0.5 text-body-2xs text-secondary;
   }
-  .skill-card small {
-    @apply -mt-1 block w-full truncate text-body-2xs text-muted;
-  }
   .skill-card-description {
-    @apply m-0 line-clamp-3 w-full flex-1 text-sm text-secondary;
+    @apply m-0 line-clamp-2 w-full flex-1 text-sm text-secondary;
     overflow-wrap: anywhere;
   }
   .skill-card .resource-conflict {
@@ -912,9 +909,6 @@
   }
   .skill-card-meta {
     @apply mt-1 flex w-full flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted;
-  }
-  .skill-card-files {
-    @apply shrink-0 tabular-nums;
   }
   .skill-card-meta time {
     @apply ml-auto shrink-0 tabular-nums;
@@ -1024,6 +1018,38 @@
   .resource-ownership-toolbar {
     @apply mb-4 flex items-center justify-between gap-3;
   }
+  .segmented-control.resource-ownership-tabs {
+    @apply gap-6;
+    min-width: 0;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .resource-ownership-tabs .ui-button {
+    @apply text-body-sm;
+    position: relative;
+    min-height: 44px;
+    padding: 0 0 12px;
+    border-radius: 0;
+    color: var(--text-secondary);
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+  }
+  .resource-ownership-tabs .ui-button:hover,
+  .resource-ownership-tabs .ui-button[aria-pressed="true"] {
+    color: var(--text-primary);
+    background: transparent;
+  }
+  .resource-ownership-tabs .ui-button[aria-pressed="true"]::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: var(--text-primary);
+    content: "";
+  }
   .resource-discovery-status {
     @apply mb-4 text-body-xs text-muted;
   }
@@ -1054,6 +1080,10 @@
   .index-toolbar .index-toolbar-sort {
     --control-gap: 4px;
     --control-padding-x: 10px;
+    margin-left: auto;
+  }
+  .index-toolbar-count + .index-toolbar-sort {
+    margin-left: 0;
   }
   .index-toolbar .index-toolbar-sort[data-state="open"] {
     background: var(--interaction-selected);
