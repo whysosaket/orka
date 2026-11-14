@@ -135,7 +135,7 @@ export function ResourceIndex({
               options={[
                 {
                   value: "all",
-                  label: `All ${collectionNoun(kind)}`,
+                  label: "All",
                 },
                 { value: "mine", label: "Mine" },
                 { value: "shared", label: "Shared with me" },
