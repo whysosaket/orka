@@ -22,7 +22,13 @@ async function capture(page: Page, state: string) {
     fixture: "synthetic-settings-v1",
     theme: "desktop-dark",
     expectedVisible: [
-      state === "consent" ? ".plugin-authorization" : ".settings-panel",
+      state === "consent" || state === "first-connection"
+        ? ".plugin-authorization"
+        : state === "startup"
+          ? '.sidebar-bottom button[aria-label="Settings"]'
+          : state === "reconnect-toast"
+            ? "[data-orka-toast]"
+            : ".settings-panel",
     ],
   });
 }
@@ -31,6 +37,10 @@ const openConnection = async (page: Page) => {
   await page.evaluate(() => {
     (window as any).settingsControls.pluginRequestId = "fixture-request";
   });
+  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Review request", exact: true })
+    .click();
   return page.getByRole("dialog", {
     name: "Connect to Orka",
     exact: true,
@@ -144,26 +154,162 @@ test("consent remains fixed while loading and fits a compact window", async ({
   ).toEqual({ requestId: "fixture-request" });
 });
 
-test("native stale-session errors require a new connection", async ({
+test("a verified first connection opens consent from Home", async ({
   page,
 }) => {
-  await settingsFixture(page);
-  const dialog = await openConnection(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await settingsFixture(page, {
+    openSettings: false,
+    pluginRequestId: "fixture-request",
+    pluginFirstConnection: true,
+    pluginClientName: "Codex",
+    pluginRemembered: true,
+  });
+  const dialog = page.getByRole("dialog", { name: "Connect to Orka" });
+  await expect(
+    dialog.getByRole("heading", { name: "Codex", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Allow connection" }),
+  ).toBeEnabled();
+  await capture(page, "first-connection");
+  expect(
+    (await settingsCalls(page)).find(
+      ({ command, args }) =>
+        command === "plugin_authorization" && args.operation === "preview",
+    )?.args.input,
+  ).toEqual({ requestId: "fixture-request", automatic: true });
+  await dialog.getByRole("button", { name: "Allow connection" }).click();
+  await expect(dialog.getByRole("status")).toContainText("Connection approved");
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Settings", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator("[data-orka-toast]")).toHaveCount(0);
+});
+
+for (const previewBusy of [false, true]) {
+  test(`automatic consent closes when the assistant leaves ${previewBusy ? "before preview" : "during review"}`, async ({
+    page,
+  }) => {
+    await settingsFixture(page, {
+      openSettings: false,
+      pluginRequestId: "fixture-request",
+      pluginFirstConnection: true,
+      pluginError: previewBusy
+        ? "A sync or project operation is in progress."
+        : undefined,
+    });
+    const dialog = page.getByRole("dialog", { name: "Connect to Orka" });
+    if (previewBusy)
+      await expect(dialog.getByRole("alert")).toContainText(
+        "A sync or project operation",
+      );
+    else
+      await expect(
+        dialog.getByRole("button", { name: "Allow connection" }),
+      ).toBeEnabled();
+    await page.evaluate(() => {
+      (window as any).settingsControls.pluginRequestId = "";
+    });
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator("[data-orka-toast]")).toHaveCount(0);
+  });
+}
+
+test("a failed reconnect shows a quiet bottom-right toast with a Connectors action", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 640 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await settingsFixture(page, {
+    openSettings: false,
+    pluginClientName: "Claude Code",
+    pluginRemembered: true,
+  });
+  const settings = page.getByRole("button", { name: "Settings", exact: true });
+  await settings.focus();
+  await expect(settings).toBeFocused();
+  await expect(page.locator("[data-orka-toast]")).toHaveCount(0);
+  await page.evaluate(() => {
+    const controls = (window as any).settingsControls;
+    controls.pluginRequestId = "fixture-request";
+    controls.pluginReconnectNotice = "Claude Code";
+  });
+  const toast = page.locator("[data-orka-toast]");
+  await expect(toast.getByRole("status")).toHaveText(
+    "Claude Code couldn’t reconnect to Orka",
+  );
+  await expect(toast.getByRole("alert")).toHaveCount(0);
+  await expect(settings).toBeFocused();
+  await expect(
+    page.getByRole("dialog", { name: "Connect to Orka" }),
+  ).toHaveCount(0);
+  await expect
+    .poll(async () => {
+      const bounds = await toast.boundingBox();
+      return (
+        bounds && [
+          Math.round(bounds.x + bounds.width),
+          Math.round(bounds.y + bounds.height),
+        ]
+      );
+    })
+    .toEqual([876, 616]);
+  await capture(page, "reconnect-toast");
+  await toast.getByRole("button", { name: "Connectors" }).click();
+  const panel = page.locator('.settings-panel[data-section="connections"]');
+  await expect(
+    panel.getByRole("button", { name: "Review request" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Connect to Orka" }),
+  ).toHaveCount(0);
+});
+
+test("requests stay in Settings and an expired request closes quietly", async ({
+  page,
+}) => {
+  await settingsFixture(page, {
+    openSettings: false,
+    pluginRequestId: "fixture-request",
+  });
+  await expect(
+    page.getByRole("button", { name: "Settings", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Connect to Orka" }),
+  ).toHaveCount(0);
+  expect(
+    (await settingsCalls(page)).filter(
+      ({ command }) => command === "plugin_authorization",
+    ),
+  ).toHaveLength(0);
+  await capture(page, "startup");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  const review = page.getByRole("button", {
+    name: "Review request",
+    exact: true,
+  });
+  await expect(review).toBeVisible();
+  await capture(page, "pending");
+  await review.click();
+  const dialog = page.getByRole("dialog", { name: "Connect to Orka" });
   await expect(
     dialog.getByRole("button", { name: "Allow connection", exact: true }),
   ).toBeEnabled();
   await page.evaluate(() => {
-    (window as any).settingsControls.pluginError =
-      "Account changed. Reconnect your assistant.";
+    (window as any).settingsControls.pluginRequestId = "";
   });
   await dialog
     .getByRole("button", { name: "Allow connection", exact: true })
     .click();
-  await expect(dialog.getByRole("alert")).toContainText("Account changed");
-  await expect(dialog.getByRole("alert")).toBeInViewport({ ratio: 1 });
-  await expect(
-    dialog.getByRole("button", { name: "Allow connection", exact: true }),
-  ).toBeDisabled();
+  await expect(dialog).toHaveCount(0);
+  const panel = page.locator('.settings-panel[data-section="connections"]');
+  await expect(panel.getByRole("status")).toHaveText("Not connected");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
 });
 
 test("a transient preview failure can retry a fresh native review", async ({
@@ -218,13 +364,7 @@ test("a changed workspace cannot approve the identity shown before the change", 
     (window as any).settingsEmit("workspace-changed", null);
   });
   // The normal workspace refresh observes the switched identity.
-  await expect(dialog.getByRole("alert")).toContainText(
-    "account or service changed",
-    { timeout: 15000 },
-  );
-  await expect(
-    dialog.getByRole("button", { name: "Allow connection", exact: true }),
-  ).toBeDisabled();
+  await expect(dialog).toHaveCount(0, { timeout: 15000 });
   expect(
     (await settingsCalls(page)).filter(
       ({ command, args }) =>
@@ -254,7 +394,7 @@ test("connections show reconnect instructions and refresh recorded approval", as
   );
   await expect(
     panel.getByText(
-      "Approve the account and access shown in Orka once for each running assistant.",
+      "Review new requests here. Orka remembers access for verified assistants on this Mac.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -565,7 +705,10 @@ test("one assistant connection shows its active sessions and revokes them togeth
 test("an idle assistant approval stays revocable without claiming an active connection", async ({
   page,
 }) => {
-  const settings = await settingsFixture(page, { pluginClientName: "Codex" });
+  const settings = await settingsFixture(page, {
+    pluginClientName: "Codex",
+    pluginRemembered: true,
+  });
   await page.evaluate(() => {
     (window as any).settingsControls.pluginState = "idle";
   });
@@ -581,6 +724,11 @@ test("an idle assistant approval stays revocable without claiming an active conn
   await expect(
     connections.getByText("0 active sessions", { exact: true }),
   ).toHaveCount(0);
+  await expect(
+    connections.getByText("Access saved for next time"),
+  ).toBeVisible();
+  await expect(connections.getByText("Read · Write · Manage")).toBeVisible();
+  await capture(page, "idle");
   await connections.getByRole("button", { name: "Revoke access" }).click();
   await expect(connections).toHaveCount(0);
   await expect(panel.getByRole("status")).toHaveText("Not connected");
@@ -624,7 +772,7 @@ test("long connector identities scroll inside consent without moving its actions
 test("connector scopes can narrow consent and approved sessions can be revoked", async ({
   page,
 }) => {
-  const settings = await settingsFixture(page);
+  await settingsFixture(page);
   const dialog = await openConnection(page);
   const checks = dialog.getByRole("checkbox");
   await expect(checks).toHaveCount(3);
@@ -647,9 +795,6 @@ test("connector scopes can narrow consent and approved sessions can be revoked",
     )?.args.input,
   ).toEqual({ requestId: "fixture-request", scopes: ["orka.read"] });
   await dialog.getByRole("button", { name: "Done", exact: true }).click();
-  await settings
-    .getByRole("button", { name: "Connectors", exact: true })
-    .click();
   const panel = page.locator('.settings-panel[data-section="connections"]');
   await expect(
     panel.getByRole("button", { name: "Revoke access" }),

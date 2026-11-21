@@ -502,6 +502,8 @@ test("resource skeletons keep the reader header and navigation usable", async ({
     exact: true,
   });
   await expect(title).toBeVisible();
+  // Keep the before and after measurements on the same loaded font.
+  await page.evaluate(() => document.fonts.ready);
   const before = await title.boundingBox();
   await expect(view.locator(".loading-region")).toHaveAttribute(
     "aria-busy",

@@ -262,7 +262,11 @@ fn take_focus_request(root: &std::path::Path) -> bool {
 pub fn watch_focus_requests(app: tauri::AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_millis(500));
-        if db::root().is_ok_and(|root| take_focus_request(&root)) {
+        if db::root().is_ok_and(|root| {
+            let connector = fs::remove_file(root.join("connector-focus")).is_ok()
+                && crate::plugin_connection::has_first_pending_consent().unwrap_or(false);
+            take_focus_request(&root) || connector
+        }) {
             let _ = crate::menu_bar::open_main(&app);
         }
     });

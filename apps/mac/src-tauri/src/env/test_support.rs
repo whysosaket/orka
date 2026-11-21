@@ -77,14 +77,18 @@ impl CredentialApi for MemoryCredential {
         self
     }
 }
+pub(crate) fn install_memory_keychain() {
+    keyring::set_default_credential_builder(Box::new(Builder(Arc::new(Mutex::new(
+        BTreeMap::new(),
+    )))));
+}
+
 pub fn run() {
     if std::env::var_os("ORKA_TEST_HOME").is_none() {
         eprintln!("Isolated test home required");
         std::process::exit(1);
     }
-    keyring::set_default_credential_builder(Box::new(Builder(Arc::new(Mutex::new(
-        BTreeMap::new(),
-    )))));
+    install_memory_keychain();
     let runtime = tokio::runtime::Runtime::new().expect("Test runtime");
     let mut connector_broker: Option<crate::plugin_broker::Broker> = None;
     for line in std::io::stdin().lock().lines() {

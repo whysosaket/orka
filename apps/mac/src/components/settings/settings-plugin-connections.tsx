@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ExternalLinkIcon, PlugIcon } from "lucide-react";
 import type { Snapshot } from "../../types.js";
-import type { PluginAccount } from "../plugin-authorization.js";
+import {
+  PluginAuthorization,
+  type PluginAccount,
+} from "../plugin-authorization.js";
 import { Button } from "../button.js";
 import { Icon } from "../icon.js";
 import { SettingsHeading, settingsScope } from "./settings-shared.js";
@@ -19,6 +22,8 @@ interface ConnectionStatus {
     state: string;
     connectedAt: string | null;
     sessionCount?: number;
+    remembered?: boolean;
+    requestId?: string;
   }[];
   pendingCount: number;
   reason: string | null;
@@ -40,6 +45,14 @@ export function SettingsPluginConnections({ state }: { state: Snapshot }) {
   const check = useRef<() => void>(() => {});
   const [revoking, setRevoking] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
+  const [request, setRequest] = useState<{
+    requestId: string;
+    scope: string;
+  } | null>(null);
+  const closeRequest = useCallback(() => {
+    setRequest(null);
+    setRevision((value) => value + 1);
+  }, []);
   const [setupError, setSetupError] = useState("");
   const installationUrl =
     "https://github.com/quaylabshq/orka/blob/main/plugins/orka/README.md#connect";
@@ -179,14 +192,11 @@ export function SettingsPluginConnections({ state }: { state: Snapshot }) {
           ) : (
             result &&
             (result.state === "linked" ? (
-              <p>
-                Connected assistants use the account signed in here. Review or
-                revoke their sessions below.
-              </p>
+              <p>Connected assistants use this account. Manage access below.</p>
             ) : (
               <p>
                 {result.reason ||
-                  "Connect Orka from your assistant, then approve its session here."}
+                  "Connect Orka from your assistant, then review its request here."}
               </p>
             ))
           )}
@@ -213,7 +223,8 @@ export function SettingsPluginConnections({ state }: { state: Snapshot }) {
               <div>
                 <h3>{connection.client.name}</h3>
                 <p>
-                  {connection.state === "approved"
+                  {connection.state === "approved" ||
+                  connection.state === "idle"
                     ? connection.scopes
                         .map(
                           (value) =>
@@ -224,19 +235,31 @@ export function SettingsPluginConnections({ state }: { state: Snapshot }) {
                             })[value] ?? value,
                         )
                         .join(" · ")
-                    : connection.state === "idle"
-                      ? "No active sessions"
-                      : connection.state === "pending"
-                        ? "Awaiting approval"
-                        : connection.state === "denied"
-                          ? "Access removed"
-                          : "Reconnect required"}
+                    : connection.state === "pending"
+                      ? "Awaiting approval"
+                      : connection.state === "denied"
+                        ? "Access removed"
+                        : "Reconnect required"}
                 </p>
+                {connection.state === "idle" && <p>No active sessions</p>}
+                {connection.state === "idle" && connection.remembered && (
+                  <p>Access saved for next time</p>
+                )}
                 {connection.state === "approved" &&
                   (connection.sessionCount ?? 0) > 1 && (
                     <p>{connection.sessionCount} active sessions</p>
                   )}
               </div>
+              {connection.state === "pending" && connection.requestId && (
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    setRequest({ requestId: connection.requestId!, scope })
+                  }
+                >
+                  Review request
+                </Button>
+              )}
               {(connection.state === "approved" ||
                 connection.state === "idle") && (
                 <Button
@@ -267,12 +290,12 @@ export function SettingsPluginConnections({ state }: { state: Snapshot }) {
               Install the desktop Orka plugin in your assistant and connect.
             </li>
             <li>
-              Approve the account and access shown in Orka once for each running
-              assistant.
+              Review new requests here. Orka remembers access for verified
+              assistants on this Mac.
             </li>
             <li>
-              After an account or service change, reconnect from your assistant
-              and approve a new session.
+              After an account or service change, reconnect in your assistant
+              and review the new request here.
             </li>
           </ol>
         </div>
@@ -293,6 +316,14 @@ export function SettingsPluginConnections({ state }: { state: Snapshot }) {
         </Button>
         {setupError && <p role="alert">{setupError}</p>}
       </section>
+      {request && (
+        <PluginAuthorization
+          key={request.requestId}
+          request={request}
+          scope={scope}
+          onClose={closeRequest}
+        />
+      )}
     </>
   );
 }

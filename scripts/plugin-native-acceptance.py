@@ -1,4 +1,4 @@
-import argparse, base64, hashlib, http.server, json, os, pathlib, queue, sqlite3, subprocess, tempfile, threading, uuid, socket, struct, time, sys, signal
+import argparse, base64, hashlib, http.server, json, os, pathlib, queue, sqlite3, subprocess, tempfile, threading, uuid, socket, struct, time, sys, signal, fcntl
 
 parser = argparse.ArgumentParser(
     description="Exercise local Orka plugin operations with disposable native and HTTP fixtures."
@@ -313,14 +313,13 @@ with tempfile.TemporaryDirectory(prefix="orka-plugin-native-") as temp:
         assert result == (
             {"approved": True} if operation == "approve" else {"cancelled": True}
         ), result
-        assert "error" in native(
+        assert native(
             {
                 "action": "plugin-authorization",
                 "operation": operation,
                 "input": {"requestId": preview["requestId"]},
             },
-            True,
-        )
+        )["value"] is None
         return preview
 
     bridge = None
@@ -770,6 +769,7 @@ with tempfile.TemporaryDirectory(prefix="orka-plugin-native-") as temp:
 
         # An account switch cannot redirect an old approved session or a displayed pending preview.
         pending_bridge = Bridge("Pending before account switch")
+        assert pending_bridge.tool("get_connection_status")["state"] == "pending"
         pending = native({"action": "plugin-requests"})["value"][0]
         other = dict(setup, user=str(uuid.uuid4()))
         other["session"] = dict(setup["session"], user={"id": other["user"]})
@@ -780,14 +780,13 @@ with tempfile.TemporaryDirectory(prefix="orka-plugin-native-") as temp:
         assert len(requests) == before
         native(setup)
         active_user = uid
-        assert "error" in native(
+        assert native(
             {
                 "action": "plugin-authorization",
                 "operation": "approve",
                 "input": {"requestId": pending["requestId"]},
             },
-            True,
-        )
+        )["value"] is None
         fresh = Bridge("Fresh approved session")
         approve(fresh)
         assert fresh.tool("get_profile")["accountId"] == uid
@@ -831,38 +830,33 @@ with tempfile.TemporaryDirectory(prefix="orka-plugin-native-") as temp:
         revoked.tool("get_profile", error="unavailable")
         time.sleep(0.3)
         assert not (pathlib.Path(location) / "broker.sock").exists()
-        # A failed first initialize is terminal for this helper, even when the
-        # desktop becomes available later: no same-helper relaunch/reapproval.
-        unavailable = subprocess.Popen(
-            [str(BINARY), "--orka-plugin"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
-
-        def initialize_again(ident):
-            unavailable.stdin.write(
-                compact(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": ident,
-                        "method": "initialize",
-                        "params": {"clientInfo": {"name": "Unavailable desktop"}},
-                    }
-                )
-                + "\n"
-            )
-            unavailable.stdin.flush()
-            return json.loads(unavailable.stdout.readline())
-
-        assert "unavailable" in initialize_again(1)["error"]["message"]
+        # Discovery succeeds with Orka closed and never launches it.
+        unavailable = Bridge("Unavailable desktop")
+        listed = unavailable.rpc("tools/list")
+        assert len(listed["result"]["tools"]) == 27, listed
+        assert unavailable.tool("get_connection_status")["state"] == "unavailable"
+        assert not (pathlib.Path(location) / "broker.sock").exists()
         native({"action": "plugin-start"})
-        assert "already initialized" in initialize_again(2)["error"]["message"]
-        unavailable.stdin.close()
-        unavailable.wait(timeout=10)
-        assert unavailable.returncode == 0
+        # The idle helper retries when Orka returns, without needing a tool call.
+        deadline = time.monotonic() + 8
+        while not native({"action": "plugin-requests"})["value"]:
+            assert time.monotonic() < deadline, "startup registration did not recover"
+            time.sleep(0.05)
+        assert unavailable.tool("get_connection_status")["state"] == "pending"
+        approve(unavailable)
+        assert unavailable.tool("get_profile")["accountId"] == uid
+        unavailable.close()
+        with (home / "orka/workspace.lock").open("rb") as workspace_lock:
+            fcntl.flock(workspace_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            busy = Bridge("Busy desktop")
+            assert len(busy.rpc("tools/list")["result"]["tools"]) == 27
+            assert busy.tool("get_connection_status")["state"] == "busy"
+        deadline = time.monotonic() + 8
+        while not native({"action": "plugin-requests"})["value"]:
+            assert time.monotonic() < deadline, "background registration did not recover"
+            time.sleep(0.05)
+        assert busy.tool("get_connection_status")["state"] == "pending"
+        busy.close()
         native({"action": "plugin-stop"})
         print(
             json.dumps(

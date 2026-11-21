@@ -17,6 +17,12 @@
     right: auto;
     transform: translateX(-50%);
   }
+  .toast-viewport--bottom-right {
+    position: fixed;
+    inset-inline: 0 24px;
+    justify-content: flex-end;
+    transform: none;
+  }
   /* Margin centering keeps the modal's exact geometry without a transformed
      containing block that would clip a viewport-positioned notification. */
   .modal.toast-host-modal {

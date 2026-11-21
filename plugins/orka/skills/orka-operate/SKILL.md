@@ -9,7 +9,7 @@ Resolve project and repository IDs with `list_projects`; use `get_profile` to id
 
 ## Connect through Orka desktop
 
-All tools use the Orka account signed in on this Mac. Start with `get_connection_status`; if approval is pending, tell the user to review the connector session in Orka. If signed out, sign in through Orka. A denied, revoked or stale session needs a new connection from the assistant and explicit approval in Orka. Account/service switches invalidate old sessions permanently, including when switching back. Never switch accounts, supply credentials, or change IDs to bypass a refusal. There is no separate plugin login or remote fallback.
+All tools use the Orka account signed in on this Mac. Start with `get_connection_status`; if approval is pending, tell the user to review the pending request in Orka Settings → Connectors. If signed out, sign in through Orka. A denied, revoked or stale session needs a new connection from the assistant and explicit approval in Orka. Account/service switches invalidate old sessions permanently, including when switching back. Never switch accounts, supply credentials, or change IDs to bypass a refusal. There is no separate plugin login or remote fallback.
 
 The desktop injects identity and service internally. Supply project/repository IDs returned by tools, not account IDs, session tokens or proofs. Reads need `orka.read`; writes need `orka.write`; permission changes and reviews need `orka.manage`. All scopes also require existing project authority. Missing access requires a new explicitly approved session; do not silently escalate.
 

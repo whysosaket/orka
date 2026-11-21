@@ -15,19 +15,17 @@ The bridge forwards requests over a private, profile-local Unix socket. It does 
 
 1. Install an updated Orka desktop and sign in normally. The service must advertise `desktopConnector: 1` at `/v2/instance` for shared tools.
 2. Install the desktop plugin ZIP in Codex or Claude Code and connect Orka.
-3. Review the account, service and requested access in Orka. Approve only the access you want to grant this connector session.
+3. When a verified assistant connects for the first time, Orka opens the approval dialog. Review the account and service, then approve the access you want to grant. Other setups can open **Settings → Connectors → Review request**.
 
-`get_connection_status` works before approval and explains the next action without exposing project content. Approve each running assistant connection once. Its helpers share that approval only when the operating system verifies the same parent process and birth identity; the reported name alone grants nothing. An approved connection survives a same-account app restart while its assistant remains running. A separate or restarted assistant needs new approval.
+Orka remembers the selected access for Codex, Claude Code, and Claude when macOS verifies the app's signing identity. Reopening a verified assistant restores those same permissions for the same Orka account and service. Other setups can still connect with approval for the running assistant. If a returning verified assistant needs attention, Orka shows a quiet toast with a link to **Connectors**. Existing process-only approvals stay valid for their original connection. Review one fresh request to save access across restarts.
 
-Signing out, switching account or service, or revoking a connector permanently invalidates its old session, including after switching back. Reconnect from the assistant and approve a new session in Orka. **Settings → Connectors** shows sessions and lets you revoke access. There is no account selection in the plugin.
+**Settings → Connectors** shows pending requests, active sessions and saved access when an assistant is closed. Revoking access, signing out, or switching account or service invalidates the old grant and its sessions, even after switching back. To change approved access, revoke the grant, reconnect from the assistant, and review the new request with the desired scopes.
 
-An assistant may start several plugin helpers for its chats and workers. Helpers belonging to the same running assistant share one connection, approval and selected scopes. Separate assistant processes need separate approval. Revoking that connection removes access from all its helpers; reconnecting cannot restore access to the old helpers. Exited helpers are removed when Orka checks the connection. A still-running assistant with no helpers appears idle and remains revocable; later helpers from that same process retain the selected scopes. **Check connection** reports completion using current running sessions. Saved approvals from older versions appear active only after a live helper authenticates again.
-
-To change approved access, revoke that connection in **Settings → Connectors**, reconnect in the assistant, and approve the desired scopes. Reconnecting alone retains the existing access while the same assistant process is running.
+`get_connection_status` works before approval and reports if Orka is closed, without exposing project content. The connector retries registration when Orka opens.
 
 When upgrading from plugin 0.2.0, update the installed plugin as well as Orka desktop. A local plugin marketplace must also contain the new 0.3.2 package; publishing a desktop release does not refresh a local marketplace. The new package has one stdio `orka` connector. A remaining remote `orka` plus local `orka_local` pair indicates the old package and can cause repeated OAuth startup errors against retired endpoints.
 
-Closing the main window keeps Orka available through its menu bar. Explicit Quit stops the broker. A new bridge may open the configured app/profile on initial connection; an existing bridge does not reopen Orka after Quit. Open Orka manually before using that live bridge again.
+Closing the main window keeps Orka available through its menu bar. Explicit Quit stops the broker. Open Orka to use the connector after Quit.
 
 ## Access and tools
 

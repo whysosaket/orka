@@ -19,37 +19,48 @@ interface Authorization {
   scopes: string[];
   permissionDescriptions: string[];
   expiresAt: string;
+  verified?: boolean;
 }
 
 export function PluginAuthorization({
   request,
   scope,
   onClose,
+  automatic = false,
 }: {
   request: { requestId: string; scope: string };
   scope: string;
   onClose: () => void;
+  automatic?: boolean;
 }) {
   const [preview, setPreview] = useState<Authorization | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [approved, setApproved] = useState(false);
   const [scopes, setScopes] = useState<string[]>([]);
-  const [expired, setExpired] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const changed = request.scope !== scope;
   useEffect(() => {
-    if (request.scope !== scope) return;
+    if (changed) {
+      onClose();
+      return;
+    }
     let stopped = false;
-    void invoke<Authorization>("plugin_authorization", {
+    void invoke<Authorization | null>("plugin_authorization", {
       operation: "preview",
-      input: { requestId: request.requestId },
+      input: {
+        requestId: request.requestId,
+        ...(automatic && { automatic: true }),
+      },
     }).then(
       (result) => {
-        if (!stopped) {
-          setPreview(result);
-          setScopes(result.scopes);
+        if (stopped) return;
+        if (!result) {
+          onClose();
+          return;
         }
+        setPreview(result);
+        setScopes(result.scopes);
       },
       (failure: unknown) => {
         if (!stopped) setError(String(failure));
@@ -58,16 +69,40 @@ export function PluginAuthorization({
     return () => {
       stopped = true;
     };
-  }, [request.requestId, request.scope, scope, attempt]);
+  }, [request.requestId, changed, attempt, onClose, automatic]);
   useEffect(() => {
-    if (!preview) return;
+    if (!preview || approved) return;
     const remaining = Date.parse(preview.expiresAt) - Date.now();
-    const timer = window.setTimeout(
-      () => setExpired(true),
-      Math.max(0, remaining),
-    );
+    const timer = window.setTimeout(onClose, Math.max(0, remaining));
     return () => window.clearTimeout(timer);
-  }, [preview]);
+  }, [preview, approved, onClose]);
+  useEffect(() => {
+    if (!automatic || changed || approved || busy) return;
+    let stopped = false;
+    let timer: number;
+    const check = async () => {
+      try {
+        const pending = await invoke<{ requestId: string }[]>(
+          "plugin_connection_requests",
+        );
+        if (
+          !stopped &&
+          !pending.some((item) => item.requestId === request.requestId)
+        ) {
+          onClose();
+          return;
+        }
+      } catch {
+        // A temporary native error can be checked again on the next poll.
+      }
+      if (!stopped) timer = window.setTimeout(() => void check(), 1000);
+    };
+    timer = window.setTimeout(() => void check(), 1000);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+  }, [automatic, request.requestId, changed, approved, busy, onClose]);
   const close = async () => {
     if (busy) return;
     if (!approved) {
@@ -84,15 +119,19 @@ export function PluginAuthorization({
     onClose();
   };
   const approve = async () => {
-    if (!preview || busy || changed || expired) return;
+    if (!preview || busy || changed) return;
     setBusy(true);
     setError("");
     try {
-      await invoke("plugin_authorization", {
-        operation: "approve",
-        input: { requestId: preview.requestId, scopes },
-      });
-      setApproved(true);
+      const result = await invoke<{ approved: boolean } | null>(
+        "plugin_authorization",
+        {
+          operation: "approve",
+          input: { requestId: preview.requestId, scopes },
+        },
+      );
+      if (result?.approved) setApproved(true);
+      else onClose();
     } catch (failure) {
       setError(String(failure));
     } finally {
@@ -117,13 +156,9 @@ export function PluginAuthorization({
           onClick={() => void close()}
         />
       </header>
-      {!approved && (changed || expired || error) && (
+      {!approved && error && (
         <p role="alert" className="connector-feedback" tabIndex={0}>
-          {changed
-            ? "Your account or service changed. Start a new connection from your assistant."
-            : expired
-              ? "This request expired. Start a new connection from your assistant."
-              : error}
+          {error}
         </p>
       )}
       <div
@@ -207,9 +242,9 @@ export function PluginAuthorization({
                   </ul>
                 </section>
                 <p className="connector-consent-note">
-                  The assistant reports its name; Orka does not verify the
-                  application. Access applies to this connector session.
-                  Switching accounts or services requires a new connection.
+                  {preview.verified
+                    ? "Orka verified this app on your Mac and will remember your choices when it reconnects. Switching accounts or services requires a new approval."
+                    : "Orka uses the name reported by this assistant. Access lasts until the assistant quits."}
                 </p>
               </>
             )}
@@ -220,7 +255,7 @@ export function PluginAuthorization({
         <Button disabled={busy} onClick={() => void close()}>
           {approved ? "Done" : "Cancel"}
         </Button>
-        {error && !changed && !expired && !approved && (
+        {error && !changed && !approved && (
           <Button
             disabled={busy}
             onClick={() => {
@@ -235,7 +270,7 @@ export function PluginAuthorization({
         {!approved && (
           <Button
             variant="primary"
-            disabled={!preview || busy || changed || expired || Boolean(error)}
+            disabled={!preview || busy || changed || Boolean(error)}
             onClick={() => void approve()}
           >
             {busy ? "Connecting…" : "Allow connection"}

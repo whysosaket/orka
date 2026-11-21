@@ -26,7 +26,7 @@ use std::{
 
 const REQUEST_LIMIT: usize = 2_000_000;
 const RESPONSE_LIMIT: usize = 16_000_000;
-const UNAVAILABLE: &str = "Orka desktop is unavailable. Open Orka, sign in, then reconnect the connector in your assistant.";
+pub(crate) const UNAVAILABLE: &str = "Orka desktop is unavailable. Open Orka and try again.";
 
 // Valid native profile paths can exceed macOS's 104-byte Unix socket path limit.
 // The short directory is derived from the entire profile path and private to this UID.
@@ -227,9 +227,12 @@ async fn dispatch(request: &Value, peer: &Peer) -> Result<Value> {
                 secret,
                 request["clientName"].as_str().unwrap_or("Assistant"),
                 peer,
+                peer.verified_app(),
             )?;
-            if result["state"] == "pending" {
-                let _ = db::atomic(&db::root()?.join("focus"), b"");
+            if result["raiseConsent"] == true {
+                if let Ok(root) = db::root() {
+                    let _ = db::atomic(&root.join("connector-focus"), b"");
+                }
             }
             Ok(result)
         }
@@ -278,29 +281,4 @@ pub(crate) fn exchange(request: &Value) -> Result<Value> {
         .get("value")
         .cloned()
         .ok_or("Invalid desktop connector response".into())
-}
-
-// The helper launches at most once, on its first initialization. Subsequent errors
-// never relaunch the app after the user explicitly quits it.
-pub(crate) fn launch_initial() -> Result<()> {
-    #[cfg(debug_assertions)]
-    if std::env::var_os("ORKA_TEST_HOME").is_some() {
-        return Err(UNAVAILABLE.into());
-    }
-    let current = std::env::current_exe().map_err(|_| UNAVAILABLE)?;
-    let binary = crate::updates::executable()
-        .ok()
-        .filter(|p| p.is_file())
-        .unwrap_or(current);
-    let mut child = std::process::Command::new(binary)
-        .args(["--profile", crate::profiles::current()])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|_| UNAVAILABLE)?;
-    std::thread::spawn(move || {
-        let _ = child.wait();
-    });
-    Ok(())
 }

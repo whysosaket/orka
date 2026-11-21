@@ -33,6 +33,8 @@ export type ToastInput = {
   title: string;
   kind?: "success" | "info" | "queued" | "warning" | "error";
   action?: { label: string; onClick: () => void };
+  placement?: "bottom-right";
+  onDisplay?: () => void;
 };
 type Toast = ToastInput & {
   id: number;
@@ -393,11 +395,15 @@ export function ToastViewport({ modal = false }: { modal?: boolean }) {
       window.removeEventListener("resize", update);
     };
   }, [modal, setBounds]);
+  const hostActive =
+    context &&
+    (modal ? context.modalHosts.at(-1) === id : !context.modalHosts.length);
+  const active = hostActive ? context?.queue[0] : undefined;
+  useEffect(() => {
+    active?.onDisplay?.();
+  }, [active]);
   if (!context) return null;
-  const hostActive = modal
-    ? context.modalHosts.at(-1) === id
-    : !context.modalHosts.length;
-  const active = hostActive ? context.queue[0] : undefined;
+  const corner = active?.placement === "bottom-right";
   const icon =
     active?.kind === "error"
       ? CircleXIcon
@@ -412,9 +418,9 @@ export function ToastViewport({ modal = false }: { modal?: boolean }) {
   return (
     <div
       ref={ref}
-      className={`toast-viewport${modal ? " toast-viewport--modal" : ""}`}
+      className={`toast-viewport${modal ? " toast-viewport--modal" : ""}${corner ? " toast-viewport--bottom-right" : ""}`}
       style={
-        modal && context.bounds
+        modal && !corner && context.bounds
           ? {
               left: context.bounds.center,
               bottom: context.bounds.bottom,

@@ -2,7 +2,7 @@
 use crate::{
     auth,
     db::{self, Result},
-    plugin_process::{Peer, ProcessIdentity},
+    plugin_process::{AssistantApp, Peer, ProcessIdentity},
     projects,
 };
 use fs2::FileExt;
@@ -42,12 +42,14 @@ fn read_state() -> Result<Value> {
             if !state["sessions"].is_object() {
                 state["sessions"] = json!({});
             }
+            if !state["assistantAttention"].is_object() {
+                state["assistantAttention"] = json!({});
+            }
             state.as_object_mut().ok_or(RECONNECT)?.remove("approval");
             Ok(state)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let state =
-                json!({"generation":Uuid::new_v4().to_string(),"reason":null,"sessions":{}});
+            let state = json!({"generation":Uuid::new_v4().to_string(),"reason":null,"sessions":{},"assistantAttention":{}});
             write_state(&state)?;
             Ok(state)
         }
@@ -65,25 +67,62 @@ fn reconcile(state: &mut Value) -> bool {
     if let Some(sessions) = state["sessions"].as_object_mut() {
         sessions.retain(|_, value| {
             let approved = value["state"] == "approved";
-            let host_alive = serde_json::from_value::<ProcessIdentity>(value["assistant"].clone())
-                .is_ok_and(|identity| identity.alive());
+            let remembered = approved && value["assistantApp"].is_string();
+            let original_parent = value["assistant"].clone();
+            let parent_alive = |parent: &Value| {
+                serde_json::from_value::<ProcessIdentity>(parent.clone())
+                    .is_ok_and(|identity| identity.alive())
+            };
             let Some(members) = value["members"].as_object_mut() else {
                 return true;
             };
             members.retain(|_, member| {
-                host_alive
+                parent_alive(member.get("assistant").unwrap_or(&original_parent))
                     && serde_json::from_value::<ProcessIdentity>(member["process"].clone())
                         .is_ok_and(|identity| identity.alive())
             });
-            host_alive && (approved || !members.is_empty())
+            !members.is_empty() || remembered || approved && parent_alive(&original_parent)
         });
     }
     state["sessions"] != before
 }
 
+// Import already-approved assistants before reconciliation removes old sessions.
+fn remember_approvals(state: &mut Value) -> bool {
+    let apps: Vec<String> = state["sessions"]
+        .as_object()
+        .into_iter()
+        .flat_map(|sessions| sessions.values())
+        .filter(|session| !session["connectedAt"].is_null())
+        .filter_map(|session| session["assistantApp"].as_str().map(String::from))
+        .collect();
+    let mut changed = false;
+    for app in apps {
+        if state["assistantAttention"][&app]["reviewed"] != true {
+            state["assistantAttention"][&app]["reviewed"] = json!(true);
+            changed = true;
+        }
+    }
+    changed
+}
+
+fn connection_completed(state: &mut Value, app: &str) {
+    state["assistantAttention"][app] = json!({"reviewed":true,"notified":false});
+    if let Some(sessions) = state["sessions"].as_object_mut() {
+        for session in sessions.values_mut() {
+            if session["assistantApp"] == app
+                && matches!(session["state"].as_str(), Some("pending" | "signed_out"))
+            {
+                session["reconnectResolved"] = json!(true);
+            }
+        }
+    }
+}
+
 fn live_state() -> Result<Value> {
     let mut state = read_state()?;
-    if reconcile(&mut state) {
+    let remembered = remember_approvals(&mut state);
+    if reconcile(&mut state) || remembered {
         write_state(&state)?;
     }
     Ok(state)
@@ -98,6 +137,7 @@ pub(crate) fn generation() -> Result<String> {
 pub(crate) fn invalidate(reason: &str) -> Result<()> {
     let _lock = state_lock()?;
     let mut state = read_state().unwrap_or_else(|_| json!({"sessions":{}}));
+    remember_approvals(&mut state);
     state["generation"] = json!(Uuid::new_v4().to_string());
     state["reason"] = json!(reason);
     // Keep tombstones: a live old helper must never acquire a new account's grant.
@@ -200,6 +240,9 @@ fn session<'a>(state: &'a Value, id: &str, secret: &str) -> Result<&'a Value> {
 }
 fn public_session(value: &Value, generation: &Value) -> Value {
     let mut result = json!({"id":value["id"],"client":value["client"],"scopes":value["scopes"],"connectedAt":value["connectedAt"],"state":value["state"],"sessionCount":value["members"].as_object().map_or(0, |members| members.len())});
+    if value["assistantApp"].is_string() {
+        result["remembered"] = json!(true);
+    }
     if value["state"] == "approved" && result["sessionCount"] == 0 {
         result["state"] = json!("idle");
     }
@@ -208,20 +251,31 @@ fn public_session(value: &Value, generation: &Value) -> Value {
     {
         result["state"] = json!("reconnect_required");
     }
+    if result["state"] == "pending" {
+        result["requestId"] = value["requestId"].clone();
+    }
     result
 }
 fn preview(value: &Value) -> Value {
     json!({"requestId":value["requestId"],"account":value["account"],"serviceOrigin":value["binding"]["service_origin"],
-        "client":value["client"],"scopes":value["requestedScopes"],"expiresAt":value["expiresAt"],
+        "client":value["client"],"verified":value["assistantApp"].is_string(),"scopes":value["requestedScopes"],"expiresAt":value["expiresAt"],
         "permissionDescriptions":["Read local and shared project context.","Share selected content, install skills, update memories and plans, and retry or repair synchronization.","Manage project permissions and review requests within your existing authority."]})
 }
 
-pub(crate) fn initialize_session(id: &str, secret: &str, name: &str, peer: &Peer) -> Result<Value> {
+pub(crate) fn initialize_session(
+    id: &str,
+    secret: &str,
+    name: &str,
+    peer: &Peer,
+    app: Option<AssistantApp>,
+) -> Result<Value> {
     Uuid::parse_str(id).map_err(|_| "Invalid connector session")?;
     if secret.len() != 64 || !secret.bytes().all(|c| c.is_ascii_hexdigit()) {
         return Err("Invalid connector credential".into());
     }
-    let _operation = projects::lock()?;
+    let Some(_operation) = projects::try_lock()? else {
+        return Ok(json!({"state":"busy"}));
+    };
     let binding = Binding::current().ok();
     let actual = account(&db::open()?).unwrap_or(Value::Null);
     let _lock = state_lock()?;
@@ -241,23 +295,35 @@ pub(crate) fn initialize_session(id: &str, secret: &str, name: &str, peer: &Peer
         .filter(|c| !c.is_control())
         .take(100)
         .collect::<String>();
-    let label = if label.trim().is_empty() {
-        "Assistant"
-    } else {
-        label.as_str()
+    let label = match app {
+        Some(app) => app.name(),
+        None if label.trim().is_empty() => "Assistant",
+        None => label.as_str(),
     };
     let valid = binding.is_some() && !actual.is_null();
-    // The client label is only a label: consent is shared only by children of
-    // the same kernel-verified assistant process, birth identity and account generation.
+    let assistant_app = json!(app);
+    let first_request = valid
+        && assistant_app
+            .as_str()
+            .is_some_and(|app| state["assistantAttention"][app]["reviewed"] != true);
+    let assistant = json!(peer.assistant);
+    let workspace = json!(binding);
+    let member = json!({"secretHash":db::digest(secret.as_bytes()),"process":peer.helper,"assistant":assistant});
     let existing = state["sessions"]
         .as_object()
         .ok_or(RECONNECT)?
         .iter()
         .find(|(_, value)| {
+            let same_assistant = if app.is_some() {
+                value["assistantApp"] == assistant_app
+            } else {
+                value["assistantApp"].is_null()
+                    && value["assistant"] == assistant
+                    && value["client"]["name"] == label
+            };
             valid
-                && value["assistant"] == json!(peer.assistant)
-                && value["client"]["name"] == label
-                && value["binding"]["generation"] == state["generation"]
+                && same_assistant
+                && value["binding"] == workspace
                 && (value["state"] == "approved"
                     || value["state"] == "pending" && expires(&value["expiresAt"]))
         })
@@ -280,10 +346,15 @@ pub(crate) fn initialize_session(id: &str, secret: &str, name: &str, peer: &Peer
         );
     }
     if let Some(connection) = existing {
-        state["sessions"][&connection]["members"][id] =
-            json!({"secretHash":db::digest(secret.as_bytes()),"process":peer.helper});
+        state["sessions"][&connection]["members"][id] = member;
         let value = &state["sessions"][&connection];
         let result = json!({"state":value["state"],"requestId":value["requestId"]});
+        if let Some(app) = assistant_app
+            .as_str()
+            .filter(|_| value["state"] == "approved")
+        {
+            connection_completed(&mut state, app);
+        }
         write_state(&state)?;
         return Ok(result);
     }
@@ -309,13 +380,13 @@ pub(crate) fn initialize_session(id: &str, secret: &str, name: &str, peer: &Peer
     }
     let requested = json!(SCOPES);
     let request_id = Uuid::new_v4().to_string();
-    state["sessions"][id] = json!({"id":id,"members":{id:{"secretHash":db::digest(secret.as_bytes()),"process":peer.helper}},"assistant":peer.assistant,"binding":binding,"account":actual,
+    state["sessions"][id] = json!({"id":id,"members":{id:member},"assistant":assistant,"assistantApp":assistant_app,"binding":workspace,"account":actual,
         "client":{"id":id,"name":label},
         "requestId":request_id,"createdAt":chrono::Utc::now().timestamp_millis(),"requestedScopes":requested,"scopes":[],"connectedAt":null,
         "state":if valid{"pending"}else{"signed_out"},"expiresAt":(chrono::Utc::now()+chrono::Duration::minutes(10)).to_rfc3339()});
     write_state(&state)?;
     Ok(
-        json!({"state":if valid{"pending"}else{"signed_out"},"requestId":if valid{json!(request_id)}else{Value::Null}}),
+        json!({"state":if valid{"pending"}else{"signed_out"},"requestId":if valid{json!(request_id)}else{Value::Null},"raiseConsent":first_request}),
     )
 }
 
@@ -352,8 +423,9 @@ pub(crate) fn identify_session(id: &str, secret: &str, peer: &Peer) -> Result<()
         .to_string();
     let value = &mut state["sessions"][&connection];
     if value["members"].is_object() {
-        if value["members"][id]["process"] != json!(peer.helper)
-            || value["assistant"] != json!(peer.assistant)
+        let member = &value["members"][id];
+        if member["process"] != json!(peer.helper)
+            || *member.get("assistant").unwrap_or(&value["assistant"]) != json!(peer.assistant)
         {
             return Err(RECONNECT.into());
         }
@@ -374,7 +446,7 @@ pub(crate) fn authorize(id: &str, secret: &str, scope: &str) -> Result<Binding> 
     };
     if value["state"] != "approved" {
         return Err(match value["state"].as_str() {
-            Some("pending") if expires(&value["expiresAt"]) => "Approve this connector session in Orka, then retry the tool.",
+            Some("pending") if expires(&value["expiresAt"]) => "Approve this request in Orka Settings → Connectors, then retry the tool.",
             Some("signed_out") => "Sign in to Orka desktop, then reconnect this connector in your assistant and approve it in Orka.",
             Some("denied") => "This connector session was denied in Orka. Reconnect in your assistant to request approval again.",
             _ => RECONNECT,
@@ -416,6 +488,82 @@ pub fn plugin_connection_requests() -> Result<Value> {
         .map(preview)
         .collect::<Vec<_>>()))
 }
+fn first_pending_consent(state: &Value) -> Option<&Value> {
+    state["sessions"].as_object()?.values().find(|session| {
+        session["state"] == "pending"
+            && session["binding"]["generation"] == state["generation"]
+            && expires(&session["expiresAt"])
+            && session["assistantApp"]
+                .as_str()
+                .is_some_and(|app| state["assistantAttention"][app]["reviewed"] != true)
+    })
+}
+
+pub(crate) fn has_first_pending_consent() -> Result<bool> {
+    let _lock = state_lock()?;
+    Ok(first_pending_consent(&live_state()?).is_some())
+}
+
+/// Supply the main window with an initial consent request or a quiet reconnect notice.
+#[tauri::command]
+pub fn plugin_connection_attention(
+    allow_prompt: bool,
+    reported_notice: Option<String>,
+) -> Result<Value> {
+    let _lock = state_lock()?;
+    let mut state = live_state()?;
+    if let Some(id) = reported_notice {
+        if let Some(notice) = state["assistantAttention"]
+            .as_object_mut()
+            .ok_or(RECONNECT)?
+            .values_mut()
+            .find(|attention| attention["noticeId"] == id && attention["notified"] != true)
+        {
+            notice["notified"] = json!(true);
+            write_state(&state)?;
+        }
+        return Ok(Value::Null);
+    }
+    if allow_prompt {
+        if let Some(request) = first_pending_consent(&state) {
+            return Ok(json!({"requestId":request["requestId"]}));
+        }
+    }
+    let sessions = state["sessions"].as_object().ok_or(RECONNECT)?;
+    let failed = sessions.values().find_map(|session| {
+        let app = session["assistantApp"].as_str()?;
+        let attention = &state["assistantAttention"][app];
+        if attention["reviewed"] != true
+            || attention["notified"] == true
+            || session["automaticReview"] == true
+            || session["reconnectResolved"] == true
+            || !matches!(session["state"].as_str(), Some("pending" | "signed_out"))
+            || sessions.values().any(|candidate| {
+                candidate["assistantApp"] == app
+                    && candidate["state"] == "approved"
+                    && candidate["binding"]["generation"] == state["generation"]
+                    && candidate["members"]
+                        .as_object()
+                        .is_some_and(|members| !members.is_empty())
+            })
+        {
+            return None;
+        }
+        Some((app.to_owned(), session["client"]["name"].clone()))
+    });
+    if let Some((app, name)) = failed {
+        let attention = &mut state["assistantAttention"][&app];
+        if !attention["noticeId"].is_string() {
+            attention["noticeId"] = json!(Uuid::new_v4().to_string());
+            write_state(&state)?;
+        }
+        return Ok(
+            json!({"reconnect":{"id":state["assistantAttention"][&app]["noticeId"],"name":name}}),
+        );
+    }
+    Ok(Value::Null)
+}
+
 #[tauri::command]
 pub fn plugin_connection_status() -> Result<Value> {
     let db = db::open()?;
@@ -441,7 +589,7 @@ pub fn plugin_connection_status() -> Result<Value> {
     Ok(
         json!({"state":if actual.is_null(){"signed_out"}else if linked{"linked"}else if pending>0{"pending"}else if connections.iter().all(|v| v["state"] == "idle"){"not_linked"}else{"reconnect_required"},
         "account":actual,"serviceOrigin":service,"connections":connections,"pendingCount":pending,"reconnectRequired":!linked && !only_idle,
-        "reason":if linked{Value::Null}else if actual.is_null(){json!("Sign in to Orka desktop, then reconnect the connector in your assistant.")}else if pending>0{json!("Approve the connector session in Orka.")}else if only_idle{json!("No active assistant sessions. Approved access resumes when this assistant connects.")}else{json!(RECONNECT)}}),
+        "reason":if linked{Value::Null}else if actual.is_null(){json!("Sign in to Orka desktop, then reconnect the connector in your assistant.")}else if pending>0{json!("Review the request below to allow access.")}else if only_idle{json!("No active assistant sessions. Saved access resumes when the assistant connects.")}else{json!(RECONNECT)}}),
     )
 }
 pub(crate) fn session_status(id: &str, secret: &str) -> Result<Value> {
@@ -457,7 +605,7 @@ pub(crate) fn session_status(id: &str, secret: &str) -> Result<Value> {
     result["state"] = result["connection"]["state"].clone();
     result["reconnectRequired"] = json!(result["state"] != "approved");
     if result["state"] != "approved" {
-        result["reason"]=json!(match result["state"].as_str(){Some("pending")=>"Approve this connector session in Orka, then retry.",Some("denied")=>"This connector session was denied. Reconnect in your assistant to request approval again.",Some("signed_out")=>"Sign in to Orka desktop, then reconnect in your assistant.",_=>RECONNECT});
+        result["reason"]=json!(match result["state"].as_str(){Some("pending")=>"Approve this request in Orka Settings → Connectors, then retry.",Some("denied")=>"This connector session was denied. Reconnect in your assistant to request approval again.",Some("signed_out")=>"Sign in to Orka desktop, then reconnect in your assistant.",_=>RECONNECT});
     }
     Ok(result)
 }
@@ -465,10 +613,15 @@ pub(crate) fn session_status(id: &str, secret: &str) -> Result<Value> {
 #[tauri::command]
 pub async fn plugin_authorization(operation: String, input: Value) -> Result<Value> {
     let _operation = projects::lock()?;
-    let current = Binding::current()?;
-    if account(&db::open()?)?["id"] != current.account_id {
-        return Err(RECONNECT.into());
-    }
+    let current = Binding::current().ok();
+    let actual = account(&db::open()?).unwrap_or(Value::Null);
+    let Some(current) = current.filter(|binding| actual["id"] == binding.account_id) else {
+        return if operation == "revoke" {
+            Err(RECONNECT.into())
+        } else {
+            Ok(Value::Null)
+        };
+    };
     let _lock = state_lock()?;
     let mut state = live_state()?;
     if operation == "revoke" {
@@ -485,33 +638,42 @@ pub async fn plugin_authorization(operation: String, input: Value) -> Result<Val
     let request = input["requestId"]
         .as_str()
         .ok_or("Open the pending connector request in Orka")?;
-    let id = state["sessions"]
-        .as_object()
+    let Some(value) = state["sessions"]
+        .as_object_mut()
         .ok_or(RECONNECT)?
-        .iter()
-        .find(|(_, v)| v["requestId"] == request)
-        .map(|(k, _)| k.clone())
-        .ok_or("This connector request is no longer available")?;
-    if state["generation"] != current.generation {
-        return Err(RECONNECT.into());
-    }
-    let value = &mut state["sessions"][&id];
-    if value["state"] != "pending" || !expires(&value["expiresAt"]) {
-        return Err(
-            "This connector request expired or was already completed. Reconnect in your assistant."
-                .into(),
-        );
-    }
-    if value["binding"]["generation"] != current.generation
+        .values_mut()
+        .find(|v| v["requestId"] == request)
+    else {
+        return Ok(Value::Null);
+    };
+    if value["state"] != "pending"
+        || !expires(&value["expiresAt"])
+        || value["binding"] != json!(current)
         || value["account"]["id"] != current.account_id
     {
-        return Err(RECONNECT.into());
+        return Ok(Value::Null);
     }
+    let app = value["assistantApp"].as_str().map(String::from);
     if operation == "preview" {
-        return Ok(preview(value));
+        let details = preview(value);
+        if input["automatic"] == true && value["automaticReview"] != true {
+            let Some(app) = app else {
+                return Ok(Value::Null);
+            };
+            value["automaticReview"] = json!(true);
+            if state["assistantAttention"][&app]["reviewed"] == true {
+                return Ok(Value::Null);
+            }
+            state["assistantAttention"][&app]["reviewed"] = json!(true);
+            write_state(&state)?;
+        }
+        return Ok(details);
     }
     if operation == "cancel" {
         value["state"] = json!("denied");
+        if let Some(app) = app {
+            state["assistantAttention"][&app]["reviewed"] = json!(true);
+        }
         write_state(&state)?;
         return Ok(json!({"cancelled":true}));
     }
@@ -532,6 +694,9 @@ pub async fn plugin_authorization(operation: String, input: Value) -> Result<Val
     value["scopes"] = scopes;
     value["state"] = json!("approved");
     value["connectedAt"] = json!(db::now());
+    if let Some(app) = app {
+        connection_completed(&mut state, &app);
+    }
     write_state(&state)?;
     Ok(json!({"approved":true}))
 }

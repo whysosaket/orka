@@ -235,7 +235,8 @@ function WorkspaceApp({
     errorFeedback,
     actionNotice,
   } = workspace;
-  const { notify } = useToasts();
+  const { notify, queue: toasts } = useToasts();
+  const toastShowing = toasts.length > 0;
   const workspaceScope = WorkspaceCache.scope(state);
   const updates = useDesktopUpdates(workspaceScope, state.user);
   const account = useAccount(state.config, !state.user);
@@ -260,10 +261,14 @@ function WorkspaceApp({
   const [returnFocus, setReturnFocus] = useState("");
   const clearReturnFocus = useCallback(() => setReturnFocus(""), []);
   const [settings, setSettings] = useState<SettingsSection | null>(null);
-  const [pluginRequest, setPluginRequest] = useState<{
+  const [connectorRequest, setConnectorRequest] = useState<{
     requestId: string;
     scope: string;
   } | null>(null);
+  const closeConnectorRequest = useCallback(
+    () => setConnectorRequest(null),
+    [],
+  );
   const [settingsProject, setSettingsProject] = useState<string | null>(null);
   useEffect(() => {
     if (!settings) setSettingsProject(null);
@@ -344,11 +349,72 @@ function WorkspaceApp({
       setSettings(section);
     }
   };
-  const openSettings = (section: SettingsSection) => {
+  const openSettings = useCallback((section: SettingsSection) => {
     if (settingsNavigation.current)
       settingsNavigation.current.requestSection(section);
     else setSettings(section);
-  };
+  }, []);
+  const canApproveConnector = Boolean(state.user);
+  const activeConnectorRequest =
+    connectorRequest?.scope === workspaceScope ? connectorRequest : null;
+  useEffect(() => {
+    if (busy || activeConnectorRequest) return;
+    let stopped = false;
+    let timer: number | undefined;
+    const dialogOpen = () => !!document.querySelector('[role="dialog"]');
+    const poll = async () => {
+      try {
+        if (document.hidden || !document.hasFocus() || dialogOpen()) return;
+        const attention = await invoke<{
+          requestId?: string;
+          reconnect?: { id: string; name: string };
+        } | null>("plugin_connection_attention", {
+          allowPrompt: canApproveConnector,
+        });
+        if (stopped || document.hidden || !document.hasFocus() || !attention)
+          return;
+        if (attention.requestId && !dialogOpen()) {
+          setConnectorRequest({
+            requestId: attention.requestId,
+            scope: workspaceScope,
+          });
+        } else if (attention.reconnect && !toastShowing) {
+          const { id, name } = attention.reconnect;
+          notify({
+            title: `${name} couldn’t reconnect to Orka`,
+            placement: "bottom-right",
+            action: {
+              label: "Connectors",
+              onClick: () => openSettings("connections"),
+            },
+            onDisplay: () => {
+              void invoke("plugin_connection_attention", {
+                allowPrompt: false,
+                reportedNotice: id,
+              }).catch(() => {});
+            },
+          });
+        }
+      } catch {
+        // Connector discovery can continue once the native broker is available.
+      } finally {
+        if (!stopped) timer = window.setTimeout(() => void poll(), 1000);
+      }
+    };
+    void poll();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeConnectorRequest,
+    busy,
+    canApproveConnector,
+    notify,
+    openSettings,
+    toastShowing,
+    workspaceScope,
+  ]);
   const manualUpdateCheck = useRef(() => {});
   manualUpdateCheck.current = () => {
     openSettings("updates");
@@ -581,33 +647,6 @@ function WorkspaceApp({
       setComparison("");
     }
   }, [comparison, selected?.resourceId, view]);
-  // Pending requests originate in the native broker, never from callback URLs.
-  useEffect(() => {
-    if (busy || pluginRequest || !state.user) return;
-    let stopped = false;
-    let timer: number | undefined;
-    const poll = async () => {
-      try {
-        const pending = await invoke<{ requestId: string }[]>(
-          "plugin_connection_requests",
-        );
-        if (!stopped && pending[0])
-          setPluginRequest({
-            requestId: pending[0].requestId,
-            scope: workspaceScope,
-          });
-      } catch {
-        // The broker may still be starting. Native commands enforce identity.
-      } finally {
-        if (!stopped) timer = window.setTimeout(() => void poll(), 1000);
-      }
-    };
-    void poll();
-    return () => {
-      stopped = true;
-      window.clearTimeout(timer);
-    };
-  }, [busy, pluginRequest, state.user, workspaceScope]);
   const openDeepLink = (link: URL) => {
     if (link.hostname === "connectors") {
       openSettings("connections");
@@ -739,14 +778,15 @@ function WorkspaceApp({
         </div>
       </Overlay>
     ) : null;
-  const pluginDialog = pluginRequest ? (
+  const connectorDialog = activeConnectorRequest && (
     <PluginAuthorization
-      key={pluginRequest.requestId}
-      request={pluginRequest}
+      key={activeConnectorRequest.requestId}
+      automatic
+      request={activeConnectorRequest}
       scope={workspaceScope}
-      onClose={() => setPluginRequest(null)}
+      onClose={closeConnectorRequest}
     />
-  ) : null;
+  );
   if (!state.user)
     return (
       <>
@@ -763,7 +803,8 @@ function WorkspaceApp({
         />
         {updatesDialog}
         {connectorsDialog}
-        {pluginDialog}
+        {connectorDialog}
+        <ToastViewport />
       </>
     );
   if (state.onboarding?.active && setup.dialog !== "join")
@@ -777,7 +818,8 @@ function WorkspaceApp({
         />
         {updatesDialog}
         {connectorsDialog}
-        {pluginDialog}
+        {connectorDialog}
+        <ToastViewport />
       </>
     );
   const openResource = (id: string) => {
@@ -1525,7 +1567,7 @@ function WorkspaceApp({
             onRefresh={refresh}
           />
         )}
-        {pluginDialog}
+        {connectorDialog}
       </div>
     </ResourceMenuProvider>
   );

@@ -5,7 +5,7 @@ description: Retrieve shared Orka project context, accepted decisions, instructi
 
 # Use Orka project context
 
-All tools connect through the running Orka desktop and use its signed-in account. Check `get_connection_status` first; sign in or approve the connector session in Orka if required. A stale, denied or revoked session requires reconnecting from the assistant. There is no separate plugin login.
+All tools connect through the running Orka desktop and use its signed-in account. Check `get_connection_status` first; sign in or review the pending request in Orka Settings → Connectors if required. A stale, denied or revoked session requires reconnecting from the assistant. There is no separate plugin login.
 
 Use the Orka MCP tools. A skill alone cannot access Orka. If tools are unavailable, explain that the Orka connection must be enabled; do not invent project knowledge.
 

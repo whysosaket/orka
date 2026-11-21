@@ -299,6 +299,7 @@ fn main() {
                 plugin_connection::plugin_authorization,
                 plugin_connection::plugin_connection_status,
                 plugin_connection::plugin_connection_requests,
+                plugin_connection::plugin_connection_attention,
                 commands::snapshot,
                 local_resources::local_resource_catalog,
                 resource_commands::resource_command,

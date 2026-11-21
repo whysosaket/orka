@@ -44,7 +44,7 @@ jobs:
       - run: ORKA_TEST_OPERATOR_IMAGE=orka-test:oss npm run test:self-hosted
   frontend:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
